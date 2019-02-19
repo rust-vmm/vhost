@@ -62,7 +62,7 @@ pub struct Master {
 
 impl Master {
     /// Create a new instance.
-    fn new(ep: Endpoint<MasterReq>) -> Self {
+    fn new(ep: Endpoint<MasterReq>, max_queue_num: u64) -> Self {
         Master {
             node: Arc::new(Mutex::new(MasterInternal {
                 main_sock: ep,
@@ -71,23 +71,26 @@ impl Master {
                 protocol_features: 0,
                 acked_protocol_features: 0,
                 protocol_features_ready: false,
-                max_queue_num: 1,
+                max_queue_num,
                 error: None,
             })),
         }
     }
 
     /// Create a new instance from a Unix stream socket.
-    pub fn from_stream(sock: UnixStream) -> Self {
-        Self::new(Endpoint::<MasterReq>::from_stream(sock))
+    pub fn from_stream(sock: UnixStream, max_queue_num: u64) -> Self {
+        Self::new(Endpoint::<MasterReq>::from_stream(sock), max_queue_num)
     }
 
     /// Create a new vhost-user master endpoint.
     ///
     /// # Arguments
     /// * `path` - path of Unix domain socket listener to connect to
-    pub fn connect(path: &str) -> Result<Self> {
-        Ok(Self::new(Endpoint::<MasterReq>::connect(path)?))
+    pub fn connect(path: &str, max_queue_num: u64) -> Result<Self> {
+        Ok(Self::new(
+            Endpoint::<MasterReq>::connect(path)?,
+            max_queue_num,
+        ))
     }
 }
 
@@ -617,7 +620,7 @@ mod tests {
     fn create_pair(path: &str) -> (Master, Endpoint<MasterReq>) {
         let listener = Listener::new(path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let master = Master::connect(path).unwrap();
+        let master = Master::connect(path, 2).unwrap();
         let slave = listener.accept().unwrap().unwrap();
         (master, Endpoint::from_stream(slave))
     }
@@ -627,7 +630,7 @@ mod tests {
         let listener = Listener::new(UNIX_SOCKET_MASTER, true).unwrap();
         listener.set_nonblocking(true).unwrap();
 
-        let mut master = Master::connect(UNIX_SOCKET_MASTER).unwrap();
+        let mut master = Master::connect(UNIX_SOCKET_MASTER, 1).unwrap();
         let mut slave = Endpoint::<MasterReq>::from_stream(listener.accept().unwrap().unwrap());
 
         // Send two messages continuously
@@ -651,13 +654,13 @@ mod tests {
     fn test_create_failure() {
         let _ = Listener::new(UNIX_SOCKET_MASTER2, true).unwrap();
         let _ = Listener::new(UNIX_SOCKET_MASTER2, false).is_err();
-        assert!(Master::connect(UNIX_SOCKET_MASTER2).is_err());
+        assert!(Master::connect(UNIX_SOCKET_MASTER2, 1).is_err());
 
         let listener = Listener::new(UNIX_SOCKET_MASTER2, true).unwrap();
         assert!(Listener::new(UNIX_SOCKET_MASTER2, false).is_err());
         listener.set_nonblocking(true).unwrap();
 
-        let _master = Master::connect(UNIX_SOCKET_MASTER2).unwrap();
+        let _master = Master::connect(UNIX_SOCKET_MASTER2, 1).unwrap();
         let _slave = listener.accept().unwrap().unwrap();
     }
 
