@@ -8,7 +8,7 @@ license = "Apache-2.0 or BSD-3-Clause"
 [features]
 default = []
 vhost-vsock = []
-vhost-kern = ["vm-memory"]
+vhost-kern = ["vm-memory/backend-mmap"]
 
 [dependencies]
 libc = ">=0.2.39"
