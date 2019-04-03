@@ -5,4 +5,10 @@ authors = ["Liu Jiang <gerry@linux.alibaba.com>"]
 repository = "https://github.com/rust-vmm/vhost"
 license = "Apache-2.0 or BSD-3-Clause"
 
+[features]
+default = []
+vhost-vsock = []
+
 [dependencies]
+vmm-sys-util = { git = "https://github.com/rust-vmm/vmm-sys-util.git", branch = "master" }
+vm-memory = { git = "https://github.com/rust-vmm/vm-memory.git", branch = "master", optional = true }
