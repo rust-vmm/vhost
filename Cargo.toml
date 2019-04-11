@@ -3,6 +3,6 @@ name = "vhost"
 version = "0.1.0"
 authors = ["Liu Jiang <gerry@linux.alibaba.com>"]
 repository = "https://github.com/rust-vmm/vhost"
-license = "Apache-2.0"
+license = "Apache-2.0 or BSD-3-Clause"
 
 [dependencies]
