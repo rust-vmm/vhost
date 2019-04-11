@@ -32,13 +32,17 @@
 
 #![deny(missing_docs)]
 
+extern crate libc;
 #[cfg(feature = "vhost-kern")]
 extern crate vm_memory;
+#[cfg_attr(feature = "vhost-kern", macro_use)]
 extern crate vmm_sys_util;
 
 mod backend;
 pub use backend::*;
 
+#[cfg(feature = "vhost-kern")]
+pub mod vhost_kern;
 #[cfg(feature = "vhost-vsock")]
 pub mod vsock;
 
