@@ -8,7 +8,10 @@ license = "Apache-2.0 or BSD-3-Clause"
 [features]
 default = []
 vhost-vsock = []
+vhost-kern = ["vm-memory"]
 
 [dependencies]
+libc = ">=0.2.39"
+
 vmm-sys-util = ">=0.3.1"
 vm-memory = { git = "https://github.com/rust-vmm/vm-memory.git", branch = "master", optional = true }
