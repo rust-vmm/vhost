@@ -26,6 +26,9 @@ use super::{
 pub mod vhost_binding;
 use self::vhost_binding::*;
 
+#[cfg(feature = "vhost-vsock")]
+pub mod vsock;
+
 #[inline]
 fn ioctl_result<T>(rc: i32, res: T) -> Result<T> {
     if rc < 0 {
