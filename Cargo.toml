@@ -9,8 +9,11 @@ license = "Apache-2.0 or BSD-3-Clause"
 default = []
 vhost-vsock = []
 vhost-kern = ["vm-memory/backend-mmap"]
+vhost-user-master = []
+vhost-user-slave = []
 
 [dependencies]
+bitflags = ">=1.0.1"
 libc = ">=0.2.39"
 
 vmm-sys-util = ">=0.3.1"

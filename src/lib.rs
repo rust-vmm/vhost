@@ -32,6 +32,11 @@
 
 #![deny(missing_docs)]
 
+#[cfg_attr(
+    any(feature = "vhost-user-master", feature = "vhost-user-slave"),
+    macro_use
+)]
+extern crate bitflags;
 extern crate libc;
 #[cfg(feature = "vhost-kern")]
 extern crate vm_memory;
@@ -43,6 +48,8 @@ pub use backend::*;
 
 #[cfg(feature = "vhost-kern")]
 pub mod vhost_kern;
+#[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
+pub mod vhost_user;
 #[cfg(feature = "vhost-vsock")]
 pub mod vsock;
 
@@ -73,6 +80,9 @@ pub enum Error {
     IoctlError(std::io::Error),
     /// Error from IO subsystem.
     IOError(std::io::Error),
+    #[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
+    /// Error from the vhost-user subsystem.
+    VhostUserProtocol(crate::vhost_user::Error),
 }
 
 impl std::fmt::Display for Error {
@@ -91,7 +101,16 @@ impl std::fmt::Display for Error {
             Error::VhostOpen(e) => write!(f, "failure in opening vhost file: {}", e),
             #[cfg(feature = "vhost-kern")]
             Error::IoctlError(e) => write!(f, "failure in vhost ioctl: {}", e),
+            #[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
+            Error::VhostUserProtocol(e) => write!(f, "vhost-user error: {}", e),
         }
+    }
+}
+
+#[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
+impl std::convert::From<crate::vhost_user::Error> for Error {
+    fn from(err: crate::vhost_user::Error) -> Self {
+        Error::VhostUserProtocol(err)
     }
 }
 
