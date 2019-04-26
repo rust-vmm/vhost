@@ -47,15 +47,15 @@ pub trait VhostKernBackend<'a>: AsRawFd {
     fn mem(&self) -> &Self::M;
 
     /// Check whether the ring configuration is valid.
-    fn is_valid(
-        &self,
-        config_data: &VringConfigData
-    ) -> bool {
+    fn is_valid(&self, config_data: &VringConfigData) -> bool {
         let queue_size = config_data.queue_size;
         let desc_table_size = 16 * u64::from(queue_size) as GuestUsize;
         let avail_ring_size = 6 + 2 * u64::from(queue_size) as GuestUsize;
         let used_ring_size = 6 + 8 * u64::from(queue_size) as GuestUsize;
-        if queue_size > config_data.queue_max_size || queue_size == 0 || (queue_size & (queue_size - 1)) != 0 {
+        if queue_size > config_data.queue_max_size
+            || queue_size == 0
+            || (queue_size & (queue_size - 1)) != 0
+        {
             false
         } else if GuestAddress(config_data.desc_table_addr)
             .checked_add(desc_table_size)
