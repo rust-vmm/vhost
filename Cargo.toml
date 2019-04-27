@@ -19,3 +19,6 @@ libc = ">=0.2.39"
 vmm-sys-util = { git = "https://github.com/rust-vmm/vmm-sys-util.git", branch = "master" }
 #vm-memory = { git = "https://github.com/rust-vmm/vm-memory.git", branch = "master", optional = true }
 vm-memory = { git = "https://github.com/jiangliu/vm-memory.git", branch = "host_address", optional = true }
+
+[dev-dependencies]
+tempfile = "3.0.5"

@@ -21,7 +21,11 @@
 use libc;
 use std::io::Error as IOError;
 
+mod connection;
+pub use self::connection::Listener;
 pub mod message;
+
+pub mod sock_ctrl_msg;
 
 /// Errors for vhost-user operations
 #[derive(Debug)]
