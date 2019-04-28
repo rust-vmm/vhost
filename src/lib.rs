@@ -82,7 +82,7 @@ pub enum Error {
     IOError(std::io::Error),
     #[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
     /// Error from the vhost-user subsystem.
-    VhostUserProtocol(crate::vhost_user::Error),
+    VhostUserProtocol(vhost_user::Error),
 }
 
 impl std::fmt::Display for Error {
@@ -102,14 +102,14 @@ impl std::fmt::Display for Error {
             #[cfg(feature = "vhost-kern")]
             Error::IoctlError(e) => write!(f, "failure in vhost ioctl: {}", e),
             #[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
-            Error::VhostUserProtocol(e) => write!(f, "vhost-user error: {}", e),
+            Error::VhostUserProtocol(e) => write!(f, "vhost-user: {}", e),
         }
     }
 }
 
 #[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
-impl std::convert::From<crate::vhost_user::Error> for Error {
-    fn from(err: crate::vhost_user::Error) -> Self {
+impl std::convert::From<vhost_user::Error> for Error {
+    fn from(err: vhost_user::Error) -> Self {
         Error::VhostUserProtocol(err)
     }
 }

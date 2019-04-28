@@ -23,6 +23,10 @@ use std::io::Error as IOError;
 
 mod connection;
 pub use self::connection::Listener;
+#[cfg(feature = "vhost-user-master")]
+mod master;
+#[cfg(feature = "vhost-user-master")]
+pub use self::master::{Master, VhostUserMaster};
 pub mod message;
 
 pub mod sock_ctrl_msg;
@@ -50,6 +54,8 @@ pub enum Error {
     SocketBroken(std::io::Error),
     /// Should retry the socket operation again.
     SocketRetry(std::io::Error),
+    /// Failure from the slave side.
+    SlaveInternalError,
 }
 
 impl std::fmt::Display for Error {
@@ -65,6 +71,7 @@ impl std::fmt::Display for Error {
             Error::SocketConnect(e) => write!(f, "can't connect to peer: {}", e),
             Error::SocketBroken(e) => write!(f, "socket is broken: {}", e),
             Error::SocketRetry(e) => write!(f, "temporary socket error: {}", e),
+            Error::SlaveInternalError => write!(f, "slave internal error"),
         }
     }
 }
@@ -77,6 +84,8 @@ impl Error {
             Error::PartialMessage => true,
             // Should reconnect because the underline socket is broken.
             Error::SocketBroken(_) => true,
+            // Slave internal error, hope it recovers on reconnect.
+            Error::SlaveInternalError => true,
             // Should just retry the IO operation instead of rebuilding the underline connection.
             Error::SocketRetry(_) => false,
             Error::InvalidParam | Error::InvalidOperation => false,
