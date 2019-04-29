@@ -28,6 +28,10 @@ pub use self::connection::Listener;
 mod master;
 #[cfg(feature = "vhost-user-master")]
 pub use self::master::{Master, VhostUserMaster};
+#[cfg(feature = "vhost-user-master")]
+mod master_req_handler;
+#[cfg(feature = "vhost-user-master")]
+pub use self::master_req_handler::{MasterReqHandler, VhostUserMasterReqHandler};
 
 #[cfg(feature = "vhost-user-slave")]
 mod slave;
@@ -65,6 +69,10 @@ pub enum Error {
     SocketRetry(std::io::Error),
     /// Failure from the slave side.
     SlaveInternalError,
+    /// Virtio/protocol features mismatch.
+    FeatureMismatch,
+    /// Error from request handler
+    ReqHandlerError(IOError),
 }
 
 impl std::fmt::Display for Error {
@@ -81,6 +89,8 @@ impl std::fmt::Display for Error {
             Error::SocketBroken(e) => write!(f, "socket is broken: {}", e),
             Error::SocketRetry(e) => write!(f, "temporary socket error: {}", e),
             Error::SlaveInternalError => write!(f, "slave internal error"),
+            Error::FeatureMismatch => write!(f, "virtio/protocol features mismatch"),
+            Error::ReqHandlerError(e) => write!(f, "handler failed to handle request: {}", e),
         }
     }
 }
@@ -100,6 +110,8 @@ impl Error {
             Error::InvalidParam | Error::InvalidOperation => false,
             Error::InvalidMessage | Error::IncorrectFds | Error::OversizedMsg => false,
             Error::SocketError(_) | Error::SocketConnect(_) => false,
+            Error::FeatureMismatch => false,
+            Error::ReqHandlerError(_) => false,
         }
     }
 }
@@ -145,3 +157,6 @@ impl std::convert::From<vmm_sys_util::errno::Error> for Error {
 
 /// Result of vhost-user operations
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Result of request handler.
+pub type HandlerResult<T> = std::result::Result<T, IOError>;
