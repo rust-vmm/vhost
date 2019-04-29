@@ -22,12 +22,21 @@ use libc;
 use std::io::Error as IOError;
 
 mod connection;
+pub mod message;
 pub use self::connection::Listener;
 #[cfg(feature = "vhost-user-master")]
 mod master;
 #[cfg(feature = "vhost-user-master")]
 pub use self::master::{Master, VhostUserMaster};
-pub mod message;
+
+#[cfg(feature = "vhost-user-slave")]
+mod slave;
+#[cfg(feature = "vhost-user-slave")]
+pub use self::slave::SlaveListener;
+#[cfg(feature = "vhost-user-slave")]
+mod slave_req_handler;
+#[cfg(feature = "vhost-user-slave")]
+pub use self::slave_req_handler::{SlaveReqHandler, VhostUserSlaveReqHandler};
 
 pub mod sock_ctrl_msg;
 
