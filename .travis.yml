@@ -11,6 +11,9 @@ script:
   - cargo build --release
   - cargo build --release --features=vhost-backend
   - cargo build --release --features=vhost-vsock
+  - cargo build --release --features=vhost-kern
+  - cargo build --release --features=vhost-user-master
+  - cargo build --release --features=vhost-user-slave
   - cargo build --release --all-features
   - cargo test --all
   - cargo clippy --all-targets --all-features -- -D warnings

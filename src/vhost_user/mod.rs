@@ -160,3 +160,92 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Result of request handler.
 pub type HandlerResult<T> = std::result::Result<T, IOError>;
+
+#[cfg(all(test, feature = "vhost-user-master", feature = "vhost-user-slave"))]
+mod dummy_slave;
+
+#[cfg(all(test, feature = "vhost-user-master", feature = "vhost-user-slave"))]
+mod tests {
+    use super::dummy_slave::{DummySlaveReqHandler, VIRTIO_FEATURES};
+    use super::message::*;
+    use super::*;
+    use crate::backend::VhostBackend;
+    use std::sync::{Arc, Barrier, Mutex};
+    use std::thread;
+
+    fn create_slave<S: VhostUserSlaveReqHandler>(
+        path: &str,
+        backend: Arc<Mutex<S>>,
+    ) -> (Master, SlaveReqHandler<S>) {
+        let mut slave_listener = SlaveListener::new(path, true, backend).unwrap();
+        let master = Master::connect(path).unwrap();
+        (master, slave_listener.accept().unwrap().unwrap())
+    }
+
+    #[test]
+    fn create_dummy_slave() {
+        let mut slave = DummySlaveReqHandler::new();
+
+        slave.set_owner().unwrap();
+        assert!(slave.set_owner().is_err());
+    }
+
+    #[test]
+    fn test_set_owner() {
+        let slave_be = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
+        let (mut master, mut slave) =
+            create_slave("/tmp/vhost_user_lib_unit_test_owner", slave_be.clone());
+
+        assert_eq!(slave_be.lock().unwrap().owned, false);
+        master.set_owner().unwrap();
+        slave.handle_request().unwrap();
+        assert_eq!(slave_be.lock().unwrap().owned, true);
+        master.set_owner().unwrap();
+        assert!(slave.handle_request().is_err());
+        assert_eq!(slave_be.lock().unwrap().owned, true);
+    }
+
+    #[test]
+    fn test_set_features() {
+        let mbar = Arc::new(Barrier::new(2));
+        let sbar = mbar.clone();
+        let slave_be = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
+        let (mut master, mut slave) =
+            create_slave("/tmp/vhost_user_lib_unit_test_feature", slave_be.clone());
+
+        thread::spawn(move || {
+            slave.handle_request().unwrap();
+            assert_eq!(slave_be.lock().unwrap().owned, true);
+
+            slave.handle_request().unwrap();
+            slave.handle_request().unwrap();
+            assert_eq!(
+                slave_be.lock().unwrap().acked_features,
+                VIRTIO_FEATURES & !0x1
+            );
+
+            slave.handle_request().unwrap();
+            slave.handle_request().unwrap();
+            assert_eq!(
+                slave_be.lock().unwrap().acked_protocol_features,
+                VhostUserProtocolFeatures::all().bits()
+            );
+
+            sbar.wait();
+        });
+
+        master.set_owner().unwrap();
+
+        // set virtio features
+        let features = master.get_features().unwrap();
+        assert_eq!(features, VIRTIO_FEATURES);
+        master.set_features(VIRTIO_FEATURES & !0x1).unwrap();
+
+        // set vhost protocol features
+        let features = master.get_protocol_features().unwrap();
+        assert_eq!(features.bits(), VhostUserProtocolFeatures::all().bits());
+        master.set_protocol_features(features).unwrap();
+
+        mbar.wait();
+    }
+}
