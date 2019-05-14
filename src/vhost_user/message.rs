@@ -30,12 +30,6 @@ pub const MAX_MSG_SIZE: usize = 0x1000;
 // pub const MAX_ATTACHED_FD_ENTRIES: usize = (MAX_MSG_SIZE - 8) / 32;
 pub const MAX_ATTACHED_FD_ENTRIES: usize = 32;
 
-/// Starting position (inclusion) of the device configuration space in virtio devices.
-pub const VHOST_USER_CONFIG_OFFSET: u32 = 0x100;
-
-/// Ending position (exclusion) of the device configuration space in virtio devices.
-pub const VHOST_USER_CONFIG_SIZE: u32 = 0x1000;
-
 /// Maximum number of vrings supported.
 pub const VHOST_USER_MAX_VRINGS: u64 = 0xFFu64;
 
@@ -552,6 +546,9 @@ bitflags! {
     }
 }
 
+/// Maximum size of the vhost_user device configuration space.
+pub const VHOST_USER_MAX_CONFIG_SIZE: u32 = 256;
+
 /// Message to read/write device configuration space.
 #[repr(packed)]
 #[derive(Default)]
@@ -580,11 +577,10 @@ impl VhostUserMsgValidator for VhostUserConfig {
     fn is_valid(&self) -> bool {
         if (self.flags & !VhostUserConfigFlags::all().bits()) != 0 {
             return false;
-        } else if self.offset < VHOST_USER_CONFIG_OFFSET
-            || self.offset >= VHOST_USER_CONFIG_SIZE
-            || self.size == 0
-            || self.size > (VHOST_USER_CONFIG_SIZE - VHOST_USER_CONFIG_OFFSET)
-            || self.size + self.offset > VHOST_USER_CONFIG_SIZE
+        } else if self.size == 0
+            || self.size > VHOST_USER_MAX_CONFIG_SIZE
+            || self.offset >= VHOST_USER_MAX_CONFIG_SIZE
+            || self.size + self.offset > VHOST_USER_MAX_CONFIG_SIZE
         {
             return false;
         }
@@ -789,8 +785,8 @@ mod tests {
     #[test]
     fn check_user_config_msg() {
         let mut msg = VhostUserConfig::new(
-            VHOST_USER_CONFIG_OFFSET,
-            VHOST_USER_CONFIG_SIZE - VHOST_USER_CONFIG_OFFSET,
+            0,
+            VHOST_USER_MAX_CONFIG_SIZE,
             VhostUserConfigFlags::WRITABLE,
         );
 
@@ -800,10 +796,10 @@ mod tests {
         msg.size = 1;
         assert!(msg.is_valid());
         msg.offset = 0;
+        assert!(msg.is_valid());
+        msg.offset = VHOST_USER_MAX_CONFIG_SIZE;
         assert!(!msg.is_valid());
-        msg.offset = VHOST_USER_CONFIG_SIZE;
-        assert!(!msg.is_valid());
-        msg.offset = VHOST_USER_CONFIG_SIZE - 1;
+        msg.offset = VHOST_USER_MAX_CONFIG_SIZE - 1;
         assert!(msg.is_valid());
         msg.size = 2;
         assert!(!msg.is_valid());

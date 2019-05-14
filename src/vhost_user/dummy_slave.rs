@@ -218,30 +218,28 @@ impl VhostUserSlaveReqHandler for DummySlaveReqHandler {
 
     fn get_config(
         &mut self,
+        buf: &[u8],
         offset: u32,
-        size: u32,
         _flags: VhostUserConfigFlags,
     ) -> Result<Vec<u8>> {
         if self.acked_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
             return Err(Error::InvalidOperation);
-        } else if offset < VHOST_USER_CONFIG_OFFSET
-            || offset >= VHOST_USER_CONFIG_SIZE
-            || size > VHOST_USER_CONFIG_SIZE - VHOST_USER_CONFIG_OFFSET
-            || size + offset > VHOST_USER_CONFIG_SIZE
+        } else if offset >= VHOST_USER_MAX_CONFIG_SIZE
+            || buf.len() > VHOST_USER_MAX_CONFIG_SIZE as usize
+            || offset + buf.len() as u32 > VHOST_USER_MAX_CONFIG_SIZE
         {
             return Err(Error::InvalidParam);
         }
-        Ok(vec![0xa5; size as usize])
+        Ok(vec![0xa5; buf.len()])
     }
 
-    fn set_config(&mut self, offset: u32, buf: &[u8], _flags: VhostUserConfigFlags) -> Result<()> {
+    fn set_config(&mut self, buf: &[u8], offset: u32, _flags: VhostUserConfigFlags) -> Result<()> {
         let size = buf.len() as u32;
         if self.acked_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
             return Err(Error::InvalidOperation);
-        } else if offset < VHOST_USER_CONFIG_OFFSET
-            || offset >= VHOST_USER_CONFIG_SIZE
-            || size > VHOST_USER_CONFIG_SIZE - VHOST_USER_CONFIG_OFFSET
-            || size + offset > VHOST_USER_CONFIG_SIZE
+        } else if offset >= VHOST_USER_MAX_CONFIG_SIZE
+            || size > VHOST_USER_MAX_CONFIG_SIZE
+            || offset + size > VHOST_USER_MAX_CONFIG_SIZE
         {
             return Err(Error::InvalidParam);
         }
