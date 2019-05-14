@@ -42,11 +42,11 @@ pub trait VhostUserSlaveReqHandler {
     fn set_vring_enable(&mut self, index: u32, enable: bool) -> Result<()>;
     fn get_config(
         &mut self,
+        buf: &[u8],
         offset: u32,
-        size: u32,
         flags: VhostUserConfigFlags,
     ) -> Result<Vec<u8>>;
-    fn set_config(&mut self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
+    fn set_config(&mut self, buf: &[u8], offset: u32, flags: VhostUserConfigFlags) -> Result<()>;
 }
 
 /// A vhost-user slave endpoint which relays all received requests from the
@@ -266,14 +266,14 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                     return Err(Error::InvalidOperation);
                 }
                 self.check_request_size(&hdr, size, mem::size_of::<VhostUserConfig>())?;
-                self.get_config(&hdr, &buf)?;
+                self.get_config(&hdr, &buf, size)?;
             }
             MasterReq::SET_CONFIG => {
                 if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
                     return Err(Error::InvalidOperation);
                 }
                 self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
-                self.set_config(&hdr, size, &buf)?;
+                self.set_config(&hdr, &buf, size)?;
             }
             _ => {
                 return Err(Error::InvalidMessage);
@@ -336,20 +336,33 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         self.backend.lock().unwrap().set_mem_table(&regions, &fds)
     }
 
-    fn get_config(&mut self, hdr: &VhostUserMsgHeader<MasterReq>, buf: &[u8]) -> Result<()> {
+    fn get_config(
+        &mut self,
+        hdr: &VhostUserMsgHeader<MasterReq>,
+        buf: &[u8],
+        size: usize,
+    ) -> Result<()> {
+        if size < mem::size_of::<VhostUserConfig>() {
+            return Err(Error::InvalidMessage);
+        }
         let msg = unsafe { &*(buf.as_ptr() as *const VhostUserConfig) };
         if !msg.is_valid() {
+            return Err(Error::InvalidMessage);
+        }
+        let payload_offset = mem::size_of::<VhostUserConfig>();
+        if size - payload_offset != msg.size as usize {
             return Err(Error::InvalidMessage);
         }
         let flags = match VhostUserConfigFlags::from_bits(msg.flags) {
             Some(val) => val,
             None => return Err(Error::InvalidMessage),
         };
-        let res = self
-            .backend
-            .lock()
-            .unwrap()
-            .get_config(msg.offset, msg.size, flags);
+
+        let res =
+            self.backend
+                .lock()
+                .unwrap()
+                .get_config(&buf[payload_offset..], msg.offset, flags);
 
         // vhost-user slave's payload size MUST match master's request
         // on success, uses zero length of payload to indicate an error
@@ -374,8 +387,8 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
     fn set_config(
         &mut self,
         hdr: &VhostUserMsgHeader<MasterReq>,
-        size: usize,
         buf: &[u8],
+        size: usize,
     ) -> Result<()> {
         if size < mem::size_of::<VhostUserConfig>() {
             return Err(Error::InvalidMessage);
@@ -384,7 +397,8 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);
         }
-        if size - mem::size_of::<VhostUserConfig>() != msg.size as usize {
+        let payload_offset = mem::size_of::<VhostUserConfig>();
+        if size - payload_offset != msg.size as usize {
             return Err(Error::InvalidMessage);
         }
         let flags: VhostUserConfigFlags;
@@ -393,11 +407,11 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
             None => return Err(Error::InvalidMessage),
         }
 
-        let res = self
-            .backend
-            .lock()
-            .unwrap()
-            .set_config(msg.offset, buf, flags);
+        let res =
+            self.backend
+                .lock()
+                .unwrap()
+                .set_config(&buf[payload_offset..], msg.offset, flags);
         self.send_ack_message(&hdr, res)?;
         Ok(())
     }
@@ -519,6 +533,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
     fn new_reply_header<T: Sized>(
         &self,
         req: &VhostUserMsgHeader<MasterReq>,
+        payload_size: usize,
     ) -> Result<VhostUserMsgHeader<MasterReq>> {
         if mem::size_of::<T>() > MAX_MSG_SIZE {
             return Err(Error::InvalidParam);
@@ -527,7 +542,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         Ok(VhostUserMsgHeader::new(
             req.get_code(),
             VhostUserHeaderFlag::REPLY.bits(),
-            mem::size_of::<T>() as u32,
+            (mem::size_of::<T>() + payload_size) as u32,
         ))
     }
 
@@ -537,7 +552,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         res: Result<()>,
     ) -> Result<()> {
         if self.reply_ack_enabled {
-            let hdr = self.new_reply_header::<VhostUserU64>(req)?;
+            let hdr = self.new_reply_header::<VhostUserU64>(req, 0)?;
             let val = match res {
                 Ok(_) => 0,
                 Err(_) => 1,
@@ -553,7 +568,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         req: &VhostUserMsgHeader<MasterReq>,
         msg: &T,
     ) -> Result<()> {
-        let hdr = self.new_reply_header::<T>(req)?;
+        let hdr = self.new_reply_header::<T>(req, 0)?;
         self.main_sock.send_message(&hdr, msg, None)?;
         Ok(())
     }
@@ -568,7 +583,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         T: Sized,
         P: Sized,
     {
-        let hdr = self.new_reply_header::<T>(req)?;
+        let hdr = self.new_reply_header::<T>(req, payload.len())?;
         self.main_sock
             .send_message_with_payload(&hdr, msg, payload, None)?;
         Ok(())
