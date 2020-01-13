@@ -1,0 +1,52 @@
+name: vhost
+
+on: [push, pull_request]
+
+jobs:
+  CI:
+    runs-on: ubuntu-latest
+    container:
+      image: docker://rustvmm/dev:v4
+      options: --security-opt seccomp=unconfined
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Install Toolchains
+      run: |
+        curl https://sh.rustup.rs -sSf | sh -s -- --profile minimal --default-toolchain 1.39.0 -y
+        rustup component add rustfmt --toolchain 1.39.0-x86_64-unknown-linux-gnu
+        rustup component add clippy --toolchain 1.39.0-x86_64-unknown-linux-gnu
+        rustup target add x86_64-unknown-linux-musl
+        cargo install cargo-kcov
+    - name: Build [gnu-x86]
+      run: |
+        cargo build --release --all-features --target x86_64-unknown-linux-gnu
+        cargo build --release --features=vhost-vsock --target x86_64-unknown-linux-gnu
+        cargo build --release --features=vhost-kern --target x86_64-unknown-linux-gnu
+        cargo build --release --features=vhost-user-master --target x86_64-unknown-linux-gnu
+        cargo build --release --features=vhost-user-slave --target x86_64-unknown-linux-gnu
+    - name: Build [musl-x86]
+      run: |
+        cargo build --release --all-features --target x86_64-unknown-linux-musl
+        cargo build --release --features=vhost-vsock --target x86_64-unknown-linux-musl
+        cargo build --release --features=vhost-kern --target x86_64-unknown-linux-musl
+        cargo build --release --features=vhost-user-master --target x86_64-unknown-linux-musl
+        cargo build --release --features=vhost-user-slave --target x86_64-unknown-linux-musl
+      continue-on-error: true
+    - name: Style
+      run: cargo fmt --all -- --check
+    - name: Unit Tests [gnu-x86]
+      run: cargo test --all-features --target x86_64-unknown-linux-gnu
+    - name: Unit Tests [musl-x86]
+      run: cargo test --all-features --target x86_64-unknown-linux-musl
+      continue-on-error: true
+    - name: Clippy [x86]
+      run: cargo clippy --all -- -D warnings
+    - name: Check Warnings [x86]
+      env:
+        RUSTFLAGS: -D warnings
+      run: cargo check --all-targets
+    - name: Coverage [x86]
+      run: pytest rust-vmm-ci/integration_tests/test_coverage.py
+      continue-on-error: true
