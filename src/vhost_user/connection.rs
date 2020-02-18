@@ -127,6 +127,40 @@ impl<R: Req> Endpoint<R> {
         self.sock.send_with_fds(iovs, rfds).map_err(Into::into)
     }
 
+    /// Sends all bytes from scatter-gather vectors over the socket with optional attached file
+    /// descriptors. Will loop until all data has been transfered.
+    ///
+    /// # Return:
+    /// * - number of bytes sent on success
+    /// * - SocketRetry: temporary error caused by signals or short of resources.
+    /// * - SocketBroken: the underline socket is broken.
+    /// * - SocketError: other socket related errors.
+    pub fn send_iovec_all(&mut self, iovs: &[&[u8]], fds: Option<&[RawFd]>) -> Result<usize> {
+        let mut data_sent = 0;
+        let mut data_total = 0;
+        let iov_lens: Vec<usize> = iovs.iter().map(|iov| iov.len()).collect();
+        for len in &iov_lens {
+            data_total += len;
+        }
+
+        while (data_total - data_sent) > 0 {
+            let (nr_skip, offset) = get_sub_iovs_offset(&iov_lens, data_sent);
+            let iov = &iovs[nr_skip][offset..];
+
+            let data = &[&[iov], &iovs[(nr_skip + 1)..]].concat();
+            let sent = if data_sent == 0 {
+                self.send_iovec(data, fds)?
+            } else {
+                self.send_iovec(data, None)?
+            };
+            if sent == 0 {
+                break;
+            }
+            data_sent += sent;
+        }
+        Ok(data_sent)
+    }
+
     /// Sends bytes from a slice over the socket with optional attached file descriptors.
     ///
     /// # Return:
@@ -158,7 +192,7 @@ impl<R: Req> Endpoint<R> {
                 mem::size_of::<VhostUserMsgHeader<R>>(),
             )]
         };
-        let bytes = self.send_iovec(&iovs[..], fds)?;
+        let bytes = self.send_iovec_all(&iovs[..], fds)?;
         if bytes != mem::size_of::<VhostUserMsgHeader<R>>() {
             return Err(Error::PartialMessage);
         }
@@ -190,7 +224,7 @@ impl<R: Req> Endpoint<R> {
                 slice::from_raw_parts(body as *const T as *const u8, mem::size_of::<T>()),
             ]
         };
-        let bytes = self.send_iovec(&iovs[..], fds)?;
+        let bytes = self.send_iovec_all(&iovs[..], fds)?;
         if bytes != mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() {
             return Err(Error::PartialMessage);
         }
@@ -237,7 +271,7 @@ impl<R: Req> Endpoint<R> {
             ]
         };
         let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() + len;
-        let len = self.send_iovec(&iovs, fds)?;
+        let len = self.send_iovec_all(&iovs, fds)?;
         if len != total {
             return Err(Error::PartialMessage);
         }
@@ -293,6 +327,59 @@ impl<R: Req> Endpoint<R> {
         Ok((bytes, rfds))
     }
 
+    /// Reads all bytes from the socket into the given scatter/gather vectors with optional
+    /// attached file descriptors. Will loop until all data has been transfered.
+    ///
+    /// The underlying communication channel is a Unix domain socket in STREAM mode. It's a little
+    /// tricky to pass file descriptors through such a communication channel. Let's assume that a
+    /// sender sending a message with some file descriptors attached. To successfully receive those
+    /// attached file descriptors, the receiver must obey following rules:
+    ///   1) file descriptors are attached to a message.
+    ///   2) message(packet) boundaries must be respected on the receive side.
+    /// In other words, recvmsg() operations must not cross the packet boundary, otherwise the
+    /// attached file descriptors will get lost.
+    ///
+    /// # Return:
+    /// * - (number of bytes received, [received fds]) on success
+    /// * - SocketRetry: temporary error caused by signals or short of resources.
+    /// * - SocketBroken: the underline socket is broken.
+    /// * - SocketError: other socket related errors.
+    pub fn recv_into_iovec_all(
+        &mut self,
+        iovs: &mut [iovec],
+    ) -> Result<(usize, Option<Vec<RawFd>>)> {
+        let mut data_read = 0;
+        let mut data_total = 0;
+        let mut rfds = None;
+        let iov_lens: Vec<usize> = iovs.iter().map(|iov| iov.iov_len).collect();
+        for len in &iov_lens {
+            data_total += len;
+        }
+
+        while (data_total - data_read) > 0 {
+            let (nr_skip, offset) = get_sub_iovs_offset(&iov_lens, data_read);
+            let iov = &mut iovs[nr_skip];
+
+            let mut data = [
+                &[iovec {
+                    iov_base: (iov.iov_base as usize + offset) as *mut c_void,
+                    iov_len: iov.iov_len - offset,
+                }],
+                &iovs[(nr_skip + 1)..],
+            ]
+            .concat();
+            let (read, fds) = self.recv_into_iovec(&mut data)?;
+            if data_read == 0 {
+                rfds = fds;
+            }
+            if read == 0 {
+                break;
+            }
+            data_read += read;
+        }
+        Ok((data_read, rfds))
+    }
+
     /// Reads bytes from the socket into a new buffer with optional attached
     /// file descriptors. Received file descriptors are set close-on-exec.
     ///
@@ -333,7 +420,7 @@ impl<R: Req> Endpoint<R> {
             iov_base: (&mut hdr as *mut VhostUserMsgHeader<R>) as *mut c_void,
             iov_len: mem::size_of::<VhostUserMsgHeader<R>>(),
         }];
-        let (bytes, rfds) = self.recv_into_iovec(&mut iovs[..])?;
+        let (bytes, rfds) = self.recv_into_iovec_all(&mut iovs[..])?;
 
         if bytes != mem::size_of::<VhostUserMsgHeader<R>>() {
             return Err(Error::PartialMessage);
@@ -370,7 +457,7 @@ impl<R: Req> Endpoint<R> {
                 iov_len: mem::size_of::<T>(),
             },
         ];
-        let (bytes, rfds) = self.recv_into_iovec(&mut iovs[..])?;
+        let (bytes, rfds) = self.recv_into_iovec_all(&mut iovs[..])?;
 
         let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>();
         if bytes != total {
@@ -411,7 +498,7 @@ impl<R: Req> Endpoint<R> {
                 iov_len: buf.len(),
             },
         ];
-        let (bytes, rfds) = self.recv_into_iovec(&mut iovs[..])?;
+        let (bytes, rfds) = self.recv_into_iovec_all(&mut iovs[..])?;
 
         if bytes < mem::size_of::<VhostUserMsgHeader<R>>() {
             return Err(Error::PartialMessage);
@@ -454,7 +541,7 @@ impl<R: Req> Endpoint<R> {
                 iov_len: buf.len(),
             },
         ];
-        let (bytes, rfds) = self.recv_into_iovec(&mut iovs[..])?;
+        let (bytes, rfds) = self.recv_into_iovec_all(&mut iovs[..])?;
 
         let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>();
         if bytes < total {
@@ -481,6 +568,26 @@ impl<T: Req> AsRawFd for Endpoint<T> {
     fn as_raw_fd(&self) -> RawFd {
         self.sock.as_raw_fd()
     }
+}
+
+// Given a slice of sizes and the `skip_size`, return the offset of `skip_size` in the slice.
+// For example:
+//     let iov_lens = vec![4, 4, 5];
+//     let size = 6;
+//     assert_eq!(get_sub_iovs_offset(&iov_len, size), (1, 2));
+fn get_sub_iovs_offset(iov_lens: &[usize], skip_size: usize) -> (usize, usize) {
+    let mut size = skip_size;
+    let mut nr_skip = 0;
+
+    for len in iov_lens {
+        if size >= *len {
+            size -= *len;
+            nr_skip += 1;
+        } else {
+            break;
+        }
+    }
+    (nr_skip, size)
 }
 
 #[cfg(test)]
