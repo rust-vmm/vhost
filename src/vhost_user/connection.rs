@@ -132,7 +132,6 @@ impl<R: Req> Endpoint<R> {
     ///
     /// # Return:
     /// * - number of bytes sent on success
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
     pub fn send_iovec_all(&mut self, iovs: &[&[u8]], fds: Option<&[RawFd]>) -> Result<usize> {
@@ -148,15 +147,17 @@ impl<R: Req> Endpoint<R> {
             let iov = &iovs[nr_skip][offset..];
 
             let data = &[&[iov], &iovs[(nr_skip + 1)..]].concat();
-            let sent = if data_sent == 0 {
-                self.send_iovec(data, fds)?
-            } else {
-                self.send_iovec(data, None)?
-            };
-            if sent == 0 {
-                break;
+            let sfds = if data_sent == 0 { fds } else { None };
+
+            let sent = self.send_iovec(data, sfds);
+            match sent {
+                Ok(0) => return Ok(data_sent),
+                Ok(n) => data_sent += n,
+                Err(e) => match e {
+                    Error::SocketRetry(_) => {}
+                    _ => return Err(e),
+                },
             }
-            data_sent += sent;
         }
         Ok(data_sent)
     }
@@ -341,7 +342,6 @@ impl<R: Req> Endpoint<R> {
     ///
     /// # Return:
     /// * - (number of bytes received, [received fds]) on success
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
     pub fn recv_into_iovec_all(
@@ -368,14 +368,21 @@ impl<R: Req> Endpoint<R> {
                 &iovs[(nr_skip + 1)..],
             ]
             .concat();
-            let (read, fds) = self.recv_into_iovec(&mut data)?;
-            if data_read == 0 {
-                rfds = fds;
+
+            let res = self.recv_into_iovec(&mut data);
+            match res {
+                Ok((0, _)) => return Ok((data_read, rfds)),
+                Ok((n, fds)) => {
+                    if data_read == 0 {
+                        rfds = fds;
+                    }
+                    data_read += n;
+                }
+                Err(e) => match e {
+                    Error::SocketRetry(_) => {}
+                    _ => return Err(e),
+                },
             }
-            if read == 0 {
-                break;
-            }
-            data_read += read;
         }
         Ok((data_read, rfds))
     }
