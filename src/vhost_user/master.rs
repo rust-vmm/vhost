@@ -356,12 +356,11 @@ impl VhostUserMaster for Master {
             return error_code(VhostUserError::InvalidOperation);
         }
 
-        // vhost-user spec states that:
+        // TODO: vhost-user spec states that:
         // "Master payload: virtio device config space"
         // But what content should the payload contains for a get_config() request?
-        // We use all zero filled buffer here.
-        let buf = vec![0u8; body.size as usize];
-        let hdr = node.send_request_with_payload(MasterReq::GET_CONFIG, &body, &buf, None)?;
+        // So current implementation doesn't conform to the spec.
+        let hdr = node.send_request_with_body(MasterReq::GET_CONFIG, &body, None)?;
         let (reply, buf, rfds) = node.recv_reply_with_payload::<VhostUserConfig>(&hdr)?;
         if rfds.is_some() {
             Endpoint::<MasterReq>::close_rfds(rfds);
@@ -556,7 +555,7 @@ impl MasterInternal {
         if !reply.is_reply_for(hdr)
             || reply.get_size() as usize != mem::size_of::<T>() + bytes
             || rfds.is_some()
-            || !body.is_valid()
+            || body.is_valid()
         {
             Endpoint::<MasterReq>::close_rfds(rfds);
             return Err(VhostUserError::InvalidMessage);
