@@ -28,9 +28,9 @@ pub use self::connection::Listener;
 mod master;
 #[cfg(feature = "vhost-user-master")]
 pub use self::master::{Master, VhostUserMaster};
-#[cfg(feature = "vhost-user-master")]
+#[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
 mod master_req_handler;
-#[cfg(feature = "vhost-user-master")]
+#[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
 pub use self::master_req_handler::{MasterReqHandler, VhostUserMasterReqHandler};
 
 #[cfg(feature = "vhost-user-slave")]
