@@ -39,6 +39,13 @@ pub trait VhostUserMasterReqHandler {
     fn fs_slave_sync(&mut self, _fs: &VhostUserFSSlaveMsg) -> HandlerResult<()> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
+
+    /// Handle virtio-fs file IO requests from the slave.
+    fn fs_slave_io(&mut self, _fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<()> {
+        // Safe because we have just received the rawfd from kernel.
+        unsafe { libc::close(fd) };
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
 }
 
 /// A vhost-user master request endpoint which relays all received requests from the slave to the
@@ -142,6 +149,14 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
                     .fs_slave_sync(msg)
                     .map_err(Error::ReqHandlerError)
             }
+            SlaveReq::FS_IO => {
+                let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
+                self.backend
+                    .lock()
+                    .unwrap()
+                    .fs_slave_io(msg, rfds.unwrap()[0])
+                    .map_err(Error::ReqHandlerError)
+            }
             _ => Err(Error::InvalidMessage),
         };
 
@@ -179,7 +194,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         rfds: Option<Vec<RawFd>>,
     ) -> Result<Option<Vec<RawFd>>> {
         match hdr.get_code() {
-            SlaveReq::FS_MAP => {
+            SlaveReq::FS_MAP | SlaveReq::FS_IO => {
                 // Expect an fd set with a single fd.
                 match rfds {
                     None => Err(Error::InvalidMessage),
