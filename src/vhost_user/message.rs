@@ -150,8 +150,10 @@ pub enum SlaveReq {
     FS_UNMAP = 5,
     /// Virtio-fs draft: sync file content.
     FS_SYNC = 6,
+    /// Virtio-fs draft: perform a read/write from an fd directly to GPA.
+    FS_IO = 7,
     /// Upper bound of valid commands.
-    MAX_CMD = 7,
+    MAX_CMD = 8,
 }
 
 impl Into<u32> for SlaveReq {
