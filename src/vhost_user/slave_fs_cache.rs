@@ -42,7 +42,7 @@ impl SlaveFsCacheReq {
         flags: SlaveReq,
         fs: &VhostUserFSSlaveMsg,
         fds: Option<&[RawFd]>,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         self.check_state()?;
 
         let len = mem::size_of::<VhostUserFSSlaveMsg>();
@@ -53,7 +53,7 @@ impl SlaveFsCacheReq {
         self.wait_for_ack(&hdr)
     }
 
-    fn wait_for_ack(&mut self, hdr: &VhostUserMsgHeader<SlaveReq>) -> Result<()> {
+    fn wait_for_ack(&mut self, hdr: &VhostUserMsgHeader<SlaveReq>) -> Result<u64> {
         self.check_state()?;
         let (reply, body, rfds) = self.node.lock().unwrap().sock.recv_body::<VhostUserU64>()?;
         if !reply.is_reply_for(&hdr) || rfds.is_some() || !body.is_valid() {
@@ -63,13 +63,13 @@ impl SlaveFsCacheReq {
         if body.value != 0 {
             return Err(Error::MasterInternalError);
         }
-        Ok(())
+        Ok(0)
     }
 
-    fn check_state(&self) -> Result<()> {
+    fn check_state(&self) -> Result<u64> {
         match self.error {
             Some(e) => Err(Error::SocketBroken(std::io::Error::from_raw_os_error(e))),
-            None => Ok(()),
+            None => Ok(0),
         }
     }
 
@@ -81,13 +81,13 @@ impl SlaveFsCacheReq {
 
 impl VhostUserMasterReqHandler for SlaveFsCacheReq {
     /// Handle virtio-fs map file requests from the slave.
-    fn fs_slave_map(&mut self, fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<()> {
+    fn fs_slave_map(&mut self, fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<u64> {
         self.send_message(SlaveReq::FS_MAP, fs, Some(&[fd]))
             .or_else(|e| Err(io::Error::new(io::ErrorKind::Other, format!("{}", e))))
     }
 
     /// Handle virtio-fs unmap file requests from the slave.
-    fn fs_slave_unmap(&mut self, fs: &VhostUserFSSlaveMsg) -> HandlerResult<()> {
+    fn fs_slave_unmap(&mut self, fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
         self.send_message(SlaveReq::FS_UNMAP, fs, None)
             .or_else(|e| Err(io::Error::new(io::ErrorKind::Other, format!("{}", e))))
     }
