@@ -19,29 +19,29 @@ pub trait VhostUserMasterReqHandler {
     // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: RawFd);
 
     /// Handle device configuration change notifications from the slave.
-    fn handle_config_change(&mut self) -> HandlerResult<()> {
+    fn handle_config_change(&mut self) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle virtio-fs map file requests from the slave.
-    fn fs_slave_map(&mut self, _fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<()> {
+    fn fs_slave_map(&mut self, _fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<u64> {
         // Safe because we have just received the rawfd from kernel.
         unsafe { libc::close(fd) };
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle virtio-fs unmap file requests from the slave.
-    fn fs_slave_unmap(&mut self, _fs: &VhostUserFSSlaveMsg) -> HandlerResult<()> {
+    fn fs_slave_unmap(&mut self, _fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle virtio-fs sync file requests from the slave.
-    fn fs_slave_sync(&mut self, _fs: &VhostUserFSSlaveMsg) -> HandlerResult<()> {
+    fn fs_slave_sync(&mut self, _fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle virtio-fs file IO requests from the slave.
-    fn fs_slave_io(&mut self, _fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<()> {
+    fn fs_slave_io(&mut self, _fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<u64> {
         // Safe because we have just received the rawfd from kernel.
         unsafe { libc::close(fd) };
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
@@ -90,7 +90,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     /// . serialize calls to this function
     /// . decide what to do when errer happens
     /// . optional recover from failure
-    pub fn handle_request(&mut self) -> Result<()> {
+    pub fn handle_request(&mut self) -> Result<u64> {
         // Return error if the endpoint is already in failed state.
         self.check_state()?;
 
@@ -251,13 +251,20 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     fn send_ack_message(
         &mut self,
         req: &VhostUserMsgHeader<SlaveReq>,
-        res: &Result<()>,
+        res: &Result<u64>,
     ) -> Result<()> {
         if req.is_need_reply() {
             let hdr = self.new_reply_header::<VhostUserU64>(req)?;
+            let def_err = libc::EINVAL;
             let val = match res {
-                Ok(_) => 0,
-                Err(_) => 1,
+                Ok(n) => *n,
+                Err(e) => match &*e {
+                    Error::ReqHandlerError(ioerr) => match ioerr.raw_os_error() {
+                        Some(rawerr) => -rawerr as u64,
+                        None => -def_err as u64,
+                    },
+                    _ => -def_err as u64,
+                },
             };
             let msg = VhostUserU64::new(val);
             self.sub_sock.send_message(&hdr, &msg, None)?;
