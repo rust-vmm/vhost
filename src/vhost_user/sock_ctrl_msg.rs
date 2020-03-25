@@ -33,10 +33,55 @@ macro_rules! CMSG_SPACE {
     };
 }
 
+#[cfg(not(target_env = "musl"))]
 macro_rules! CMSG_LEN {
     ($len:expr) => {
         size_of::<cmsghdr>() + ($len)
     };
+}
+
+#[cfg(target_env = "musl")]
+macro_rules! CMSG_LEN {
+    ($len:expr) => {{
+        let sz = size_of::<cmsghdr>() + ($len);
+        assert!(sz <= (std::u32::MAX as usize));
+        sz as u32
+    }};
+}
+
+#[cfg(not(target_env = "musl"))]
+fn new_msghdr(iovecs: &mut [iovec]) -> msghdr {
+    msghdr {
+        msg_name: null_mut(),
+        msg_namelen: 0,
+        msg_iov: iovecs.as_mut_ptr(),
+        msg_iovlen: iovecs.len(),
+        msg_control: null_mut(),
+        msg_controllen: 0,
+        msg_flags: 0,
+    }
+}
+
+#[cfg(target_env = "musl")]
+fn new_msghdr(iovecs: &mut [iovec]) -> msghdr {
+    assert!(iovecs.len() <= (std::i32::MAX as usize));
+    let mut msg: msghdr = unsafe { std::mem::zeroed() };
+    msg.msg_name = null_mut();
+    msg.msg_iov = iovecs.as_mut_ptr();
+    msg.msg_iovlen = iovecs.len() as i32;
+    msg.msg_control = null_mut();
+    msg
+}
+
+#[cfg(not(target_env = "musl"))]
+fn set_msg_controllen(msg: &mut msghdr, cmsg_capacity: usize) {
+    msg.msg_controllen = cmsg_capacity;
+}
+
+#[cfg(target_env = "musl")]
+fn set_msg_controllen(msg: &mut msghdr, cmsg_capacity: usize) {
+    assert!(cmsg_capacity <= (std::u32::MAX as usize));
+    msg.msg_controllen = cmsg_capacity as u32;
 }
 
 // This function (macro in the C version) is not used in any compile time constant slots, so is just
@@ -53,11 +98,12 @@ fn CMSG_DATA(cmsg_buffer: *mut cmsghdr) -> *mut RawFd {
 // does some pointer arithmetic on cmsg_ptr.
 #[cfg_attr(feature = "cargo-clippy", allow(clippy::cast_ptr_alignment))]
 fn get_next_cmsg(msghdr: &msghdr, cmsg: &cmsghdr, cmsg_ptr: *mut cmsghdr) -> *mut cmsghdr {
-    let next_cmsg = (cmsg_ptr as *mut u8).wrapping_add(CMSG_ALIGN!(cmsg.cmsg_len)) as *mut cmsghdr;
+    let next_cmsg =
+        (cmsg_ptr as *mut u8).wrapping_add(CMSG_ALIGN!(cmsg.cmsg_len as usize)) as *mut cmsghdr;
     if next_cmsg
         .wrapping_offset(1)
         .wrapping_sub(msghdr.msg_control as usize) as usize
-        > msghdr.msg_controllen
+        > msghdr.msg_controllen as usize
     {
         null_mut()
     } else {
@@ -85,6 +131,8 @@ impl CmsgBuffer {
                         cmsg_len: 0,
                         cmsg_level: 0,
                         cmsg_type: 0,
+                        #[cfg(target_env = "musl")]
+                        __pad1: 0,
                     };
                     cap_in_cmsghdr_units
                 ]
@@ -113,21 +161,15 @@ fn raw_sendmsg<D: IntoIovec>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> Re
         });
     }
 
-    let mut msg = msghdr {
-        msg_name: null_mut(),
-        msg_namelen: 0,
-        msg_iov: iovecs.as_mut_ptr(),
-        msg_iovlen: iovecs.len(),
-        msg_control: null_mut(),
-        msg_controllen: 0,
-        msg_flags: 0,
-    };
+    let mut msg = new_msghdr(&mut iovecs);
 
     if !out_fds.is_empty() {
         let cmsg = cmsghdr {
             cmsg_len: CMSG_LEN!(size_of::<RawFd>() * out_fds.len()),
             cmsg_level: SOL_SOCKET,
             cmsg_type: SCM_RIGHTS,
+            #[cfg(target_env = "musl")]
+            __pad1: 0,
         };
         unsafe {
             // Safe because cmsg_buffer was allocated to be large enough to contain cmsghdr.
@@ -142,7 +184,7 @@ fn raw_sendmsg<D: IntoIovec>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> Re
         }
 
         msg.msg_control = cmsg_buffer.as_mut_ptr() as *mut c_void;
-        msg.msg_controllen = cmsg_capacity;
+        set_msg_controllen(&mut msg, cmsg_capacity);
     }
 
     // Safe because the msghdr was properly constructed from valid (or null) pointers of the
@@ -159,19 +201,11 @@ fn raw_sendmsg<D: IntoIovec>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> Re
 fn raw_recvmsg(fd: RawFd, iovecs: &mut [iovec], in_fds: &mut [RawFd]) -> Result<(usize, usize)> {
     let cmsg_capacity = CMSG_SPACE!(size_of::<RawFd>() * in_fds.len());
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
-    let mut msg = msghdr {
-        msg_name: null_mut(),
-        msg_namelen: 0,
-        msg_iov: iovecs.as_mut_ptr(),
-        msg_iovlen: iovecs.len(),
-        msg_control: null_mut(),
-        msg_controllen: 0,
-        msg_flags: 0,
-    };
+    let mut msg = new_msghdr(iovecs);
 
     if !in_fds.is_empty() {
         msg.msg_control = cmsg_buffer.as_mut_ptr() as *mut c_void;
-        msg.msg_controllen = cmsg_capacity;
+        set_msg_controllen(&mut msg, cmsg_capacity);
     }
 
     // Safe because the msghdr was properly constructed from valid (or null) pointers of the
@@ -183,7 +217,7 @@ fn raw_recvmsg(fd: RawFd, iovecs: &mut [iovec], in_fds: &mut [RawFd]) -> Result<
     }
 
     // When the connection is closed recvmsg() doesn't give an explicit error
-    if total_read == 0 && msg.msg_controllen < size_of::<cmsghdr>() {
+    if total_read == 0 && (msg.msg_controllen as usize) < size_of::<cmsghdr>() {
         return Err(Error::new(libc::ECONNRESET));
     }
 
@@ -195,7 +229,7 @@ fn raw_recvmsg(fd: RawFd, iovecs: &mut [iovec], in_fds: &mut [RawFd]) -> Result<
         let cmsg = unsafe { (cmsg_ptr as *mut cmsghdr).read_unaligned() };
 
         if cmsg.cmsg_level == SOL_SOCKET && cmsg.cmsg_type == SCM_RIGHTS {
-            let fd_count = (cmsg.cmsg_len - CMSG_LEN!(0)) / size_of::<RawFd>();
+            let fd_count = (cmsg.cmsg_len - CMSG_LEN!(0)) as usize / size_of::<RawFd>();
             unsafe {
                 copy_nonoverlapping(
                     CMSG_DATA(cmsg_ptr),
