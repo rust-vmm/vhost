@@ -19,11 +19,9 @@ pub struct SlaveListener<S: VhostUserSlaveReqHandler> {
 /// of a Slave on success.
 impl<S: VhostUserSlaveReqHandler> SlaveListener<S> {
     /// Create a unix domain socket for incoming master connections.
-    ///
-    /// Be careful, the file at `path` will be unlinked if unlink is true
-    pub fn new(path: &str, unlink: bool, backend: Arc<Mutex<S>>) -> Result<Self> {
+    pub fn new(listener: Listener, backend: Arc<Mutex<S>>) -> Result<Self> {
         Ok(SlaveListener {
-            listener: Listener::new(path, unlink)?,
+            listener,
             backend: Some(backend),
         })
     }

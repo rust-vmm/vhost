@@ -186,7 +186,8 @@ mod tests {
         path: &str,
         backend: Arc<Mutex<S>>,
     ) -> (Master, SlaveReqHandler<S>) {
-        let mut slave_listener = SlaveListener::new(path, true, backend).unwrap();
+        let listener = Listener::new(path, true).unwrap();
+        let mut slave_listener = SlaveListener::new(listener, backend).unwrap();
         let master = Master::connect(path, 1).unwrap();
         (master, slave_listener.accept().unwrap().unwrap())
     }
