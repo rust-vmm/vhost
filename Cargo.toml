@@ -1,8 +1,16 @@
 [package]
-name = "crate-template"
+name = "vhost_user_backend"
 version = "0.1.0"
-authors = [TODO]
-license = "Apache-2.0 OR BSD-3-Clause"
+authors = ["The Cloud Hypervisor Authors"]
 edition = "2018"
+license = "Apache-2.0"
 
 [dependencies]
+epoll = ">=4.0.1"
+libc = ">=0.2.39"
+log = ">=0.4.6"
+virtio-bindings = "0.1.0"
+vm-memory = {version = ">=0.2.0", features = ["backend-mmap"]}
+vm-virtio = { git = "https://github.com/cloud-hypervisor/vm-virtio", branch = "dragonball" }
+vmm-sys-util = ">=0.3.1"
+vhost_rs = { git = "https://github.com/cloud-hypervisor/vhost", branch = "dragonball", package = "vhost", features = ["vhost-user-slave"] }
