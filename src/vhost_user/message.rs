@@ -353,6 +353,14 @@ bitflags! {
         const HOST_NOTIFIER = 0x0000_0800;
         /// Support inflight shmfd.
         const INFLIGHT_SHMFD = 0x0000_1000;
+        /// Support resetting the device.
+        const RESET_DEVICE = 0x0000_2000;
+        /// Support inband notifications.
+        const INBAND_NOTIFICATIONS = 0x0000_4000;
+        /// Support configuring memory slots.
+        const CONFIGURE_MEM_SLOTS = 0x0000_8000;
+        /// Support reporting status.
+        const STATUS = 0x0001_0000;
     }
 }
 
