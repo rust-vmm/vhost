@@ -144,16 +144,20 @@ pub enum SlaveReq {
     CONFIG_CHANGE_MSG = 2,
     /// Set host notifier for a specified queue.
     VRING_HOST_NOTIFIER_MSG = 3,
+    /// Indicate that a buffer was used from the vring.
+    VRING_CALL = 4,
+    /// Indicate that an error occurred on the specific vring.
+    VRING_ERR = 5,
     /// Virtio-fs draft: map file content into the window.
-    FS_MAP = 4,
+    FS_MAP = 6,
     /// Virtio-fs draft: unmap file content from the window.
-    FS_UNMAP = 5,
+    FS_UNMAP = 7,
     /// Virtio-fs draft: sync file content.
-    FS_SYNC = 6,
+    FS_SYNC = 8,
     /// Virtio-fs draft: perform a read/write from an fd directly to GPA.
-    FS_IO = 7,
+    FS_IO = 9,
     /// Upper bound of valid commands.
-    MAX_CMD = 8,
+    MAX_CMD = 10,
 }
 
 impl Into<u32> for SlaveReq {
