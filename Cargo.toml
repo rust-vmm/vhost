@@ -1,0 +1,8 @@
+[package]
+name = "crate-template"
+version = "0.1.0"
+authors = [TODO]
+license = "Apache-2.0 OR BSD-3-Clause"
+edition = "2018"
+
+[dependencies]
