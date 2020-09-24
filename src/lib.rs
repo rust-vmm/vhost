@@ -25,7 +25,7 @@ use vhost_rs::vhost_user::{
 };
 use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::guest_memory::FileOffset;
-use vm_memory::{GuestAddress, GuestMemoryMmap};
+use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
 use vm_virtio::Queue;
 use vmm_sys_util::eventfd::EventFd;
 
@@ -77,7 +77,10 @@ pub trait VhostUserBackend: Send + Sync + 'static {
     fn set_event_idx(&mut self, enabled: bool);
 
     /// Update guest memory regions.
-    fn update_memory(&mut self, mem: GuestMemoryMmap) -> result::Result<(), io::Error>;
+    fn update_memory(
+        &mut self,
+        atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>,
+    ) -> result::Result<(), io::Error>;
 
     /// This function gets called if the backend registered some additional
     /// listeners onto specific file descriptors. The library can handle
@@ -445,6 +448,7 @@ struct VhostUserHandler<S: VhostUserBackend> {
     max_queue_size: usize,
     queues_per_thread: Vec<u64>,
     memory: Option<Memory>,
+    atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>,
     vrings: Vec<Arc<RwLock<Vring>>>,
     worker_threads: Vec<thread::JoinHandle<VringWorkerResult<()>>>,
 }
@@ -522,6 +526,7 @@ impl<S: VhostUserBackend> VhostUserHandler<S> {
             max_queue_size,
             queues_per_thread,
             memory: None,
+            atomic_mem: GuestMemoryAtomic::new(GuestMemoryMmap::new()),
             vrings,
             worker_threads,
         })
@@ -633,10 +638,15 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandler for VhostUserHandler<S> {
         let mem = GuestMemoryMmap::from_ranges_with_files(regions).map_err(|e| {
             VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
         })?;
+
+        // Updating the inner GuestMemory object here will cause all our vrings to
+        // see the new one the next time they call to `atomic_mem.memory()`.
+        self.atomic_mem.lock().unwrap().replace(mem);
+
         self.backend
             .write()
             .unwrap()
-            .update_memory(mem)
+            .update_memory(self.atomic_mem.clone())
             .map_err(|e| {
                 VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
             })?;
