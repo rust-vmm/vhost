@@ -11,6 +11,6 @@ libc = ">=0.2.39"
 log = ">=0.4.6"
 virtio-bindings = "0.1.0"
 vm-memory = {version = ">=0.2.0", features = ["backend-mmap", "backend-atomic"]}
-vm-virtio = { git = "https://github.com/cloud-hypervisor/vm-virtio", branch = "dragonball" }
+vm-virtio = { git = "https://github.com/rust-vmm/vm-virtio" }
 vmm-sys-util = ">=0.3.1"
-vhost_rs = { git = "https://github.com/cloud-hypervisor/vhost", branch = "dragonball", package = "vhost", features = ["vhost-user-slave"] }
+vhost_rs = { git = "https://github.com/rust-vmm/vhost", package = "vhost", features = ["vhost-user-slave"] }

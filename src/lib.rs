@@ -10,7 +10,6 @@ extern crate log;
 use std::error;
 use std::fs::File;
 use std::io;
-use std::num::Wrapping;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::result;
 use std::sync::{Arc, Mutex, RwLock};
@@ -211,7 +210,7 @@ struct Memory {
 }
 
 pub struct Vring {
-    queue: Queue,
+    queue: Queue<GuestMemoryAtomic<GuestMemoryMmap>>,
     kick: Option<EventFd>,
     call: Option<EventFd>,
     err: Option<EventFd>,
@@ -219,9 +218,9 @@ pub struct Vring {
 }
 
 impl Vring {
-    fn new(max_queue_size: u16) -> Self {
+    fn new(atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>, max_queue_size: u16) -> Self {
         Vring {
-            queue: Queue::new(max_queue_size),
+            queue: Queue::new(atomic_mem, max_queue_size),
             kick: None,
             call: None,
             err: None,
@@ -229,7 +228,7 @@ impl Vring {
         }
     }
 
-    pub fn mut_queue(&mut self) -> &mut Queue {
+    pub fn mut_queue(&mut self) -> &mut Queue<GuestMemoryAtomic<GuestMemoryMmap>> {
         &mut self.queue
     }
 
@@ -459,9 +458,14 @@ impl<S: VhostUserBackend> VhostUserHandler<S> {
         let max_queue_size = backend.read().unwrap().max_queue_size();
         let queues_per_thread = backend.read().unwrap().queues_per_thread();
 
+        let atomic_mem = GuestMemoryAtomic::new(GuestMemoryMmap::new());
+
         let mut vrings: Vec<Arc<RwLock<Vring>>> = Vec::new();
         for _ in 0..num_queues {
-            let vring = Arc::new(RwLock::new(Vring::new(max_queue_size as u16)));
+            let vring = Arc::new(RwLock::new(Vring::new(
+                atomic_mem.clone(),
+                max_queue_size as u16,
+            )));
             vrings.push(vring);
         }
 
@@ -526,7 +530,7 @@ impl<S: VhostUserBackend> VhostUserHandler<S> {
             max_queue_size,
             queues_per_thread,
             memory: None,
-            atomic_mem: GuestMemoryAtomic::new(GuestMemoryMmap::new()),
+            atomic_mem,
             vrings,
             worker_threads,
         })
@@ -712,7 +716,7 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandler for VhostUserHandler<S> {
             .write()
             .unwrap()
             .queue
-            .next_avail = Wrapping(base as u16);
+            .set_next_avail(base as u16);
 
         let event_idx: bool = (self.acked_features & (1 << VIRTIO_RING_F_EVENT_IDX)) != 0;
         self.vrings[index as usize]
@@ -755,8 +759,7 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandler for VhostUserHandler<S> {
             .read()
             .unwrap()
             .queue
-            .next_avail
-            .0 as u16;
+            .next_avail();
 
         Ok(VhostUserVringState::new(index, u32::from(next_avail)))
     }
