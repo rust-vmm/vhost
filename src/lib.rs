@@ -713,7 +713,6 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandler for VhostUserHandler<S> {
             .unwrap()
             .queue
             .next_avail = Wrapping(base as u16);
-        self.vrings[index as usize].write().unwrap().queue.next_used = Wrapping(base as u16);
 
         let event_idx: bool = (self.acked_features & (1 << VIRTIO_RING_F_EVENT_IDX)) != 0;
         self.vrings[index as usize]
