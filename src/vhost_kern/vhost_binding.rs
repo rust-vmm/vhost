@@ -14,8 +14,8 @@
 #![allow(non_snake_case)]
 #![allow(missing_docs)]
 
+use crate::{Error, Result};
 use std::os::raw;
-use {Error, Result};
 
 pub const VHOST: raw::c_uint = 0xaf;
 pub const VHOST_VRING_F_LOG: raw::c_uint = 0;
@@ -49,7 +49,7 @@ ioctl_iowr_nr!(VHOST_GET_VRING_BASE, VHOST, 0x12, vhost_vring_state);
 ioctl_iow_nr!(VHOST_SET_VRING_KICK, VHOST, 0x20, vhost_vring_file);
 ioctl_iow_nr!(VHOST_SET_VRING_CALL, VHOST, 0x21, vhost_vring_file);
 ioctl_iow_nr!(VHOST_SET_VRING_ERR, VHOST, 0x22, vhost_vring_file);
-ioctl_iow_nr!(vhost_SET_BACKEND, VHOST, 0x30, vhost_vring_file);
+ioctl_iow_nr!(VHOST_NET_SET_BACKEND, VHOST, 0x30, vhost_vring_file);
 ioctl_iow_nr!(VHOST_SCSI_SET_ENDPOINT, VHOST, 0x40, vhost_scsi_target);
 ioctl_iow_nr!(VHOST_SCSI_CLEAR_ENDPOINT, VHOST, 0x41, vhost_scsi_target);
 ioctl_iow_nr!(VHOST_SCSI_GET_ABI_VERSION, VHOST, 0x42, raw::c_int);
