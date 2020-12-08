@@ -12,7 +12,6 @@
 //! control the in-kernel net, scsi, vsock vhost drivers.
 
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::ptr::null;
 
 use vm_memory::{Address, GuestAddress, GuestMemory, GuestUsize};
 use vmm_sys_util::eventfd::EventFd;
@@ -49,15 +48,21 @@ pub trait VhostKernBackend<'a>: AsRawFd {
     /// Check whether the ring configuration is valid.
     fn is_valid(&self, config_data: &VringConfigData) -> bool {
         let queue_size = config_data.queue_size;
-        let desc_table_size = 16 * u64::from(queue_size) as GuestUsize;
-        let avail_ring_size = 6 + 2 * u64::from(queue_size) as GuestUsize;
-        let used_ring_size = 6 + 8 * u64::from(queue_size) as GuestUsize;
         if queue_size > config_data.queue_max_size
             || queue_size == 0
             || (queue_size & (queue_size - 1)) != 0
         {
-            false
-        } else if GuestAddress(config_data.desc_table_addr)
+            return false;
+        }
+
+        // TODO: the GuestMemory trait lacks of method to look up GPA by HVA,
+        // so there's no way to validate HVAs. Please extend vm-memory crate
+        // first.
+        /*
+        let desc_table_size = 16 * u64::from(queue_size) as GuestUsize;
+        let avail_ring_size = 6 + 2 * u64::from(queue_size) as GuestUsize;
+        let used_ring_size = 6 + 8 * u64::from(queue_size) as GuestUsize;
+        if GuestAddress(config_data.desc_table_addr)
             .checked_add(desc_table_size)
             .map_or(true, |v| !self.mem().address_in_range(v))
         {
@@ -72,9 +77,10 @@ pub trait VhostKernBackend<'a>: AsRawFd {
             .map_or(true, |v| !self.mem().address_in_range(v))
         {
             false
-        } else {
-            true
         }
+        */
+
+        config_data.is_log_addr_valid()
     }
 }
 
@@ -186,33 +192,13 @@ impl<'a, T: VhostKernBackend<'a>> VhostBackend for T {
             return Err(Error::InvalidQueue);
         }
 
-        let desc_addr = self
-            .mem()
-            .get_host_address(GuestAddress(config_data.desc_table_addr))
-            .map_err(|_| Error::InvalidGuestMemory)?;
-        let used_addr = self
-            .mem()
-            .get_host_address(GuestAddress(config_data.used_ring_addr))
-            .map_err(|_| Error::InvalidGuestMemory)?;
-        let avail_addr = self
-            .mem()
-            .get_host_address(GuestAddress(config_data.avail_ring_addr))
-            .map_err(|_| Error::InvalidGuestMemory)?;
-        let log_addr = match config_data.log_addr {
-            None => null(),
-            Some(a) => self
-                .mem()
-                .get_host_address(GuestAddress(a))
-                .map_err(|_| Error::InvalidGuestMemory)?,
-        };
-
         let vring_addr = vhost_vring_addr {
             index: queue_index as u32,
             flags: config_data.flags,
-            desc_user_addr: desc_addr as u64,
-            used_user_addr: used_addr as u64,
-            avail_user_addr: avail_addr as u64,
-            log_guest_addr: log_addr as u64,
+            desc_user_addr: config_data.desc_table_addr,
+            used_user_addr: config_data.used_ring_addr,
+            avail_user_addr: config_data.avail_ring_addr,
+            log_guest_addr: config_data.get_log_addr(),
         };
 
         // This ioctl is called on a valid vhost fd and has its
