@@ -34,6 +34,26 @@ pub struct VringConfigData {
     pub log_addr: Option<u64>,
 }
 
+impl VringConfigData {
+    /// Check whether the log (flag, address) pair is valid.
+    pub fn is_log_addr_valid(&self) -> bool {
+        if self.flags & 0x1 != 0 && self.log_addr.is_none() {
+            return false;
+        }
+
+        true
+    }
+
+    /// Get the log address, default to zero if not available.
+    pub fn get_log_addr(&self) -> u64 {
+        if self.flags & 0x1 != 0 && self.log_addr.is_some() {
+            self.log_addr.unwrap()
+        } else {
+            0
+        }
+    }
+}
+
 /// Memory region configuration data.
 #[derive(Default, Clone, Copy)]
 pub struct VhostUserMemoryRegionInfo {
@@ -132,4 +152,37 @@ pub trait VhostBackend: std::marker::Sized {
     /// * `queue_index` - Index of the queue to modify.
     /// * `fd` - EventFd that will be signaled from guest.
     fn set_vring_err(&mut self, queue_index: usize, fd: &EventFd) -> Result<()>;
+}
+
+#[cfg(test)]
+mod tests {
+    use VringConfigData;
+
+    #[test]
+    fn test_vring_config_data() {
+        let mut config = VringConfigData {
+            queue_max_size: 0x1000,
+            queue_size: 0x2000,
+            flags: 0x0,
+            desc_table_addr: 0x4000,
+            used_ring_addr: 0x5000,
+            avail_ring_addr: 0x6000,
+            log_addr: None,
+        };
+
+        assert_eq!(config.is_log_addr_valid(), true);
+        assert_eq!(config.get_log_addr(), 0);
+
+        config.flags = 0x1;
+        assert_eq!(config.is_log_addr_valid(), false);
+        assert_eq!(config.get_log_addr(), 0);
+
+        config.log_addr = Some(0x7000);
+        assert_eq!(config.is_log_addr_valid(), true);
+        assert_eq!(config.get_log_addr(), 0x7000);
+
+        config.flags = 0x0;
+        assert_eq!(config.is_log_addr_valid(), true);
+        assert_eq!(config.get_log_addr(), 0);
+    }
 }
