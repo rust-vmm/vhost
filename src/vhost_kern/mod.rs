@@ -13,7 +13,7 @@
 
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use vm_memory::{Address, GuestAddress, GuestMemory, GuestUsize};
+use vm_memory::GuestAddressSpace;
 use vmm_sys_util::eventfd::EventFd;
 use vmm_sys_util::ioctl::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
 
@@ -38,12 +38,12 @@ fn ioctl_result<T>(rc: i32, res: T) -> Result<T> {
 }
 
 /// Represent an in-kernel vhost device backend.
-pub trait VhostKernBackend<'a>: AsRawFd {
+pub trait VhostKernBackend: AsRawFd {
     /// Assoicated type to access guest memory.
-    type M: GuestMemory;
+    type AS: GuestAddressSpace;
 
     /// Get the object to access the guest's memory.
-    fn mem(&self) -> &Self::M;
+    fn mem(&self) -> &Self::AS;
 
     /// Check whether the ring configuration is valid.
     fn is_valid(&self, config_data: &VringConfigData) -> bool {
@@ -84,7 +84,7 @@ pub trait VhostKernBackend<'a>: AsRawFd {
     }
 }
 
-impl<'a, T: VhostKernBackend<'a>> VhostBackend for T {
+impl<T: VhostKernBackend> VhostBackend for T {
     /// Set the current process as the owner of this file descriptor.
     /// This must be run before any other vhost ioctls.
     fn set_owner(&mut self) -> Result<()> {
