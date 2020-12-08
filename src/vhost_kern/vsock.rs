@@ -8,28 +8,26 @@
 //! Kernel-based vsock vhost backend.
 
 use std::fs::{File, OpenOptions};
-use std::marker::PhantomData;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 use super::vhost_binding::{VHOST_VSOCK_SET_GUEST_CID, VHOST_VSOCK_SET_RUNNING};
 use super::{ioctl_result, Error, Result, VhostKernBackend};
 use libc;
-use vm_memory::GuestMemory;
+use vm_memory::GuestAddressSpace;
 use vmm_sys_util::ioctl::ioctl_with_ref;
 
 const VHOST_PATH: &str = "/dev/vhost-vsock";
 
 /// Handle for running VHOST_VSOCK ioctls.
-pub struct Vsock<'a, M: GuestMemory> {
+pub struct Vsock<AS: GuestAddressSpace> {
     fd: File,
-    mem: M,
-    _phatomdata: PhantomData<&'a M>, // Get rid of unused type parameter `a
+    mem: AS,
 }
 
-impl<'a, M: GuestMemory> Vsock<'a, M> {
+impl<AS: GuestAddressSpace> Vsock<AS> {
     /// Open a handle to a new VHOST-VSOCK instance.
-    pub fn new(mem: M) -> Result<Self> {
+    pub fn new(mem: AS) -> Result<Self> {
         Ok(Vsock {
             fd: OpenOptions::new()
                 .read(true)
@@ -38,7 +36,6 @@ impl<'a, M: GuestMemory> Vsock<'a, M> {
                 .open(VHOST_PATH)
                 .map_err(Error::VhostOpen)?,
             mem,
-            _phatomdata: PhantomData,
         })
     }
 
@@ -69,15 +66,15 @@ impl<'a, M: GuestMemory> Vsock<'a, M> {
     }
 }
 
-impl<'a, M: GuestMemory> VhostKernBackend<'a> for Vsock<'a, M> {
-    type M = M;
+impl<AS: GuestAddressSpace> VhostKernBackend for Vsock<AS> {
+    type AS = AS;
 
-    fn mem(&self) -> &Self::M {
+    fn mem(&self) -> &Self::AS {
         &self.mem
     }
 }
 
-impl<'a, M: GuestMemory> AsRawFd for Vsock<'a, M> {
+impl<AS: GuestAddressSpace> AsRawFd for Vsock<AS> {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.as_raw_fd()
     }
