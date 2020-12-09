@@ -11,7 +11,7 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-use VringConfigData;
+use crate::VringConfigData;
 
 /// The vhost-user specification uses a field of u32 to store message length.
 /// On the other hand, preallocated buffers are needed to receive messages from the Unix domain
@@ -37,7 +37,7 @@ pub const VHOST_USER_CONFIG_OFFSET: u32 = 0x100;
 pub const VHOST_USER_CONFIG_SIZE: u32 = 0x1000;
 
 /// Maximum number of vrings supported.
-pub const VHOST_USER_MAX_VRINGS: u64 = 0xFFu64;
+pub const VHOST_USER_MAX_VRINGS: u64 = 0x8000u64;
 
 pub(super) trait Req:
     Clone + Copy + Debug + PartialEq + Eq + PartialOrd + Ord + Into<u32>
