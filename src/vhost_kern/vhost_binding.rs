@@ -385,6 +385,7 @@ mod tests {
             userspace_addr: 0x300000u64,
             flags_padding: 0u64,
         };
+        assert_ne!(obj.as_ptr(), std::ptr::null());
         assert!(obj.get_region(2).is_none());
 
         {

@@ -32,10 +32,8 @@
 
 #![deny(missing_docs)]
 
-#[cfg_attr(
-    any(feature = "vhost-user-master", feature = "vhost-user-slave"),
-    macro_use
-)]
+#[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
+#[macro_use]
 extern crate bitflags;
 extern crate libc;
 #[cfg(feature = "vhost-kern")]

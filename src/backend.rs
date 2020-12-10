@@ -65,7 +65,7 @@ pub struct VhostUserMemoryRegionInfo {
     pub userspace_addr: u64,
     /// Optional offset where region starts in the mapped memory.
     pub mmap_offset: u64,
-    /// Optional file diescriptor for mmap
+    /// Optional file descriptor for mmap
     pub mmap_handle: RawFd,
 }
 
