@@ -72,6 +72,24 @@ pub enum Error {
     AvailAddress,
     /// Invalid log address.
     LogAddress,
+    /// Get features failed.
+    VhostGetFeatures,
+    /// Set features failed.
+    VhostSetFeatures,
+    /// Set features failed.
+    VhostSetMemTable,
+    /// Set vring num failed.
+    VhostSetVringNum,
+    /// Set vring addr failed.
+    VhostSetVringAddr,
+    /// Set vring base failed.
+    VhostSetVringBase,
+    /// Set vring call failed.
+    VhostSetVringCall,
+    /// Set vring kick failed.
+    VhostSetVringKick,
+    /// Vhost-net error
+    VhostNet(String),
     #[cfg(feature = "vhost-kern")]
     /// Error opening the vhost backend driver.
     VhostOpen(std::io::Error),
@@ -83,6 +101,9 @@ pub enum Error {
     #[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
     /// Error from the vhost-user subsystem.
     VhostUserProtocol(vhost_user::Error),
+    #[cfg(feature = "vhost-net")]
+    /// Set vhost net backend failed.
+    VhostNetSetBackend,
 }
 
 impl std::fmt::Display for Error {
@@ -96,6 +117,15 @@ impl std::fmt::Display for Error {
             Error::UsedAddress => write!(f, "invalid virtque used talbe address"),
             Error::AvailAddress => write!(f, "invalid virtque available talbe address"),
             Error::LogAddress => write!(f, "invalid virtque log address"),
+            Error::VhostGetFeatures => write!(f, "failed to get features"),
+            Error::VhostSetFeatures => write!(f, "failed to set features"),
+            Error::VhostSetMemTable => write!(f, "failed to set mem table"),
+            Error::VhostSetVringNum => write!(f, "failed to set vring num"),
+            Error::VhostSetVringAddr => write!(f, "failed to set vring addr"),
+            Error::VhostSetVringBase => write!(f, "failed to set vring base"),
+            Error::VhostSetVringCall => write!(f, "failed to set vring call"),
+            Error::VhostSetVringKick => write!(f, "failed to set vring kick"),
+            Error::VhostNet(s) => write!(f, "failed to setup vhost-net: {}", s),
             Error::IOError(e) => write!(f, "IO error: {}", e),
             #[cfg(feature = "vhost-kern")]
             Error::VhostOpen(e) => write!(f, "failure in opening vhost file: {}", e),
@@ -103,6 +133,8 @@ impl std::fmt::Display for Error {
             Error::IoctlError(e) => write!(f, "failure in vhost ioctl: {}", e),
             #[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
             Error::VhostUserProtocol(e) => write!(f, "vhost-user: {}", e),
+            #[cfg(feature = "vhost-net")]
+            Error::VhostNetSetBackend => write!(f, "failed to set vhost-net backend"),
         }
     }
 }

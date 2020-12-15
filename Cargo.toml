@@ -11,6 +11,7 @@ vhost-vsock = []
 vhost-kern = ["vm-memory"]
 vhost-user-master = []
 vhost-user-slave = []
+vhost-net = ["vhost-kern"]
 
 [dependencies]
 bitflags = ">=1.0.1"

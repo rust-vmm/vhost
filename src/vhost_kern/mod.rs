@@ -25,6 +25,8 @@ use super::{
 pub mod vhost_binding;
 use self::vhost_binding::*;
 
+#[cfg(feature = "vhost-net")]
+pub mod net;
 #[cfg(feature = "vhost-vsock")]
 pub mod vsock;
 
