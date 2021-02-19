@@ -20,11 +20,11 @@ pub trait VhostVsock: VhostBackend {
     ///
     /// # Arguments
     /// * `cid` - CID to assign to the guest
-    fn set_guest_cid(&mut self, cid: u64) -> Result<()>;
+    fn set_guest_cid(&self, cid: u64) -> Result<()>;
 
     /// Tell the VHOST driver to start performing data transfer.
-    fn start(&mut self) -> Result<()>;
+    fn start(&self) -> Result<()>;
 
     /// Tell the VHOST driver to stop performing data transfer.
-    fn stop(&mut self) -> Result<()>;
+    fn stop(&self) -> Result<()>;
 }
