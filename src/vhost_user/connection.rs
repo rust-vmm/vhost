@@ -5,15 +5,16 @@
 
 #![allow(dead_code)]
 
-use libc::{c_void, iovec};
 use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::{mem, slice};
 
+use libc::{c_void, iovec};
+use vmm_sys_util::sock_ctrl_msg::ScmSocket;
+
 use super::message::*;
-use super::sock_ctrl_msg::ScmSocket;
 use super::{Error, Result};
 
 /// Unix domain socket listener for accepting incoming connections.

@@ -46,8 +46,6 @@ mod slave_fs_cache;
 #[cfg(feature = "vhost-user-slave")]
 pub use self::slave_fs_cache::SlaveFsCacheReq;
 
-pub mod sock_ctrl_msg;
-
 /// Errors for vhost-user operations
 #[derive(Debug)]
 pub enum Error {
