@@ -13,7 +13,7 @@
 
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use vm_memory::GuestAddressSpace;
+use vm_memory::{Address, GuestAddress, GuestAddressSpace, GuestMemory, GuestUsize};
 use vmm_sys_util::eventfd::EventFd;
 use vmm_sys_util::ioctl::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
 
@@ -39,7 +39,7 @@ fn ioctl_result<T>(rc: i32, res: T) -> Result<T> {
 
 /// Represent an in-kernel vhost device backend.
 pub trait VhostKernBackend: AsRawFd {
-    /// Assoicated type to access guest memory.
+    /// Associated type to access guest memory.
     type AS: GuestAddressSpace;
 
     /// Get the object to access the guest's memory.
@@ -55,50 +55,32 @@ pub trait VhostKernBackend: AsRawFd {
             return false;
         }
 
-        // TODO: the GuestMemory trait lacks of method to look up GPA by HVA,
-        // so there's no way to validate HVAs. Please extend vm-memory crate
-        // first.
-        /*
+        let m = self.mem().memory();
         let desc_table_size = 16 * u64::from(queue_size) as GuestUsize;
         let avail_ring_size = 6 + 2 * u64::from(queue_size) as GuestUsize;
         let used_ring_size = 6 + 8 * u64::from(queue_size) as GuestUsize;
         if GuestAddress(config_data.desc_table_addr)
             .checked_add(desc_table_size)
-            .map_or(true, |v| !self.mem().address_in_range(v))
+            .map_or(true, |v| !m.address_in_range(v))
         {
             false
         } else if GuestAddress(config_data.avail_ring_addr)
             .checked_add(avail_ring_size)
-            .map_or(true, |v| !self.mem().address_in_range(v))
+            .map_or(true, |v| !m.address_in_range(v))
         {
             false
         } else if GuestAddress(config_data.used_ring_addr)
             .checked_add(used_ring_size)
-            .map_or(true, |v| !self.mem().address_in_range(v))
+            .map_or(true, |v| !m.address_in_range(v))
         {
             false
+        } else {
+            config_data.is_log_addr_valid()
         }
-        */
-
-        config_data.is_log_addr_valid()
     }
 }
 
 impl<T: VhostKernBackend> VhostBackend for T {
-    /// Set the current process as the owner of this file descriptor.
-    /// This must be run before any other vhost ioctls.
-    fn set_owner(&self) -> Result<()> {
-        // This ioctl is called on a valid vhost fd and has its return value checked.
-        let ret = unsafe { ioctl(self, VHOST_SET_OWNER()) };
-        ioctl_result(ret, ())
-    }
-
-    fn reset_owner(&self) -> Result<()> {
-        // This ioctl is called on a valid vhost fd and has its return value checked.
-        let ret = unsafe { ioctl(self, VHOST_RESET_OWNER()) };
-        ioctl_result(ret, ())
-    }
-
     /// Get a bitmask of supported virtio/vhost features.
     fn get_features(&self) -> Result<u64> {
         let mut avail_features: u64 = 0;
@@ -115,6 +97,20 @@ impl<T: VhostKernBackend> VhostBackend for T {
     fn set_features(&self, features: u64) -> Result<()> {
         // This ioctl is called on a valid vhost fd and has its return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_SET_FEATURES(), &features) };
+        ioctl_result(ret, ())
+    }
+
+    /// Set the current process as the owner of this file descriptor.
+    /// This must be run before any other vhost ioctls.
+    fn set_owner(&self) -> Result<()> {
+        // This ioctl is called on a valid vhost fd and has its return value checked.
+        let ret = unsafe { ioctl(self, VHOST_SET_OWNER()) };
+        ioctl_result(ret, ())
+    }
+
+    fn reset_owner(&self) -> Result<()> {
+        // This ioctl is called on a valid vhost fd and has its return value checked.
+        let ret = unsafe { ioctl(self, VHOST_RESET_OWNER()) };
         ioctl_result(ret, ())
     }
 
