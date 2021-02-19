@@ -7,12 +7,9 @@
 #[macro_use]
 extern crate log;
 
-use std::fs::File;
 use std::io;
-use std::os::unix::io::{AsRawFd, RawFd};
-use std::os::unix::prelude::IntoRawFd;
 use std::result;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use vhost::vhost_user::message::VhostUserSingleMemoryRegion;
@@ -27,8 +24,11 @@ use vmm_sys_util::eventfd::EventFd;
 
 use self::handler::VhostUserHandler;
 
-pub mod backend;
-pub use backend::{VhostUserBackend, VhostUserBackendMut};
+mod backend;
+pub use self::backend::{VhostUserBackend, VhostUserBackendMut};
+
+mod event_loop;
+pub use self::event_loop::{VringEpollError, VringEpollHandler, VringEpollResult};
 
 mod handler;
 pub use self::handler::VhostUserHandlerError;
@@ -49,7 +49,7 @@ pub enum Error {
     /// Failed handling a vhost-user request.
     HandleRequest(VhostUserError),
     /// Failed to process queue.
-    ProcessQueue(VringEpollHandlerError),
+    ProcessQueue(VringEpollError),
     /// Failed to register listener.
     RegisterListener(io::Error),
     /// Failed to unregister listener.
@@ -128,8 +128,8 @@ impl<S: VhostUserBackend + Clone> VhostUserDaemon<S> {
     /// Retrieve the vring worker. This is necessary to perform further
     /// actions like registering and unregistering some extra event file
     /// descriptors.
-    pub fn get_vring_workers(&self) -> Vec<Arc<VringWorker>> {
-        self.handler.lock().unwrap().get_vring_workers()
+    pub fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S>>> {
+        self.handler.lock().unwrap().get_epoll_handlers()
     }
 }
 
@@ -162,165 +162,5 @@ impl Vring {
         } else {
             Ok(())
         }
-    }
-}
-
-#[derive(Debug)]
-/// Errors related to vring epoll handler.
-pub enum VringEpollHandlerError {
-    /// Failed to process the queue from the backend.
-    ProcessQueueBackendProcessing(io::Error),
-    /// Failed to signal used queue.
-    SignalUsedQueue(io::Error),
-    /// Failed to read the event from kick EventFd.
-    HandleEventReadKick(io::Error),
-    /// Failed to handle the event from the backend.
-    HandleEventBackendHandling(io::Error),
-}
-
-/// Result of vring epoll handler operations.
-type VringEpollHandlerResult<T> = std::result::Result<T, VringEpollHandlerError>;
-
-struct VringEpollHandler<S: VhostUserBackend> {
-    backend: S,
-    vrings: Vec<Arc<RwLock<Vring>>>,
-    exit_event_id: Option<u16>,
-    thread_id: usize,
-}
-
-impl<S: VhostUserBackend> VringEpollHandler<S> {
-    fn handle_event(
-        &self,
-        device_event: u16,
-        evset: epoll::Events,
-    ) -> VringEpollHandlerResult<bool> {
-        if self.exit_event_id == Some(device_event) {
-            return Ok(true);
-        }
-
-        let num_queues = self.vrings.len();
-        if (device_event as usize) < num_queues {
-            if let Some(kick) = &self.vrings[device_event as usize].read().unwrap().kick {
-                kick.read()
-                    .map_err(VringEpollHandlerError::HandleEventReadKick)?;
-            }
-
-            // If the vring is not enabled, it should not be processed.
-            // The event is only read to be discarded.
-            if !self.vrings[device_event as usize].read().unwrap().enabled {
-                return Ok(false);
-            }
-        }
-
-        self.backend
-            .handle_event(device_event, evset, &self.vrings, self.thread_id)
-            .map_err(VringEpollHandlerError::HandleEventBackendHandling)
-    }
-}
-
-#[derive(Debug)]
-/// Errors related to vring worker.
-enum VringWorkerError {
-    /// Failed while waiting for events.
-    EpollWait(io::Error),
-    /// Failed to handle the event.
-    HandleEvent(VringEpollHandlerError),
-}
-
-/// Result of vring worker operations.
-type VringWorkerResult<T> = std::result::Result<T, VringWorkerError>;
-
-pub struct VringWorker {
-    epoll_file: File,
-}
-
-impl AsRawFd for VringWorker {
-    fn as_raw_fd(&self) -> RawFd {
-        self.epoll_file.as_raw_fd()
-    }
-}
-
-impl VringWorker {
-    fn run<S: VhostUserBackend>(&self, handler: VringEpollHandler<S>) -> VringWorkerResult<()> {
-        const EPOLL_EVENTS_LEN: usize = 100;
-        let mut events = vec![epoll::Event::new(epoll::Events::empty(), 0); EPOLL_EVENTS_LEN];
-
-        'epoll: loop {
-            let num_events = match epoll::wait(self.epoll_file.as_raw_fd(), -1, &mut events[..]) {
-                Ok(res) => res,
-                Err(e) => {
-                    if e.kind() == io::ErrorKind::Interrupted {
-                        // It's well defined from the epoll_wait() syscall
-                        // documentation that the epoll loop can be interrupted
-                        // before any of the requested events occurred or the
-                        // timeout expired. In both those cases, epoll_wait()
-                        // returns an error of type EINTR, but this should not
-                        // be considered as a regular error. Instead it is more
-                        // appropriate to retry, by calling into epoll_wait().
-                        continue;
-                    }
-                    return Err(VringWorkerError::EpollWait(e));
-                }
-            };
-
-            for event in events.iter().take(num_events) {
-                let evset = match epoll::Events::from_bits(event.events) {
-                    Some(evset) => evset,
-                    None => {
-                        let evbits = event.events;
-                        println!("epoll: ignoring unknown event set: 0x{:x}", evbits);
-                        continue;
-                    }
-                };
-
-                let ev_type = event.data as u16;
-
-                if handler
-                    .handle_event(ev_type, evset)
-                    .map_err(VringWorkerError::HandleEvent)?
-                {
-                    break 'epoll;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Register a custom event only meaningful to the caller. When this event
-    /// is later triggered, and because only the caller knows what to do about
-    /// it, the backend implementation of `handle_event` will be called.
-    /// This lets entire control to the caller about what needs to be done for
-    /// this special event, without forcing it to run its own dedicated epoll
-    /// loop for it.
-    pub fn register_listener(
-        &self,
-        fd: RawFd,
-        ev_type: epoll::Events,
-        data: u64,
-    ) -> result::Result<(), io::Error> {
-        epoll::ctl(
-            self.epoll_file.as_raw_fd(),
-            epoll::ControlOptions::EPOLL_CTL_ADD,
-            fd,
-            epoll::Event::new(ev_type, data),
-        )
-    }
-
-    /// Unregister a custom event. If the custom event is triggered after this
-    /// function has been called, nothing will happen as it will be removed
-    /// from the list of file descriptors the epoll loop is listening to.
-    pub fn unregister_listener(
-        &self,
-        fd: RawFd,
-        ev_type: epoll::Events,
-        data: u64,
-    ) -> result::Result<(), io::Error> {
-        epoll::ctl(
-            self.epoll_file.as_raw_fd(),
-            epoll::ControlOptions::EPOLL_CTL_DEL,
-            fd,
-            epoll::Event::new(ev_type, data),
-        )
     }
 }

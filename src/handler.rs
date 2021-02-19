@@ -6,7 +6,7 @@
 use std::error;
 use std::fs::File;
 use std::io;
-use std::os::unix::io::{AsRawFd, FromRawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
 use std::sync::{Arc, RwLock};
 use std::thread;
 
@@ -26,27 +26,24 @@ const MAX_MEM_SLOTS: u64 = 32;
 #[derive(Debug)]
 /// Errors related to vhost-user handler.
 pub enum VhostUserHandlerError {
-    /// Failed to create epoll file descriptor.
-    EpollCreateFd(io::Error),
+    /// Failed to create vring worker.
+    CreateEpollHandler(VringEpollError),
     /// Failed to spawn vring worker.
     SpawnVringWorker(io::Error),
     /// Could not find the mapping from memory regions.
     MissingMemoryMapping,
-    /// Could not register exit event
-    RegisterExitEvent(io::Error),
 }
 
 impl std::fmt::Display for VhostUserHandlerError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            VhostUserHandlerError::EpollCreateFd(e) => write!(f, "failed creating epoll fd: {}", e),
+            VhostUserHandlerError::CreateEpollHandler(e) => {
+                write!(f, "failed to create vring epoll handler: {}", e)
+            }
             VhostUserHandlerError::SpawnVringWorker(e) => {
                 write!(f, "failed spawning the vring worker: {}", e)
             }
             VhostUserHandlerError::MissingMemoryMapping => write!(f, "Missing memory mapping"),
-            VhostUserHandlerError::RegisterExitEvent(e) => {
-                write!(f, "Failed to register exit event: {}", e)
-            }
         }
     }
 }
@@ -54,7 +51,7 @@ impl std::fmt::Display for VhostUserHandlerError {
 impl error::Error for VhostUserHandlerError {}
 
 /// Result of vhost-user handler operations.
-type VhostUserHandlerResult<T> = std::result::Result<T, VhostUserHandlerError>;
+pub type VhostUserHandlerResult<T> = std::result::Result<T, VhostUserHandlerError>;
 
 struct AddrMapping {
     vmm_addr: u64,
@@ -64,7 +61,7 @@ struct AddrMapping {
 
 pub struct VhostUserHandler<S: VhostUserBackend> {
     backend: S,
-    workers: Vec<Arc<VringWorker>>,
+    handlers: Vec<Arc<VringEpollHandler<S>>>,
     owned: bool,
     features_acked: bool,
     acked_features: u64,
@@ -75,11 +72,11 @@ pub struct VhostUserHandler<S: VhostUserBackend> {
     mappings: Vec<AddrMapping>,
     atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>,
     vrings: Vec<Arc<RwLock<Vring>>>,
-    worker_threads: Vec<thread::JoinHandle<VringWorkerResult<()>>>,
+    worker_threads: Vec<thread::JoinHandle<VringEpollResult<()>>>,
 }
 
 impl<S: VhostUserBackend + Clone> VhostUserHandler<S> {
-    pub fn new(backend: S) -> VhostUserHandlerResult<Self> {
+    pub(crate) fn new(backend: S) -> VhostUserHandlerResult<Self> {
         let num_queues = backend.num_queues();
         let max_queue_size = backend.max_queue_size();
         let queues_per_thread = backend.queues_per_thread();
@@ -95,31 +92,9 @@ impl<S: VhostUserBackend + Clone> VhostUserHandler<S> {
             vrings.push(vring);
         }
 
-        let mut workers = Vec::new();
+        let mut handlers = Vec::new();
         let mut worker_threads = Vec::new();
         for (thread_id, queues_mask) in queues_per_thread.iter().enumerate() {
-            // Create the epoll file descriptor
-            let epoll_fd = epoll::create(true).map_err(VhostUserHandlerError::EpollCreateFd)?;
-            // Use 'File' to enforce closing on 'epoll_fd'
-            let epoll_file = unsafe { File::from_raw_fd(epoll_fd) };
-
-            let vring_worker = Arc::new(VringWorker { epoll_file });
-            let worker = vring_worker.clone();
-
-            let exit_event_id =
-                if let Some((exit_event_fd, exit_event_id)) = backend.exit_event(thread_id) {
-                    worker
-                        .register_listener(
-                            exit_event_fd.as_raw_fd(),
-                            epoll::Events::EPOLLIN,
-                            u64::from(exit_event_id),
-                        )
-                        .map_err(VhostUserHandlerError::RegisterExitEvent)?;
-                    Some(exit_event_id)
-                } else {
-                    None
-                };
-
             let mut thread_vrings: Vec<Arc<RwLock<Vring>>> = Vec::new();
             for (index, vring) in vrings.iter().enumerate() {
                 if (queues_mask >> index) & 1u64 == 1u64 {
@@ -127,25 +102,23 @@ impl<S: VhostUserBackend + Clone> VhostUserHandler<S> {
                 }
             }
 
-            let vring_handler = VringEpollHandler {
-                backend: backend.clone(),
-                vrings: thread_vrings,
-                exit_event_id,
-                thread_id,
-            };
-
+            let handler = Arc::new(
+                VringEpollHandler::new(backend.clone(), thread_vrings, thread_id)
+                    .map_err(VhostUserHandlerError::CreateEpollHandler)?,
+            );
+            let handler2 = handler.clone();
             let worker_thread = thread::Builder::new()
                 .name("vring_worker".to_string())
-                .spawn(move || vring_worker.run(vring_handler))
+                .spawn(move || handler2.run())
                 .map_err(VhostUserHandlerError::SpawnVringWorker)?;
 
-            workers.push(worker);
+            handlers.push(handler);
             worker_threads.push(worker_thread);
         }
 
         Ok(VhostUserHandler {
             backend,
-            workers,
+            handlers,
             owned: false,
             features_acked: false,
             acked_features: 0,
@@ -160,8 +133,8 @@ impl<S: VhostUserBackend + Clone> VhostUserHandler<S> {
         })
     }
 
-    pub fn get_vring_workers(&self) -> Vec<Arc<VringWorker>> {
-        self.workers.clone()
+    pub(crate) fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S>>> {
+        self.handlers.clone()
     }
 
     fn vmm_va_to_gpa(&self, vmm_va: u64) -> VhostUserHandlerResult<u64> {
@@ -359,7 +332,7 @@ impl<S: VhostUserBackend + Clone> VhostUserSlaveReqHandlerMut for VhostUserHandl
                 let shifted_queues_mask = queues_mask >> index;
                 if shifted_queues_mask & 1u64 == 1u64 {
                     let evt_idx = queues_mask.count_ones() - shifted_queues_mask.count_ones();
-                    self.workers[thread_index]
+                    self.handlers[thread_index]
                         .unregister_listener(
                             fd.as_raw_fd(),
                             epoll::Events::EPOLLIN,
@@ -403,7 +376,7 @@ impl<S: VhostUserBackend + Clone> VhostUserSlaveReqHandlerMut for VhostUserHandl
                 let shifted_queues_mask = queues_mask >> index;
                 if shifted_queues_mask & 1u64 == 1u64 {
                     let evt_idx = queues_mask.count_ones() - shifted_queues_mask.count_ones();
-                    self.workers[thread_index]
+                    self.handlers[thread_index]
                         .register_listener(
                             fd.as_raw_fd(),
                             epoll::Events::EPOLLIN,
