@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn test_set_owner() {
         let slave_be = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
-        let (mut master, mut slave) =
+        let (master, mut slave) =
             create_slave("/tmp/vhost_user_lib_unit_test_owner", slave_be.clone());
 
         assert_eq!(slave_be.lock().unwrap().owned, false);
