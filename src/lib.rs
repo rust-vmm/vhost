@@ -34,8 +34,8 @@ use vm_memory::{
 };
 use vmm_sys_util::eventfd::EventFd;
 
-mod backend;
-pub use backend::VhostUserBackend;
+pub mod backend;
+pub use backend::{VhostUserBackend, VhostUserBackendMut};
 
 const MAX_MEM_SLOTS: u64 = 32;
 
@@ -73,14 +73,14 @@ pub struct VhostUserDaemon<S: VhostUserBackend> {
     main_thread: Option<thread::JoinHandle<Result<()>>>,
 }
 
-impl<S: VhostUserBackend> VhostUserDaemon<S> {
+impl<S: VhostUserBackend + Clone> VhostUserDaemon<S> {
     /// Create the daemon instance, providing the backend implementation of
     /// VhostUserBackend.
     /// Under the hood, this will start a dedicated thread responsible for
     /// listening onto registered event. Those events can be vring events or
     /// custom events from the backend, but they get to be registered later
     /// during the sequence.
-    pub fn new(name: String, backend: Arc<RwLock<S>>) -> Result<Self> {
+    pub fn new(name: String, backend: S) -> Result<Self> {
         let handler = Arc::new(Mutex::new(
             VhostUserHandler::new(backend).map_err(Error::NewVhostUserHandler)?,
         ));
@@ -194,7 +194,7 @@ pub enum VringEpollHandlerError {
 type VringEpollHandlerResult<T> = std::result::Result<T, VringEpollHandlerError>;
 
 struct VringEpollHandler<S: VhostUserBackend> {
-    backend: Arc<RwLock<S>>,
+    backend: S,
     vrings: Vec<Arc<RwLock<Vring>>>,
     exit_event_id: Option<u16>,
     thread_id: usize,
@@ -225,8 +225,6 @@ impl<S: VhostUserBackend> VringEpollHandler<S> {
         }
 
         self.backend
-            .read()
-            .unwrap()
             .handle_event(device_event, evset, &self.vrings, self.thread_id)
             .map_err(VringEpollHandlerError::HandleEventBackendHandling)
     }
@@ -373,7 +371,7 @@ impl error::Error for VhostUserHandlerError {}
 type VhostUserHandlerResult<T> = std::result::Result<T, VhostUserHandlerError>;
 
 struct VhostUserHandler<S: VhostUserBackend> {
-    backend: Arc<RwLock<S>>,
+    backend: S,
     workers: Vec<Arc<VringWorker>>,
     owned: bool,
     features_acked: bool,
@@ -388,11 +386,11 @@ struct VhostUserHandler<S: VhostUserBackend> {
     worker_threads: Vec<thread::JoinHandle<VringWorkerResult<()>>>,
 }
 
-impl<S: VhostUserBackend> VhostUserHandler<S> {
-    fn new(backend: Arc<RwLock<S>>) -> VhostUserHandlerResult<Self> {
-        let num_queues = backend.read().unwrap().num_queues();
-        let max_queue_size = backend.read().unwrap().max_queue_size();
-        let queues_per_thread = backend.read().unwrap().queues_per_thread();
+impl<S: VhostUserBackend + Clone> VhostUserHandler<S> {
+    fn new(backend: S) -> VhostUserHandlerResult<Self> {
+        let num_queues = backend.num_queues();
+        let max_queue_size = backend.max_queue_size();
+        let queues_per_thread = backend.queues_per_thread();
 
         let atomic_mem = GuestMemoryAtomic::new(GuestMemoryMmap::new());
 
@@ -416,21 +414,19 @@ impl<S: VhostUserBackend> VhostUserHandler<S> {
             let vring_worker = Arc::new(VringWorker { epoll_file });
             let worker = vring_worker.clone();
 
-            let exit_event_id = if let Some((exit_event_fd, exit_event_id)) =
-                backend.read().unwrap().exit_event(thread_id)
-            {
-                let exit_event_id = exit_event_id.unwrap_or(num_queues as u16);
-                worker
-                    .register_listener(
-                        exit_event_fd.as_raw_fd(),
-                        epoll::Events::EPOLLIN,
-                        u64::from(exit_event_id),
-                    )
-                    .map_err(VhostUserHandlerError::RegisterExitEvent)?;
-                Some(exit_event_id)
-            } else {
-                None
-            };
+            let exit_event_id =
+                if let Some((exit_event_fd, exit_event_id)) = backend.exit_event(thread_id) {
+                    worker
+                        .register_listener(
+                            exit_event_fd.as_raw_fd(),
+                            epoll::Events::EPOLLIN,
+                            u64::from(exit_event_id),
+                        )
+                        .map_err(VhostUserHandlerError::RegisterExitEvent)?;
+                    Some(exit_event_id)
+                } else {
+                    None
+                };
 
             let mut thread_vrings: Vec<Arc<RwLock<Vring>>> = Vec::new();
             for (index, vring) in vrings.iter().enumerate() {
@@ -487,7 +483,7 @@ impl<S: VhostUserBackend> VhostUserHandler<S> {
     }
 }
 
-impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
+impl<S: VhostUserBackend + Clone> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
     fn set_owner(&mut self) -> VhostUserResult<()> {
         if self.owned {
             return Err(VhostUserError::InvalidOperation);
@@ -505,11 +501,11 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
     }
 
     fn get_features(&mut self) -> VhostUserResult<u64> {
-        Ok(self.backend.read().unwrap().features())
+        Ok(self.backend.features())
     }
 
     fn set_features(&mut self, features: u64) -> VhostUserResult<()> {
-        if (features & !self.backend.read().unwrap().features()) != 0 {
+        if (features & !self.backend.features()) != 0 {
             return Err(VhostUserError::InvalidParam);
         }
 
@@ -529,16 +525,13 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
             vring.write().unwrap().enabled = vring_enabled;
         }
 
-        self.backend
-            .write()
-            .unwrap()
-            .acked_features(self.acked_features);
+        self.backend.acked_features(self.acked_features);
 
         Ok(())
     }
 
     fn get_protocol_features(&mut self) -> VhostUserResult<VhostUserProtocolFeatures> {
-        Ok(self.backend.read().unwrap().protocol_features())
+        Ok(self.backend.protocol_features())
     }
 
     fn set_protocol_features(&mut self, features: u64) -> VhostUserResult<()> {
@@ -581,8 +574,6 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
         self.atomic_mem.lock().unwrap().replace(mem);
 
         self.backend
-            .write()
-            .unwrap()
             .update_memory(self.atomic_mem.clone())
             .map_err(|e| {
                 VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
@@ -657,7 +648,7 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
             .unwrap()
             .mut_queue()
             .set_event_idx(event_idx);
-        self.backend.write().unwrap().set_event_idx(event_idx);
+        self.backend.set_event_idx(event_idx);
         Ok(())
     }
 
@@ -783,7 +774,7 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
         size: u32,
         _flags: VhostUserConfigFlags,
     ) -> VhostUserResult<Vec<u8>> {
-        Ok(self.backend.read().unwrap().get_config(offset, size))
+        Ok(self.backend.get_config(offset, size))
     }
 
     fn set_config(
@@ -793,8 +784,6 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
         _flags: VhostUserConfigFlags,
     ) -> VhostUserResult<()> {
         self.backend
-            .write()
-            .unwrap()
             .set_config(offset, buf)
             .map_err(VhostUserError::ReqHandlerError)
     }
@@ -804,7 +793,7 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
             vu_req.set_reply_ack_flag(true);
         }
 
-        self.backend.write().unwrap().set_slave_req_fd(vu_req);
+        self.backend.set_slave_req_fd(vu_req);
     }
 
     fn get_max_mem_slots(&mut self) -> VhostUserResult<u64> {
@@ -838,8 +827,6 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
         self.atomic_mem.lock().unwrap().replace(mem);
 
         self.backend
-            .write()
-            .unwrap()
             .update_memory(self.atomic_mem.clone())
             .map_err(|e| {
                 VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
@@ -866,8 +853,6 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
         self.atomic_mem.lock().unwrap().replace(mem);
 
         self.backend
-            .write()
-            .unwrap()
             .update_memory(self.atomic_mem.clone())
             .map_err(|e| {
                 VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
