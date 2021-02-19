@@ -115,7 +115,7 @@ impl Master {
 
 impl VhostBackend for Master {
     /// Get from the underlying vhost implementation the feature bitmask.
-    fn get_features(&mut self) -> Result<u64> {
+    fn get_features(&self) -> Result<u64> {
         let mut node = self.node.lock().unwrap();
         let hdr = node.send_request_header(MasterReq::GET_FEATURES, None)?;
         let val = node.recv_reply::<VhostUserU64>(&hdr)?;
@@ -124,7 +124,7 @@ impl VhostBackend for Master {
     }
 
     /// Enable features in the underlying vhost implementation using a bitmask.
-    fn set_features(&mut self, features: u64) -> Result<()> {
+    fn set_features(&self, features: u64) -> Result<()> {
         let mut node = self.node.lock().unwrap();
         let val = VhostUserU64::new(features);
         let _ = node.send_request_with_body(MasterReq::SET_FEATURES, &val, None)?;
@@ -135,7 +135,7 @@ impl VhostBackend for Master {
     }
 
     /// Set the current Master as an owner of the session.
-    fn set_owner(&mut self) -> Result<()> {
+    fn set_owner(&self) -> Result<()> {
         // We unwrap() the return value to assert that we are not expecting threads to ever fail
         // while holding the lock.
         let mut node = self.node.lock().unwrap();
@@ -145,7 +145,7 @@ impl VhostBackend for Master {
         Ok(())
     }
 
-    fn reset_owner(&mut self) -> Result<()> {
+    fn reset_owner(&self) -> Result<()> {
         let mut node = self.node.lock().unwrap();
         let _ = node.send_request_header(MasterReq::RESET_OWNER, None)?;
         // Don't wait for ACK here because the protocol feature negotiation process hasn't been
@@ -155,7 +155,7 @@ impl VhostBackend for Master {
 
     /// Set the memory map regions on the slave so it can translate the vring
     /// addresses. In the ancillary data there is an array of file descriptors
-    fn set_mem_table(&mut self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
+    fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
         if regions.is_empty() || regions.len() > MAX_ATTACHED_FD_ENTRIES {
             return error_code(VhostUserError::InvalidParam);
         }
@@ -187,7 +187,7 @@ impl VhostBackend for Master {
 
     // Clippy doesn't seem to know that if let with && is still experimental
     #[allow(clippy::unnecessary_unwrap)]
-    fn set_log_base(&mut self, base: u64, fd: Option<RawFd>) -> Result<()> {
+    fn set_log_base(&self, base: u64, fd: Option<RawFd>) -> Result<()> {
         let mut node = self.node.lock().unwrap();
         let val = VhostUserU64::new(base);
 
@@ -202,7 +202,7 @@ impl VhostBackend for Master {
         Ok(())
     }
 
-    fn set_log_fd(&mut self, fd: RawFd) -> Result<()> {
+    fn set_log_fd(&self, fd: RawFd) -> Result<()> {
         let mut node = self.node.lock().unwrap();
         let fds = [fd];
         node.send_request_header(MasterReq::SET_LOG_FD, Some(&fds))?;
@@ -210,7 +210,7 @@ impl VhostBackend for Master {
     }
 
     /// Set the size of the queue.
-    fn set_vring_num(&mut self, queue_index: usize, num: u16) -> Result<()> {
+    fn set_vring_num(&self, queue_index: usize, num: u16) -> Result<()> {
         let mut node = self.node.lock().unwrap();
         if queue_index as u64 >= node.max_queue_num {
             return error_code(VhostUserError::InvalidParam);
@@ -222,7 +222,7 @@ impl VhostBackend for Master {
     }
 
     /// Sets the addresses of the different aspects of the vring.
-    fn set_vring_addr(&mut self, queue_index: usize, config_data: &VringConfigData) -> Result<()> {
+    fn set_vring_addr(&self, queue_index: usize, config_data: &VringConfigData) -> Result<()> {
         let mut node = self.node.lock().unwrap();
         if queue_index as u64 >= node.max_queue_num
             || config_data.flags & !(VhostUserVringAddrFlags::all().bits()) != 0
@@ -236,7 +236,7 @@ impl VhostBackend for Master {
     }
 
     /// Sets the base offset in the available vring.
-    fn set_vring_base(&mut self, queue_index: usize, base: u16) -> Result<()> {
+    fn set_vring_base(&self, queue_index: usize, base: u16) -> Result<()> {
         let mut node = self.node.lock().unwrap();
         if queue_index as u64 >= node.max_queue_num {
             return error_code(VhostUserError::InvalidParam);
@@ -247,7 +247,7 @@ impl VhostBackend for Master {
         node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
-    fn get_vring_base(&mut self, queue_index: usize) -> Result<u32> {
+    fn get_vring_base(&self, queue_index: usize) -> Result<u32> {
         let mut node = self.node.lock().unwrap();
         if queue_index as u64 >= node.max_queue_num {
             return error_code(VhostUserError::InvalidParam);
@@ -263,7 +263,7 @@ impl VhostBackend for Master {
     /// Bits (0-7) of the payload contain the vring index. Bit 8 is the invalid FD flag. This flag
     /// is set when there is no file descriptor in the ancillary data. This signals that polling
     /// will be used instead of waiting for the call.
-    fn set_vring_call(&mut self, queue_index: usize, fd: &EventFd) -> Result<()> {
+    fn set_vring_call(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
         let mut node = self.node.lock().unwrap();
         if queue_index as u64 >= node.max_queue_num {
             return error_code(VhostUserError::InvalidParam);
@@ -276,7 +276,7 @@ impl VhostBackend for Master {
     /// Bits (0-7) of the payload contain the vring index. Bit 8 is the invalid FD flag. This flag
     /// is set when there is no file descriptor in the ancillary data. This signals that polling
     /// should be used instead of waiting for a kick.
-    fn set_vring_kick(&mut self, queue_index: usize, fd: &EventFd) -> Result<()> {
+    fn set_vring_kick(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
         let mut node = self.node.lock().unwrap();
         if queue_index as u64 >= node.max_queue_num {
             return error_code(VhostUserError::InvalidParam);
@@ -288,7 +288,7 @@ impl VhostBackend for Master {
     /// Set the event file descriptor to signal when error occurs.
     /// Bits (0-7) of the payload contain the vring index. Bit 8 is the invalid FD flag. This flag
     /// is set when there is no file descriptor in the ancillary data.
-    fn set_vring_err(&mut self, queue_index: usize, fd: &EventFd) -> Result<()> {
+    fn set_vring_err(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
         let mut node = self.node.lock().unwrap();
         if queue_index as u64 >= node.max_queue_num {
             return error_code(VhostUserError::InvalidParam);
@@ -654,7 +654,7 @@ mod tests {
         let listener = Listener::new(UNIX_SOCKET_MASTER, true).unwrap();
         listener.set_nonblocking(true).unwrap();
 
-        let mut master = Master::connect(UNIX_SOCKET_MASTER, 1).unwrap();
+        let master = Master::connect(UNIX_SOCKET_MASTER, 1).unwrap();
         let mut slave = Endpoint::<MasterReq>::from_stream(listener.accept().unwrap().unwrap());
 
         // Send two messages continuously
@@ -692,7 +692,7 @@ mod tests {
     #[test]
     #[ignore]
     fn test_features() {
-        let (mut master, mut peer) = create_pair(UNIX_SOCKET_MASTER3);
+        let (master, mut peer) = create_pair(UNIX_SOCKET_MASTER3);
 
         master.set_owner().unwrap();
         let (hdr, rfds) = peer.recv_header().unwrap();
