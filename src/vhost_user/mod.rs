@@ -18,20 +18,23 @@
 //! Most messages that can be sent via the Unix domain socket implementing vhost-user have an
 //! equivalent ioctl to the kernel implementation.
 
-use libc;
 use std::io::Error as IOError;
 
-mod connection;
 pub mod message;
+
+mod connection;
 pub use self::connection::Listener;
+
 #[cfg(feature = "vhost-user-master")]
 mod master;
 #[cfg(feature = "vhost-user-master")]
 pub use self::master::{Master, VhostUserMaster};
-#[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
+#[cfg(feature = "vhost-user")]
 mod master_req_handler;
-#[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
-pub use self::master_req_handler::{MasterReqHandler, VhostUserMasterReqHandler};
+#[cfg(feature = "vhost-user")]
+pub use self::master_req_handler::{
+    MasterReqHandler, VhostUserMasterReqHandler, VhostUserMasterReqHandlerMut,
+};
 
 #[cfg(feature = "vhost-user-slave")]
 mod slave;
@@ -40,7 +43,9 @@ pub use self::slave::SlaveListener;
 #[cfg(feature = "vhost-user-slave")]
 mod slave_req_handler;
 #[cfg(feature = "vhost-user-slave")]
-pub use self::slave_req_handler::{SlaveReqHandler, VhostUserSlaveReqHandler};
+pub use self::slave_req_handler::{
+    SlaveReqHandler, VhostUserSlaveReqHandler, VhostUserSlaveReqHandlerMut,
+};
 #[cfg(feature = "vhost-user-slave")]
 mod slave_fs_cache;
 #[cfg(feature = "vhost-user-slave")]
@@ -99,6 +104,8 @@ impl std::fmt::Display for Error {
         }
     }
 }
+
+impl std::error::Error for Error {}
 
 impl Error {
     /// Determine whether to rebuild the underline communication channel.
