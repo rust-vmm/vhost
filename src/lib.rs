@@ -1,4 +1,4 @@
-// Copyright (C) 2019 Alibaba Cloud Computing. All rights reserved.
+// Copyright (C) 2019 Alibaba Cloud. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0 or BSD-3-Clause
 
 //! Virtio Vhost Backend Drivers
@@ -32,14 +32,8 @@
 
 #![deny(missing_docs)]
 
-#[cfg_attr(
-    any(feature = "vhost-user-master", feature = "vhost-user-slave"),
-    macro_use
-)]
+#[cfg_attr(feature = "vhost-user", macro_use)]
 extern crate bitflags;
-extern crate libc;
-#[cfg(feature = "vhost-kern")]
-extern crate vm_memory;
 #[cfg_attr(feature = "vhost-kern", macro_use)]
 extern crate vmm_sys_util;
 
@@ -48,7 +42,7 @@ pub use backend::*;
 
 #[cfg(feature = "vhost-kern")]
 pub mod vhost_kern;
-#[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
+#[cfg(feature = "vhost-user")]
 pub mod vhost_user;
 #[cfg(feature = "vhost-vsock")]
 pub mod vsock;
@@ -80,7 +74,7 @@ pub enum Error {
     IoctlError(std::io::Error),
     /// Error from IO subsystem.
     IOError(std::io::Error),
-    #[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
+    #[cfg(feature = "vhost-user-master")]
     /// Error from the vhost-user subsystem.
     VhostUserProtocol(vhost_user::Error),
 }
@@ -94,20 +88,22 @@ impl std::fmt::Display for Error {
             Error::InvalidQueue => write!(f, "invalid virtque"),
             Error::DescriptorTableAddress => write!(f, "invalid virtque descriptor talbe address"),
             Error::UsedAddress => write!(f, "invalid virtque used talbe address"),
-            Error::AvailAddress => write!(f, "invalid virtque available talbe address"),
+            Error::AvailAddress => write!(f, "invalid virtque available table address"),
             Error::LogAddress => write!(f, "invalid virtque log address"),
             Error::IOError(e) => write!(f, "IO error: {}", e),
             #[cfg(feature = "vhost-kern")]
             Error::VhostOpen(e) => write!(f, "failure in opening vhost file: {}", e),
             #[cfg(feature = "vhost-kern")]
             Error::IoctlError(e) => write!(f, "failure in vhost ioctl: {}", e),
-            #[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
+            #[cfg(feature = "vhost-user-master")]
             Error::VhostUserProtocol(e) => write!(f, "vhost-user: {}", e),
         }
     }
 }
 
-#[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
+impl std::error::Error for Error {}
+
+#[cfg(feature = "vhost-user")]
 impl std::convert::From<vhost_user::Error> for Error {
     fn from(err: vhost_user::Error) -> Self {
         Error::VhostUserProtocol(err)
@@ -116,3 +112,43 @@ impl std::convert::From<vhost_user::Error> for Error {
 
 /// Result of vhost operations
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error() {
+        assert_eq!(
+            format!("{}", Error::AvailAddress),
+            "invalid virtque available table address"
+        );
+        assert_eq!(
+            format!("{}", Error::InvalidOperation),
+            "invalid vhost operations"
+        );
+        assert_eq!(
+            format!("{}", Error::InvalidGuestMemory),
+            "invalid guest memory object"
+        );
+        assert_eq!(
+            format!("{}", Error::InvalidGuestMemoryRegion),
+            "invalid guest memory region"
+        );
+        assert_eq!(format!("{}", Error::InvalidQueue), "invalid virtque");
+        assert_eq!(
+            format!("{}", Error::DescriptorTableAddress),
+            "invalid virtque descriptor talbe address"
+        );
+        assert_eq!(
+            format!("{}", Error::UsedAddress),
+            "invalid virtque used talbe address"
+        );
+        assert_eq!(
+            format!("{}", Error::LogAddress),
+            "invalid virtque log address"
+        );
+
+        assert_eq!(format!("{:?}", Error::AvailAddress), "AvailAddress");
+    }
+}

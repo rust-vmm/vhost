@@ -364,7 +364,7 @@ impl<T: VhostBackendMut> VhostBackend for RefCell<T> {
 }
 #[cfg(test)]
 mod tests {
-    use VringConfigData;
+    use super::*;
 
     struct MockBackend {}
 
