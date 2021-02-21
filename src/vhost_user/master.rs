@@ -176,10 +176,11 @@ impl VhostBackend for Master {
 
         let mut node = self.node.lock().unwrap();
         let body = VhostUserMemory::new(ctx.regions.len() as u32);
+        let (_, payload, _) = unsafe { ctx.regions.align_to::<u8>() };
         let hdr = node.send_request_with_payload(
             MasterReq::SET_MEM_TABLE,
             &body,
-            ctx.regions.as_slice(),
+            payload,
             Some(ctx.fds.as_slice()),
         )?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
@@ -503,14 +504,14 @@ impl MasterInternal {
         Ok(hdr)
     }
 
-    fn send_request_with_payload<T: Sized, P: Sized>(
+    fn send_request_with_payload<T: Sized>(
         &mut self,
         code: MasterReq,
         msg: &T,
-        payload: &[P],
+        payload: &[u8],
         fds: Option<&[RawFd]>,
     ) -> VhostUserResult<VhostUserMsgHeader<MasterReq>> {
-        let len = mem::size_of::<T>() + payload.len() * mem::size_of::<P>();
+        let len = mem::size_of::<T>() + payload.len();
         if len > MAX_MSG_SIZE {
             return Err(VhostUserError::InvalidParam);
         }

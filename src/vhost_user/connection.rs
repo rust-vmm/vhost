@@ -216,6 +216,9 @@ impl<R: Req> Endpoint<R> {
         body: &T,
         fds: Option<&[RawFd]>,
     ) -> Result<()> {
+        if mem::size_of::<T>() > MAX_MSG_SIZE {
+            return Err(Error::OversizedMsg);
+        }
         // Safe because there can't be other mutable referance to hdr and body.
         let iovs = unsafe {
             [
@@ -244,14 +247,17 @@ impl<R: Req> Endpoint<R> {
     /// * - OversizedMsg: message size is too big.
     /// * - PartialMessage: received a partial message.
     /// * - IncorrectFds: wrong number of attached fds.
-    pub fn send_message_with_payload<T: Sized, P: Sized>(
+    pub fn send_message_with_payload<T: Sized>(
         &mut self,
         hdr: &VhostUserMsgHeader<R>,
         body: &T,
-        payload: &[P],
+        payload: &[u8],
         fds: Option<&[RawFd]>,
     ) -> Result<()> {
-        let len = payload.len() * mem::size_of::<P>();
+        let len = payload.len();
+        if mem::size_of::<T>() > MAX_MSG_SIZE {
+            return Err(Error::OversizedMsg);
+        }
         if len > MAX_MSG_SIZE - mem::size_of::<T>() {
             return Err(Error::OversizedMsg);
         }
@@ -615,7 +621,9 @@ mod tests {
 
     #[test]
     fn create_listener() {
-        let _ = Listener::new(UNIX_SOCKET_LISTENER, true).unwrap();
+        let listener = Listener::new(UNIX_SOCKET_LISTENER, true).unwrap();
+
+        assert!(listener.as_raw_fd() > 0);
     }
 
     #[test]
@@ -629,7 +637,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn send_data() {
         let listener = Listener::new(UNIX_SOCKET_DATA, true).unwrap();
         listener.set_nonblocking(true).unwrap();
@@ -655,7 +662,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn send_fd() {
         let listener = Listener::new(UNIX_SOCKET_FD, true).unwrap();
         listener.set_nonblocking(true).unwrap();
@@ -809,7 +815,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn send_recv() {
         let listener = Listener::new(UNIX_SOCKET_SEND, true).unwrap();
         listener.set_nonblocking(true).unwrap();
