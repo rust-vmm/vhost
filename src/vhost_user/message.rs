@@ -562,9 +562,9 @@ bitflags! {
     /// Flags for the device configuration message.
     pub struct VhostUserConfigFlags: u32 {
         /// Vhost master messages used for writeable fields.
-        const WRITABLE = 0x0;
+        const WRITABLE = 0x1;
         /// Vhost master messages used for live migration.
-        const LIVE_MIGRATION = 0x1;
+        const LIVE_MIGRATION = 0x2;
     }
 }
 
@@ -596,9 +596,11 @@ impl VhostUserMsgValidator for VhostUserConfig {
     fn is_valid(&self) -> bool {
         if (self.flags & !VhostUserConfigFlags::all().bits()) != 0 {
             return false;
+        } else if self.offset < 0x100 {
+            return false;
         } else if self.size == 0
             || self.size > VHOST_USER_CONFIG_SIZE
-            || self.size + self.offset >= VHOST_USER_CONFIG_SIZE
+            || self.size + self.offset > VHOST_USER_CONFIG_SIZE
         {
             return false;
         }
@@ -656,9 +658,9 @@ pub const VHOST_USER_FS_SLAVE_ENTRIES: usize = 8;
 #[repr(packed)]
 #[derive(Default)]
 pub struct VhostUserFSSlaveMsg {
-    /// TODO:
+    /// File offset.
     pub fd_offset: [u64; VHOST_USER_FS_SLAVE_ENTRIES],
-    /// TODO:
+    /// Offset into the DAX window.
     pub cache_offset: [u64; VHOST_USER_FS_SLAVE_ENTRIES],
     /// Size of region to map.
     pub len: [u64; VHOST_USER_FS_SLAVE_ENTRIES],
@@ -686,13 +688,31 @@ mod tests {
     use std::mem;
 
     #[test]
-    fn check_request_code() {
+    fn check_master_request_code() {
         let code = MasterReq::NOOP;
         assert!(!code.is_valid());
         let code = MasterReq::MAX_CMD;
         assert!(!code.is_valid());
+        assert!(code > MasterReq::NOOP);
         let code = MasterReq::GET_FEATURES;
         assert!(code.is_valid());
+        assert_eq!(code, code.clone());
+        let code: MasterReq = unsafe { std::mem::transmute::<u32, MasterReq>(10000u32) };
+        assert!(!code.is_valid());
+    }
+
+    #[test]
+    fn check_slave_request_code() {
+        let code = SlaveReq::NOOP;
+        assert!(!code.is_valid());
+        let code = SlaveReq::MAX_CMD;
+        assert!(!code.is_valid());
+        assert!(code > SlaveReq::NOOP);
+        let code = SlaveReq::CONFIG_CHANGE_MSG;
+        assert!(code.is_valid());
+        assert_eq!(code, code.clone());
+        let code: SlaveReq = unsafe { std::mem::transmute::<u32, SlaveReq>(10000u32) };
+        assert!(!code.is_valid());
     }
 
     #[test]
@@ -741,6 +761,20 @@ mod tests {
         assert!(!hdr.is_valid());
         hdr.set_version(0x1);
         assert!(hdr.is_valid());
+
+        assert_eq!(hdr, hdr.clone());
+    }
+
+    #[test]
+    fn test_vhost_user_message_u64() {
+        let val = VhostUserU64::default();
+        let val1 = VhostUserU64::new(0);
+
+        let a = val.value;
+        let b = val1.value;
+        assert_eq!(a, b);
+        let a = VhostUserU64::new(1).value;
+        assert_eq!(a, 1);
     }
 
     #[test]
@@ -775,6 +809,104 @@ mod tests {
         msg.guest_phys_addr = 0xFFFFFFFFFFFF0000;
         msg.memory_size = 0;
         assert!(!msg.is_valid());
+        let a = msg.clone().guest_phys_addr;
+        let b = msg.guest_phys_addr;
+        assert_eq!(a, b);
+
+        let msg = VhostUserMemoryRegion::default();
+        let a = msg.guest_phys_addr;
+        assert_eq!(a, 0);
+        let a = msg.memory_size;
+        assert_eq!(a, 0);
+        let a = msg.user_addr;
+        assert_eq!(a, 0);
+        let a = msg.mmap_offset;
+        assert_eq!(a, 0);
+    }
+
+    #[test]
+    fn test_vhost_user_state() {
+        let state = VhostUserVringState::new(5, 8);
+
+        let a = state.index;
+        assert_eq!(a, 5);
+        let a = state.num;
+        assert_eq!(a, 8);
+        assert_eq!(state.is_valid(), true);
+
+        let state = VhostUserVringState::default();
+        let a = state.index;
+        assert_eq!(a, 0);
+        let a = state.num;
+        assert_eq!(a, 0);
+        assert_eq!(state.is_valid(), true);
+    }
+
+    #[test]
+    fn test_vhost_user_addr() {
+        let mut addr = VhostUserVringAddr::new(
+            2,
+            VhostUserVringAddrFlags::VHOST_VRING_F_LOG,
+            0x1000,
+            0x2000,
+            0x3000,
+            0x4000,
+        );
+
+        let a = addr.index;
+        assert_eq!(a, 2);
+        let a = addr.flags;
+        assert_eq!(a, VhostUserVringAddrFlags::VHOST_VRING_F_LOG.bits());
+        let a = addr.descriptor;
+        assert_eq!(a, 0x1000);
+        let a = addr.used;
+        assert_eq!(a, 0x2000);
+        let a = addr.available;
+        assert_eq!(a, 0x3000);
+        let a = addr.log;
+        assert_eq!(a, 0x4000);
+        assert_eq!(addr.is_valid(), true);
+
+        addr.descriptor = 0x1001;
+        assert_eq!(addr.is_valid(), false);
+        addr.descriptor = 0x1000;
+
+        addr.available = 0x3001;
+        assert_eq!(addr.is_valid(), false);
+        addr.available = 0x3000;
+
+        addr.used = 0x2001;
+        assert_eq!(addr.is_valid(), false);
+        addr.used = 0x2000;
+        assert_eq!(addr.is_valid(), true);
+    }
+
+    #[test]
+    fn test_vhost_user_state_from_config() {
+        let config = VringConfigData {
+            queue_max_size: 256,
+            queue_size: 128,
+            flags: VhostUserVringAddrFlags::VHOST_VRING_F_LOG.bits,
+            desc_table_addr: 0x1000,
+            used_ring_addr: 0x2000,
+            avail_ring_addr: 0x3000,
+            log_addr: Some(0x4000),
+        };
+        let addr = VhostUserVringAddr::from_config_data(2, &config);
+
+        let a = addr.index;
+        assert_eq!(a, 2);
+        let a = addr.flags;
+        assert_eq!(a, VhostUserVringAddrFlags::VHOST_VRING_F_LOG.bits());
+        let a = addr.descriptor;
+        assert_eq!(a, 0x1000);
+        let a = addr.used;
+        assert_eq!(a, 0x2000);
+        let a = addr.available;
+        assert_eq!(a, 0x3000);
+        let a = addr.log;
+        assert_eq!(a, 0x4000);
+        assert_eq!(addr.is_valid(), true);
     }
 
     #[test]
@@ -801,7 +933,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn check_user_config_msg() {
         let mut msg = VhostUserConfig::new(
             VHOST_USER_CONFIG_OFFSET,
@@ -827,5 +958,22 @@ mod tests {
         assert!(msg.is_valid());
         msg.flags |= 0x4;
         assert!(!msg.is_valid());
+    }
+
+    #[test]
+    fn test_vhost_user_fs_slave() {
+        let mut fs_slave = VhostUserFSSlaveMsg::default();
+
+        assert_eq!(fs_slave.is_valid(), true);
+
+        fs_slave.fd_offset[0] = 0xffff_ffff_ffff_ffff;
+        fs_slave.len[0] = 0x1;
+        assert_eq!(fs_slave.is_valid(), false);
+
+        assert_ne!(
+            VhostUserFSSlaveMsgFlags::MAP_R,
+            VhostUserFSSlaveMsgFlags::MAP_W
+        );
+        assert_eq!(VhostUserFSSlaveMsgFlags::EMPTY.bits(), 0);
     }
 }
