@@ -393,7 +393,10 @@ impl VhostUserMaster for Master {
             return error_code(VhostUserError::SlaveInternalError);
         } else if body_reply.size != body.size || body_reply.size as usize != buf.len() {
             return error_code(VhostUserError::InvalidMessage);
+        } else if body_reply.offset != body.offset {
+            return error_code(VhostUserError::InvalidMessage);
         }
+
         Ok((body_reply, buf_reply))
     }
 
@@ -571,6 +574,7 @@ impl MasterInternal {
     ) -> VhostUserResult<(T, Vec<u8>, Option<Vec<RawFd>>)> {
         if mem::size_of::<T>() > MAX_MSG_SIZE
             || hdr.get_size() as usize <= mem::size_of::<T>()
+            || hdr.get_size() as usize > MAX_MSG_SIZE
             || hdr.is_reply()
         {
             return Err(VhostUserError::InvalidParam);
@@ -586,11 +590,8 @@ impl MasterInternal {
         {
             Endpoint::<MasterReq>::close_rfds(rfds);
             return Err(VhostUserError::InvalidMessage);
-        } else if bytes > MAX_MSG_SIZE - mem::size_of::<T>() {
+        } else if bytes != buf.len() {
             return Err(VhostUserError::InvalidMessage);
-        } else if bytes < buf.len() {
-            // It's safe because we have checked the buffer size
-            unsafe { buf.set_len(bytes) };
         }
         Ok((body, buf, rfds))
     }
@@ -638,11 +639,14 @@ impl MasterInternal {
 mod tests {
     use super::super::connection::Listener;
     use super::*;
+    use vmm_sys_util::rand::rand_alphanumerics;
 
-    const UNIX_SOCKET_MASTER: &'static str = "/tmp/vhost_user_test_rust_master";
-    const UNIX_SOCKET_MASTER2: &'static str = "/tmp/vhost_user_test_rust_master2";
-    const UNIX_SOCKET_MASTER3: &'static str = "/tmp/vhost_user_test_rust_master3";
-    const UNIX_SOCKET_MASTER4: &'static str = "/tmp/vhost_user_test_rust_master4";
+    fn temp_path() -> String {
+        format!(
+            "/tmp/vhost_test_{}",
+            rand_alphanumerics(8).to_str().unwrap()
+        )
+    }
 
     fn create_pair(path: &str) -> (Master, Endpoint<MasterReq>) {
         let listener = Listener::new(path, true).unwrap();
@@ -653,14 +657,15 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn create_master() {
-        let listener = Listener::new(UNIX_SOCKET_MASTER, true).unwrap();
+        let path = temp_path();
+        let listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
 
-        let master = Master::connect(UNIX_SOCKET_MASTER, 1).unwrap();
+        let master = Master::connect(&path, 1).unwrap();
         let mut slave = Endpoint::<MasterReq>::from_stream(listener.accept().unwrap().unwrap());
 
+        assert!(master.as_raw_fd() > 0);
         // Send two messages continuously
         master.set_owner().unwrap();
         master.reset_owner().unwrap();
@@ -679,24 +684,24 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_create_failure() {
-        let _ = Listener::new(UNIX_SOCKET_MASTER2, true).unwrap();
-        let _ = Listener::new(UNIX_SOCKET_MASTER2, false).is_err();
-        assert!(Master::connect(UNIX_SOCKET_MASTER2, 1).is_err());
+        let path = temp_path();
+        let _ = Listener::new(&path, true).unwrap();
+        let _ = Listener::new(&path, false).is_err();
+        assert!(Master::connect(&path, 1).is_err());
 
-        let listener = Listener::new(UNIX_SOCKET_MASTER2, true).unwrap();
-        assert!(Listener::new(UNIX_SOCKET_MASTER2, false).is_err());
+        let listener = Listener::new(&path, true).unwrap();
+        assert!(Listener::new(&path, false).is_err());
         listener.set_nonblocking(true).unwrap();
 
-        let _master = Master::connect(UNIX_SOCKET_MASTER2, 1).unwrap();
+        let _master = Master::connect(&path, 1).unwrap();
         let _slave = listener.accept().unwrap().unwrap();
     }
 
     #[test]
-    #[ignore]
     fn test_features() {
-        let (master, mut peer) = create_pair(UNIX_SOCKET_MASTER3);
+        let path = temp_path();
+        let (master, mut peer) = create_pair(&path);
 
         master.set_owner().unwrap();
         let (hdr, rfds) = peer.recv_header().unwrap();
@@ -713,6 +718,9 @@ mod tests {
         let (_hdr, rfds) = peer.recv_header().unwrap();
         assert!(rfds.is_none());
 
+        let hdr = VhostUserMsgHeader::new(MasterReq::SET_FEATURES, 0x4, 8);
+        let msg = VhostUserU64::new(0x15);
+        peer.send_message(&hdr, &msg, None).unwrap();
         master.set_features(0x15).unwrap();
         let (_hdr, msg, rfds) = peer.recv_body::<VhostUserU64>().unwrap();
         assert!(rfds.is_none());
@@ -726,9 +734,9 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_protocol_features() {
-        let (mut master, mut peer) = create_pair(UNIX_SOCKET_MASTER4);
+        let path = temp_path();
+        let (mut master, mut peer) = create_pair(&path);
 
         master.set_owner().unwrap();
         let (hdr, rfds) = peer.recv_header().unwrap();
@@ -774,15 +782,5 @@ mod tests {
         let msg = VhostUserU64::new(pfeatures.bits());
         peer.send_message(&hdr, &msg, None).unwrap();
         assert!(master.get_protocol_features().is_err());
-    }
-
-    #[test]
-    fn test_set_mem_table() {
-        // TODO
-    }
-
-    #[test]
-    fn test_get_ring_num() {
-        // TODO
     }
 }

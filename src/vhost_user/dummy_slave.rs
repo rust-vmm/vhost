@@ -1,9 +1,10 @@
 // Copyright (C) 2019 Alibaba Cloud Computing. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::os::unix::io::RawFd;
+
 use super::message::*;
 use super::*;
-use std::os::unix::io::RawFd;
 
 pub const MAX_QUEUE_NUM: usize = 2;
 pub const MAX_VRING_NUM: usize = 256;
@@ -34,7 +35,7 @@ impl DummySlaveReqHandler {
     }
 }
 
-impl VhostUserSlaveReqHandler for DummySlaveReqHandler {
+impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     fn set_owner(&mut self) -> Result<()> {
         if self.owned {
             return Err(Error::InvalidOperation);
@@ -83,28 +84,8 @@ impl VhostUserSlaveReqHandler for DummySlaveReqHandler {
         Ok(())
     }
 
-    fn get_protocol_features(&mut self) -> Result<VhostUserProtocolFeatures> {
-        Ok(VhostUserProtocolFeatures::all())
-    }
-
-    fn set_protocol_features(&mut self, features: u64) -> Result<()> {
-        // Note: slave that reported VHOST_USER_F_PROTOCOL_FEATURES must
-        // support this message even before VHOST_USER_SET_FEATURES was
-        // called.
-        // What happens if the master calls set_features() with
-        // VHOST_USER_F_PROTOCOL_FEATURES cleared after calling this
-        // interface?
-        self.acked_protocol_features = features;
-        Ok(())
-    }
-
     fn set_mem_table(&mut self, _ctx: &[VhostUserMemoryRegion], _fds: &[RawFd]) -> Result<()> {
-        // TODO
         Ok(())
-    }
-
-    fn get_queue_num(&mut self) -> Result<u64> {
-        Ok(MAX_QUEUE_NUM as u64)
     }
 
     fn set_vring_num(&mut self, index: u32, num: u32) -> Result<()> {
@@ -199,6 +180,25 @@ impl VhostUserSlaveReqHandler for DummySlaveReqHandler {
         Ok(())
     }
 
+    fn get_protocol_features(&mut self) -> Result<VhostUserProtocolFeatures> {
+        Ok(VhostUserProtocolFeatures::all())
+    }
+
+    fn set_protocol_features(&mut self, features: u64) -> Result<()> {
+        // Note: slave that reported VHOST_USER_F_PROTOCOL_FEATURES must
+        // support this message even before VHOST_USER_SET_FEATURES was
+        // called.
+        // What happens if the master calls set_features() with
+        // VHOST_USER_F_PROTOCOL_FEATURES cleared after calling this
+        // interface?
+        self.acked_protocol_features = features;
+        Ok(())
+    }
+
+    fn get_queue_num(&mut self) -> Result<u64> {
+        Ok(MAX_QUEUE_NUM as u64)
+    }
+
     fn set_vring_enable(&mut self, index: u32, enable: bool) -> Result<()> {
         // This request should be handled only when VHOST_USER_F_PROTOCOL_FEATURES
         // has been negotiated.
@@ -222,7 +222,7 @@ impl VhostUserSlaveReqHandler for DummySlaveReqHandler {
         size: u32,
         _flags: VhostUserConfigFlags,
     ) -> Result<Vec<u8>> {
-        if self.acked_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
+        if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
             return Err(Error::InvalidOperation);
         } else if offset < VHOST_USER_CONFIG_OFFSET
             || offset >= VHOST_USER_CONFIG_SIZE
@@ -236,7 +236,7 @@ impl VhostUserSlaveReqHandler for DummySlaveReqHandler {
 
     fn set_config(&mut self, offset: u32, buf: &[u8], _flags: VhostUserConfigFlags) -> Result<()> {
         let size = buf.len() as u32;
-        if self.acked_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
+        if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
             return Err(Error::InvalidOperation);
         } else if offset < VHOST_USER_CONFIG_OFFSET
             || offset >= VHOST_USER_CONFIG_SIZE
