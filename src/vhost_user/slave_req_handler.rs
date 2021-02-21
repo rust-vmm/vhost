@@ -590,16 +590,12 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         Ok(())
     }
 
-    fn send_reply_with_payload<T, P>(
+    fn send_reply_with_payload<T: Sized>(
         &mut self,
         req: &VhostUserMsgHeader<MasterReq>,
         msg: &T,
-        payload: &[P],
-    ) -> Result<()>
-    where
-        T: Sized,
-        P: Sized,
-    {
+        payload: &[u8],
+    ) -> Result<()> {
         let hdr = self.new_reply_header::<T>(req, payload.len())?;
         self.main_sock
             .send_message_with_payload(&hdr, msg, payload, None)?;
