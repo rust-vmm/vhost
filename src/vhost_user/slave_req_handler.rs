@@ -552,7 +552,10 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         req: &VhostUserMsgHeader<MasterReq>,
         payload_size: usize,
     ) -> Result<VhostUserMsgHeader<MasterReq>> {
-        if mem::size_of::<T>() > MAX_MSG_SIZE {
+        if mem::size_of::<T>() > MAX_MSG_SIZE
+            || payload_size > MAX_MSG_SIZE
+            || mem::size_of::<T>() + payload_size > MAX_MSG_SIZE
+        {
             return Err(Error::InvalidParam);
         }
         self.check_state()?;
@@ -568,7 +571,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         req: &VhostUserMsgHeader<MasterReq>,
         res: Result<()>,
     ) -> Result<()> {
-        if self.reply_ack_enabled {
+        if self.reply_ack_enabled && req.is_need_reply() {
             let hdr = self.new_reply_header::<VhostUserU64>(req, 0)?;
             let val = match res {
                 Ok(_) => 0,

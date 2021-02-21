@@ -569,7 +569,10 @@ impl MasterInternal {
         &mut self,
         hdr: &VhostUserMsgHeader<MasterReq>,
     ) -> VhostUserResult<(T, Vec<u8>, Option<Vec<RawFd>>)> {
-        if mem::size_of::<T>() > MAX_MSG_SIZE || hdr.is_reply() {
+        if mem::size_of::<T>() > MAX_MSG_SIZE
+            || hdr.get_size() as usize <= mem::size_of::<T>()
+            || hdr.is_reply()
+        {
             return Err(VhostUserError::InvalidParam);
         }
         self.check_state()?;
