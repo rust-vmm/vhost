@@ -377,3 +377,102 @@ impl<S: VhostUserMasterReqHandler> AsRawFd for MasterReqHandler<S> {
         self.sub_sock.as_raw_fd()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(feature = "vhost-user-slave")]
+    use crate::vhost_user::SlaveFsCacheReq;
+    #[cfg(feature = "vhost-user-slave")]
+    use std::os::unix::io::FromRawFd;
+
+    struct MockMasterReqHandler {}
+
+    impl VhostUserMasterReqHandlerMut for MockMasterReqHandler {
+        /// Handle virtio-fs map file requests from the slave.
+        fn fs_slave_map(&mut self, _fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<u64> {
+            // Safe because we have just received the rawfd from kernel.
+            unsafe { libc::close(fd) };
+            Ok(0)
+        }
+
+        /// Handle virtio-fs unmap file requests from the slave.
+        fn fs_slave_unmap(&mut self, _fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
+            Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+        }
+    }
+
+    #[test]
+    fn test_new_master_req_handler() {
+        let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));
+        let mut handler = MasterReqHandler::new(backend).unwrap();
+
+        assert!(handler.get_tx_raw_fd() >= 0);
+        assert!(handler.as_raw_fd() >= 0);
+        handler.check_state().unwrap();
+
+        assert_eq!(handler.error, None);
+        handler.set_failed(libc::EAGAIN);
+        assert_eq!(handler.error, Some(libc::EAGAIN));
+        handler.check_state().unwrap_err();
+    }
+
+    #[cfg(feature = "vhost-user-slave")]
+    #[test]
+    fn test_master_slave_req_handler() {
+        let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));
+        let mut handler = MasterReqHandler::new(backend).unwrap();
+
+        let fd = unsafe { libc::dup(handler.get_tx_raw_fd()) };
+        if fd < 0 {
+            panic!("failed to duplicated tx fd!");
+        }
+        let stream = unsafe { UnixStream::from_raw_fd(fd) };
+        let fs_cache = SlaveFsCacheReq::from_stream(stream);
+
+        std::thread::spawn(move || {
+            let res = handler.handle_request().unwrap();
+            assert_eq!(res, 0);
+            handler.handle_request().unwrap_err();
+        });
+
+        fs_cache
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
+            .unwrap();
+        // When REPLY_ACK has not been negotiated, the master has no way to detect failure from
+        // slave side.
+        fs_cache
+            .fs_slave_unmap(&VhostUserFSSlaveMsg::default())
+            .unwrap();
+    }
+
+    #[cfg(feature = "vhost-user-slave")]
+    #[test]
+    fn test_master_slave_req_handler_with_ack() {
+        let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));
+        let mut handler = MasterReqHandler::new(backend).unwrap();
+        handler.set_reply_ack_flag(true);
+
+        let fd = unsafe { libc::dup(handler.get_tx_raw_fd()) };
+        if fd < 0 {
+            panic!("failed to duplicated tx fd!");
+        }
+        let stream = unsafe { UnixStream::from_raw_fd(fd) };
+        let fs_cache = SlaveFsCacheReq::from_stream(stream);
+
+        std::thread::spawn(move || {
+            let res = handler.handle_request().unwrap();
+            assert_eq!(res, 0);
+            handler.handle_request().unwrap_err();
+        });
+
+        fs_cache.set_reply_ack_flag(true);
+        fs_cache
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
+            .unwrap();
+        fs_cache
+            .fs_slave_unmap(&VhostUserFSSlaveMsg::default())
+            .unwrap_err();
+    }
+}

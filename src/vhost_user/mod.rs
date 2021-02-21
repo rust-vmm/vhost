@@ -175,21 +175,32 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Result of request handler.
 pub type HandlerResult<T> = std::result::Result<T, IOError>;
 
-#[cfg(all(test, feature = "vhost-user-master", feature = "vhost-user-slave"))]
+#[cfg(all(test, feature = "vhost-user-slave"))]
 mod dummy_slave;
 
 #[cfg(all(test, feature = "vhost-user-master", feature = "vhost-user-slave"))]
 mod tests {
+    use std::os::unix::io::AsRawFd;
+    use std::sync::{Arc, Barrier, Mutex};
+    use std::thread;
+    use vmm_sys_util::rand::rand_alphanumerics;
+
     use super::dummy_slave::{DummySlaveReqHandler, VIRTIO_FEATURES};
     use super::message::*;
     use super::*;
     use crate::backend::VhostBackend;
-    use std::sync::{Arc, Barrier, Mutex};
-    use std::thread;
+    use crate::{VhostUserMemoryRegionInfo, VringConfigData};
+
+    fn temp_path() -> String {
+        format!(
+            "/tmp/vhost_test_{}",
+            rand_alphanumerics(8).to_str().unwrap()
+        )
+    }
 
     fn create_slave<S: VhostUserSlaveReqHandler>(
         path: &str,
-        backend: Arc<Mutex<S>>,
+        backend: Arc<S>,
     ) -> (Master, SlaveReqHandler<S>) {
         let listener = Listener::new(path, true).unwrap();
         let mut slave_listener = SlaveListener::new(listener, backend).unwrap();
@@ -208,8 +219,8 @@ mod tests {
     #[test]
     fn test_set_owner() {
         let slave_be = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
-        let (master, mut slave) =
-            create_slave("/tmp/vhost_user_lib_unit_test_owner", slave_be.clone());
+        let path = temp_path();
+        let (master, mut slave) = create_slave(&path, slave_be.clone());
 
         assert_eq!(slave_be.lock().unwrap().owned, false);
         master.set_owner().unwrap();
@@ -224,9 +235,9 @@ mod tests {
     fn test_set_features() {
         let mbar = Arc::new(Barrier::new(2));
         let sbar = mbar.clone();
+        let path = temp_path();
         let slave_be = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
-        let (mut master, mut slave) =
-            create_slave("/tmp/vhost_user_lib_unit_test_feature", slave_be.clone());
+        let (mut master, mut slave) = create_slave(&path, slave_be.clone());
 
         thread::spawn(move || {
             slave.handle_request().unwrap();
@@ -262,5 +273,158 @@ mod tests {
         master.set_protocol_features(features).unwrap();
 
         mbar.wait();
+    }
+
+    #[test]
+    fn test_master_slave_process() {
+        let mbar = Arc::new(Barrier::new(2));
+        let sbar = mbar.clone();
+        let path = temp_path();
+        let slave_be = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
+        let (mut master, mut slave) = create_slave(&path, slave_be.clone());
+
+        thread::spawn(move || {
+            // set_own()
+            slave.handle_request().unwrap();
+            assert_eq!(slave_be.lock().unwrap().owned, true);
+
+            // get/set_features()
+            slave.handle_request().unwrap();
+            slave.handle_request().unwrap();
+            assert_eq!(
+                slave_be.lock().unwrap().acked_features,
+                VIRTIO_FEATURES & !0x1
+            );
+
+            slave.handle_request().unwrap();
+            slave.handle_request().unwrap();
+            assert_eq!(
+                slave_be.lock().unwrap().acked_protocol_features,
+                VhostUserProtocolFeatures::all().bits()
+            );
+
+            // get_queue_num()
+            slave.handle_request().unwrap();
+
+            // set_mem_table()
+            slave.handle_request().unwrap();
+
+            // get/set_config()
+            slave.handle_request().unwrap();
+            slave.handle_request().unwrap();
+
+            // set_slave_request_fd
+            slave.handle_request().unwrap();
+
+            // set_vring_enable
+            slave.handle_request().unwrap();
+
+            /*
+            // set_log_base,set_log_fd()
+            slave.handle_request().unwrap();
+            slave.handle_request().unwrap();
+             */
+
+            // set_vring_xxx
+            slave.handle_request().unwrap();
+            slave.handle_request().unwrap();
+            slave.handle_request().unwrap();
+            slave.handle_request().unwrap();
+            slave.handle_request().unwrap();
+            slave.handle_request().unwrap();
+
+            sbar.wait();
+        });
+
+        master.set_owner().unwrap();
+
+        // set virtio features
+        let features = master.get_features().unwrap();
+        assert_eq!(features, VIRTIO_FEATURES);
+        master.set_features(VIRTIO_FEATURES & !0x1).unwrap();
+
+        // set vhost protocol features
+        let features = master.get_protocol_features().unwrap();
+        assert_eq!(features.bits(), VhostUserProtocolFeatures::all().bits());
+        master.set_protocol_features(features).unwrap();
+
+        let num = master.get_queue_num().unwrap();
+        assert_eq!(num, 2);
+
+        let eventfd = vmm_sys_util::eventfd::EventFd::new(0).unwrap();
+        let mem = [VhostUserMemoryRegionInfo {
+            guest_phys_addr: 0,
+            memory_size: 0x10_0000,
+            userspace_addr: 0,
+            mmap_offset: 0,
+            mmap_handle: eventfd.as_raw_fd(),
+        }];
+        master.set_mem_table(&mem).unwrap();
+
+        master
+            .set_config(0x100, VhostUserConfigFlags::WRITABLE, &[0xa5u8])
+            .unwrap();
+        let buf = [0x0u8; 4];
+        let (reply_body, reply_payload) = master
+            .get_config(0x100, 4, VhostUserConfigFlags::empty(), &buf)
+            .unwrap();
+        let offset = reply_body.offset;
+        assert_eq!(offset, 0x100);
+        assert_eq!(reply_payload[0], 0xa5);
+
+        master.set_slave_request_fd(eventfd.as_raw_fd()).unwrap();
+        master.set_vring_enable(0, true).unwrap();
+
+        /*
+        master.set_log_base(0, Some(eventfd.as_raw_fd())).unwrap();
+        master.set_log_fd(eventfd.as_raw_fd()).unwrap();
+         */
+
+        master.set_vring_num(0, 256).unwrap();
+        master.set_vring_base(0, 0).unwrap();
+        let config = VringConfigData {
+            queue_max_size: 256,
+            queue_size: 128,
+            flags: VhostUserVringAddrFlags::VHOST_VRING_F_LOG.bits(),
+            desc_table_addr: 0x1000,
+            used_ring_addr: 0x2000,
+            avail_ring_addr: 0x3000,
+            log_addr: Some(0x4000),
+        };
+        master.set_vring_addr(0, &config).unwrap();
+        master.set_vring_call(0, &eventfd).unwrap();
+        master.set_vring_kick(0, &eventfd).unwrap();
+        master.set_vring_err(0, &eventfd).unwrap();
+
+        mbar.wait();
+    }
+
+    #[test]
+    fn test_error_display() {
+        assert_eq!(format!("{}", Error::InvalidParam), "invalid parameters");
+        assert_eq!(format!("{}", Error::InvalidOperation), "invalid operation");
+    }
+
+    #[test]
+    fn test_should_reconnect() {
+        assert_eq!(Error::PartialMessage.should_reconnect(), true);
+        assert_eq!(Error::SlaveInternalError.should_reconnect(), true);
+        assert_eq!(Error::MasterInternalError.should_reconnect(), true);
+        assert_eq!(Error::InvalidParam.should_reconnect(), false);
+        assert_eq!(Error::InvalidOperation.should_reconnect(), false);
+        assert_eq!(Error::InvalidMessage.should_reconnect(), false);
+        assert_eq!(Error::IncorrectFds.should_reconnect(), false);
+        assert_eq!(Error::OversizedMsg.should_reconnect(), false);
+        assert_eq!(Error::FeatureMismatch.should_reconnect(), false);
+    }
+
+    #[test]
+    fn test_error_from_sys_util_error() {
+        let e: Error = vmm_sys_util::errno::Error::new(libc::EAGAIN.into()).into();
+        if let Error::SocketRetry(e1) = e {
+            assert_eq!(e1.raw_os_error().unwrap(), libc::EAGAIN);
+        } else {
+            panic!("invalid error code conversion!");
+        }
     }
 }

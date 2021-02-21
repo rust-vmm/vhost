@@ -44,3 +44,43 @@ impl<S: VhostUserSlaveReqHandler> SlaveListener<S> {
         self.listener.set_nonblocking(block)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use super::*;
+    use crate::vhost_user::dummy_slave::DummySlaveReqHandler;
+
+    #[test]
+    fn test_slave_listener_set_nonblocking() {
+        let backend = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
+        let listener =
+            Listener::new("/tmp/vhost_user_lib_unit_test_slave_nonblocking", true).unwrap();
+        let slave_listener = SlaveListener::new(listener, backend).unwrap();
+
+        slave_listener.set_nonblocking(true).unwrap();
+        slave_listener.set_nonblocking(false).unwrap();
+        slave_listener.set_nonblocking(false).unwrap();
+        slave_listener.set_nonblocking(true).unwrap();
+        slave_listener.set_nonblocking(true).unwrap();
+    }
+
+    #[cfg(feature = "vhost-user-master")]
+    #[test]
+    fn test_slave_listener_accept() {
+        use super::super::Master;
+
+        let path = "/tmp/vhost_user_lib_unit_test_slave_accept";
+        let backend = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
+        let listener = Listener::new(path, true).unwrap();
+        let mut slave_listener = SlaveListener::new(listener, backend).unwrap();
+
+        slave_listener.set_nonblocking(true).unwrap();
+        assert!(slave_listener.accept().unwrap().is_none());
+        assert!(slave_listener.accept().unwrap().is_none());
+
+        let _master = Master::connect(path, 1).unwrap();
+        let _slave = slave_listener.accept().unwrap().unwrap();
+    }
+}

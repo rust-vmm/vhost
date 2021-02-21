@@ -74,7 +74,7 @@ pub enum Error {
     IoctlError(std::io::Error),
     /// Error from IO subsystem.
     IOError(std::io::Error),
-    #[cfg(feature = "vhost-user-master")]
+    #[cfg(feature = "vhost-user")]
     /// Error from the vhost-user subsystem.
     VhostUserProtocol(vhost_user::Error),
 }
@@ -95,7 +95,7 @@ impl std::fmt::Display for Error {
             Error::VhostOpen(e) => write!(f, "failure in opening vhost file: {}", e),
             #[cfg(feature = "vhost-kern")]
             Error::IoctlError(e) => write!(f, "failure in vhost ioctl: {}", e),
-            #[cfg(feature = "vhost-user-master")]
+            #[cfg(feature = "vhost-user")]
             Error::VhostUserProtocol(e) => write!(f, "vhost-user: {}", e),
         }
     }
@@ -150,5 +150,13 @@ mod tests {
         );
 
         assert_eq!(format!("{:?}", Error::AvailAddress), "AvailAddress");
+    }
+
+    #[cfg(feature = "vhost-user")]
+    #[test]
+    fn test_convert_from_vhost_user_error() {
+        let e: Error = vhost_user::Error::OversizedMsg.into();
+
+        assert_eq!(format!("{}", e), "vhost-user: oversized message");
     }
 }

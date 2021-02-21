@@ -743,3 +743,24 @@ impl<S: VhostUserSlaveReqHandler> AsRawFd for SlaveReqHandler<S> {
         self.main_sock.as_raw_fd()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::os::unix::io::AsRawFd;
+
+    use super::*;
+    use crate::vhost_user::dummy_slave::DummySlaveReqHandler;
+
+    #[test]
+    fn test_slave_req_handler_new() {
+        let (p1, _p2) = UnixStream::pair().unwrap();
+        let endpoint = Endpoint::<MasterReq>::from_stream(p1);
+        let backend = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
+        let mut handler = SlaveReqHandler::new(endpoint, backend);
+
+        handler.check_state().unwrap();
+        handler.set_failed(libc::EAGAIN);
+        handler.check_state().unwrap_err();
+        assert!(handler.as_raw_fd() >= 0);
+    }
+}
