@@ -1,6 +1,14 @@
 # vHost
-A crate to support vhost backend drivers for virtio devices.
+A pure rust library for vDPA, vhost and vhost-user.
 
+The `vhost` crate aims to help implementing dataplane for virtio backend drivers. It supports three different types of dataplane drivers:
+- vhost: the dataplane is implemented by linux kernel
+- vhost-user: the dataplane is implemented by dedicated vhost-user servers
+- vDPA(vhost DataPath Accelerator): the dataplane is implemented by hardwares
+
+The main relationship among Traits and Structs exported by the `vhost` crate is as below:
+
+![vhost Architecture](/docs/vhost_architecture.png)
 ## Kernel-based vHost Backend Drivers
 The vhost drivers in Linux provide in-kernel virtio device emulation. Normally
 the hypervisor userspace process emulates I/O accesses from the guest.
@@ -11,7 +19,7 @@ The hypervisor relies on ioctl based interfaces to control those in-kernel
 vhost drivers, such as vhost-net, vhost-scsi and vhost-vsock etc.
 
 ## vHost-user Backend Drivers
-The vhost-user protocol is aiming to implement vhost backend drivers in
+The [vhost-user protocol](https://qemu.readthedocs.io/en/latest/interop/vhost-user.html#communication) aims to implement vhost backend drivers in
 userspace, which complements the ioctl interface used to control the vhost
 implementation in the Linux kernel. It implements the control plane needed
 to establish virtqueue sharing with a user space process on the same host.
