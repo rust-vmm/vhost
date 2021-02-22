@@ -1,8 +1,12 @@
 [package]
 name = "vhost"
 version = "0.1.0"
+keywords = ["vhost", "vhost-user", "virtio", "vdpa"]
+description = "a pure rust library for vdpa, vhost and vhost-user"
 authors = ["Liu Jiang <gerry@linux.alibaba.com>"]
 repository = "https://github.com/rust-vmm/vhost"
+documentation = "https://docs.rs/vhost"
+readme = "README.md"
 license = "Apache-2.0 or BSD-3-Clause"
 edition = "2018"
 
