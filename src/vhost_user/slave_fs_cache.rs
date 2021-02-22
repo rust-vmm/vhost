@@ -5,7 +5,7 @@ use std::io;
 use std::mem;
 use std::os::unix::io::RawFd;
 use std::os::unix::net::UnixStream;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::connection::Endpoint;
 use super::message::*;
@@ -92,15 +92,17 @@ impl SlaveFsCacheReq {
         }
     }
 
+    fn node(&self) -> MutexGuard<SlaveFsCacheReqInternal> {
+        self.node.lock().unwrap()
+    }
+
     fn send_message(
         &self,
         request: SlaveReq,
         fs: &VhostUserFSSlaveMsg,
         fds: Option<&[RawFd]>,
     ) -> io::Result<u64> {
-        self.node
-            .lock()
-            .unwrap()
+        self.node()
             .send_message(request, fs, fds)
             .or_else(|e| Err(io::Error::new(io::ErrorKind::Other, format!("{}", e))))
     }
@@ -116,12 +118,12 @@ impl SlaveFsCacheReq {
     /// the "REPLY_ACK" flag will be set in the message header for every slave to master request
     /// message.
     pub fn set_reply_ack_flag(&self, enable: bool) {
-        self.node.lock().unwrap().reply_ack_negotiated = enable;
+        self.node().reply_ack_negotiated = enable;
     }
 
     /// Mark endpoint as failed with specified error code.
     pub fn set_failed(&self, error: i32) {
-        self.node.lock().unwrap().error = Some(error);
+        self.node().error = Some(error);
     }
 }
 
@@ -148,9 +150,9 @@ mod tests {
         let (p1, _p2) = UnixStream::pair().unwrap();
         let fs_cache = SlaveFsCacheReq::from_stream(p1);
 
-        assert!(fs_cache.node.lock().unwrap().error.is_none());
+        assert!(fs_cache.node().error.is_none());
         fs_cache.set_failed(libc::EAGAIN);
-        assert_eq!(fs_cache.node.lock().unwrap().error, Some(libc::EAGAIN));
+        assert_eq!(fs_cache.node().error, Some(libc::EAGAIN));
     }
 
     #[test]
@@ -166,7 +168,7 @@ mod tests {
         fs_cache
             .fs_slave_unmap(&VhostUserFSSlaveMsg::default())
             .unwrap_err();
-        fs_cache.node.lock().unwrap().error = None;
+        fs_cache.node().error = None;
 
         drop(p2);
         fs_cache
@@ -175,5 +177,50 @@ mod tests {
         fs_cache
             .fs_slave_unmap(&VhostUserFSSlaveMsg::default())
             .unwrap_err();
+    }
+
+    #[test]
+    fn test_slave_fs_cache_recv_negative() {
+        let (p1, p2) = UnixStream::pair().unwrap();
+        let fd = p2.as_raw_fd();
+        let fs_cache = SlaveFsCacheReq::from_stream(p1);
+        let mut master = Endpoint::<SlaveReq>::from_stream(p2);
+
+        let len = mem::size_of::<VhostUserFSSlaveMsg>();
+        let mut hdr = VhostUserMsgHeader::new(
+            SlaveReq::FS_MAP,
+            VhostUserHeaderFlag::REPLY.bits(),
+            len as u32,
+        );
+        let body = VhostUserU64::new(0);
+
+        master.send_message(&hdr, &body, Some(&[fd])).unwrap();
+        fs_cache
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
+            .unwrap();
+
+        fs_cache.set_reply_ack_flag(true);
+        fs_cache
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
+            .unwrap_err();
+
+        hdr.set_code(SlaveReq::FS_UNMAP);
+        master.send_message(&hdr, &body, None).unwrap();
+        fs_cache
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
+            .unwrap_err();
+        hdr.set_code(SlaveReq::FS_MAP);
+
+        let body = VhostUserU64::new(1);
+        master.send_message(&hdr, &body, None).unwrap();
+        fs_cache
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
+            .unwrap_err();
+
+        let body = VhostUserU64::new(0);
+        master.send_message(&hdr, &body, None).unwrap();
+        fs_cache
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
+            .unwrap();
     }
 }
