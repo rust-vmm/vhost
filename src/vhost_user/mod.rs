@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn create_dummy_slave() {
-        let mut slave = DummySlaveReqHandler::new();
+        let slave = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
 
         slave.set_owner().unwrap();
         assert!(slave.set_owner().is_err());
@@ -319,11 +319,9 @@ mod tests {
             // set_vring_enable
             slave.handle_request().unwrap();
 
-            /*
             // set_log_base,set_log_fd()
-            slave.handle_request().unwrap();
-            slave.handle_request().unwrap();
-             */
+            slave.handle_request().unwrap_err();
+            slave.handle_request().unwrap_err();
 
             // set_vring_xxx
             slave.handle_request().unwrap();
@@ -375,10 +373,9 @@ mod tests {
         master.set_slave_request_fd(eventfd.as_raw_fd()).unwrap();
         master.set_vring_enable(0, true).unwrap();
 
-        /*
+        // unimplemented yet
         master.set_log_base(0, Some(eventfd.as_raw_fd())).unwrap();
         master.set_log_fd(eventfd.as_raw_fd()).unwrap();
-         */
 
         master.set_vring_num(0, 256).unwrap();
         master.set_vring_base(0, 0).unwrap();
