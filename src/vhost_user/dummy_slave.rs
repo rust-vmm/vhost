@@ -57,9 +57,7 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     }
 
     fn set_features(&mut self, features: u64) -> Result<()> {
-        if !self.owned {
-            return Err(Error::InvalidOperation);
-        } else if self.features_acked {
+        if !self.owned || self.features_acked {
             return Err(Error::InvalidOperation);
         } else if (features & !VIRTIO_FEATURES) != 0 {
             return Err(Error::InvalidParam);
@@ -224,8 +222,7 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     ) -> Result<Vec<u8>> {
         if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
             return Err(Error::InvalidOperation);
-        } else if offset < VHOST_USER_CONFIG_OFFSET
-            || offset >= VHOST_USER_CONFIG_SIZE
+        } else if !(VHOST_USER_CONFIG_OFFSET..VHOST_USER_CONFIG_SIZE).contains(&offset)
             || size > VHOST_USER_CONFIG_SIZE - VHOST_USER_CONFIG_OFFSET
             || size + offset > VHOST_USER_CONFIG_SIZE
         {
@@ -238,8 +235,7 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
         let size = buf.len() as u32;
         if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
             return Err(Error::InvalidOperation);
-        } else if offset < VHOST_USER_CONFIG_OFFSET
-            || offset >= VHOST_USER_CONFIG_SIZE
+        } else if !(VHOST_USER_CONFIG_OFFSET..VHOST_USER_CONFIG_SIZE).contains(&offset)
             || size > VHOST_USER_CONFIG_SIZE - VHOST_USER_CONFIG_OFFSET
             || size + offset > VHOST_USER_CONFIG_SIZE
         {

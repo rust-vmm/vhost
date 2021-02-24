@@ -104,7 +104,7 @@ impl SlaveFsCacheReq {
     ) -> io::Result<u64> {
         self.node()
             .send_message(request, fs, fds)
-            .or_else(|e| Err(io::Error::new(io::ErrorKind::Other, format!("{}", e))))
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{}", e)))
     }
 
     /// Create a new instance from a `UnixStream` object.

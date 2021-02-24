@@ -579,10 +579,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         // invalid FD flag. This flag is set when there is no file descriptor
         // in the ancillary data. This signals that polling will be used
         // instead of waiting for the call.
-        let nofd = match msg.value & 0x100u64 {
-            0x100u64 => true,
-            _ => false,
-        };
+        let nofd = (msg.value & 0x100u64) == 0x100u64;
 
         let mut rfd = None;
         match rfds {

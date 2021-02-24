@@ -1,7 +1,6 @@
 // Copyright (C) 2019-2021 Alibaba Cloud. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use libc;
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
@@ -310,7 +309,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
             _ => {
                 if rfds.is_some() {
                     Endpoint::<SlaveReq>::close_rfds(rfds);
-                    return Err(Error::InvalidMessage);
+                    Err(Error::InvalidMessage)
                 } else {
                     Ok(rfds)
                 }
