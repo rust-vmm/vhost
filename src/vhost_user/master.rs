@@ -395,9 +395,10 @@ impl VhostUserMaster for Master {
             return error_code(VhostUserError::InvalidMessage);
         } else if body_reply.size == 0 {
             return error_code(VhostUserError::SlaveInternalError);
-        } else if body_reply.size != body.size || body_reply.size as usize != buf.len() {
-            return error_code(VhostUserError::InvalidMessage);
-        } else if body_reply.offset != body.offset {
+        } else if body_reply.size != body.size
+            || body_reply.size as usize != buf.len()
+            || body_reply.offset != body.offset
+        {
             return error_code(VhostUserError::InvalidMessage);
         }
 

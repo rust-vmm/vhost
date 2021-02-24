@@ -809,7 +809,7 @@ mod tests {
         msg.guest_phys_addr = 0xFFFFFFFFFFFF0000;
         msg.memory_size = 0;
         assert!(!msg.is_valid());
-        let a = msg.clone().guest_phys_addr;
+        let a = msg.guest_phys_addr;
         let b = msg.guest_phys_addr;
         assert_eq!(a, b);
 

@@ -63,20 +63,22 @@ pub trait VhostKernBackend: AsRawFd {
             .checked_add(desc_table_size)
             .map_or(true, |v| !m.address_in_range(v))
         {
-            false
-        } else if GuestAddress(config_data.avail_ring_addr)
+            return false;
+        }
+        if GuestAddress(config_data.avail_ring_addr)
             .checked_add(avail_ring_size)
             .map_or(true, |v| !m.address_in_range(v))
         {
-            false
-        } else if GuestAddress(config_data.used_ring_addr)
+            return false;
+        }
+        if GuestAddress(config_data.used_ring_addr)
             .checked_add(used_ring_size)
             .map_or(true, |v| !m.address_in_range(v))
         {
-            false
-        } else {
-            config_data.is_log_addr_valid()
+            return false;
         }
+
+        config_data.is_log_addr_valid()
     }
 }
 

@@ -417,7 +417,7 @@ mod tests {
 
     #[test]
     fn test_error_from_sys_util_error() {
-        let e: Error = vmm_sys_util::errno::Error::new(libc::EAGAIN.into()).into();
+        let e: Error = vmm_sys_util::errno::Error::new(libc::EAGAIN).into();
         if let Error::SocketRetry(e1) = e {
             assert_eq!(e1.raw_os_error().unwrap(), libc::EAGAIN);
         } else {
