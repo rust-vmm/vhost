@@ -777,7 +777,6 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         let vflag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let pflag = VhostUserProtocolFeatures::REPLY_ACK;
         if (self.virtio_features & vflag) != 0
-            && (self.acked_virtio_features & vflag) != 0
             && self.protocol_features.contains(pflag)
             && (self.acked_protocol_features & pflag.bits()) != 0
         {
