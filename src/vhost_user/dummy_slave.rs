@@ -248,4 +248,8 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     fn get_max_mem_slots(&mut self) -> Result<u64> {
         Ok(MAX_MEM_SLOTS as u64)
     }
+
+    fn add_mem_region(&mut self, _region: &VhostUserSingleMemoryRegion, _fd: RawFd) -> Result<()> {
+        Ok(())
+    }
 }

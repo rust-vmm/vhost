@@ -180,11 +180,13 @@ mod dummy_slave;
 
 #[cfg(all(test, feature = "vhost-user-master", feature = "vhost-user-slave"))]
 mod tests {
+    use std::fs::File;
     use std::os::unix::io::AsRawFd;
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Barrier, Mutex};
     use std::thread;
     use vmm_sys_util::rand::rand_alphanumerics;
+    use vmm_sys_util::tempfile::TempFile;
 
     use super::dummy_slave::{DummySlaveReqHandler, VIRTIO_FEATURES};
     use super::message::*;
@@ -336,6 +338,9 @@ mod tests {
             // get_max_mem_slots()
             slave.handle_request().unwrap();
 
+            // add_mem_region()
+            slave.handle_request().unwrap();
+
             sbar.wait();
         });
 
@@ -400,6 +405,16 @@ mod tests {
 
         let max_mem_slots = master.get_max_mem_slots().unwrap();
         assert_eq!(max_mem_slots, 32);
+
+        let region_file: File = TempFile::new().unwrap().into_file();
+        let region = VhostUserMemoryRegionInfo {
+            guest_phys_addr: 0x10_0000,
+            memory_size: 0x10_0000,
+            userspace_addr: 0,
+            mmap_offset: 0,
+            mmap_handle: region_file.as_raw_fd(),
+        };
+        master.add_mem_region(&region).unwrap();
 
         mbar.wait();
     }
