@@ -56,6 +56,9 @@ pub trait VhostUserMaster: VhostBackend {
 
     /// Add a new guest memory mapping for vhost to use.
     fn add_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()>;
+
+    /// Remove a guest memory mapping from vhost.
+    fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()>;
 }
 
 fn error_code<T>(err: VhostUserError) -> Result<T> {
@@ -473,6 +476,26 @@ impl VhostUserMaster for Master {
         );
         let fds = [region.mmap_handle];
         let hdr = node.send_request_with_body(MasterReq::ADD_MEM_REG, &body, Some(&fds))?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
+    }
+
+    fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()> {
+        let mut node = self.node();
+        if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
+        {
+            return error_code(VhostUserError::InvalidOperation);
+        }
+        if region.memory_size == 0 {
+            return error_code(VhostUserError::InvalidParam);
+        }
+
+        let body = VhostUserSingleMemoryRegion::new(
+            region.guest_phys_addr,
+            region.memory_size,
+            region.userspace_addr,
+            region.mmap_offset,
+        );
+        let hdr = node.send_request_with_body(MasterReq::REM_MEM_REG, &body, None)?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 }

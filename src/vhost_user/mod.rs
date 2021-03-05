@@ -341,6 +341,9 @@ mod tests {
             // add_mem_region()
             slave.handle_request().unwrap();
 
+            // remove_mem_region()
+            slave.handle_request().unwrap();
+
             sbar.wait();
         });
 
@@ -415,6 +418,8 @@ mod tests {
             mmap_handle: region_file.as_raw_fd(),
         };
         master.add_mem_region(&region).unwrap();
+
+        master.remove_mem_region(&region).unwrap();
 
         mbar.wait();
     }

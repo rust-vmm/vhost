@@ -64,6 +64,7 @@ pub trait VhostUserSlaveReqHandler {
     fn set_slave_req_fd(&self, _vu_req: SlaveFsCacheReq) {}
     fn get_max_mem_slots(&self) -> Result<u64>;
     fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: RawFd) -> Result<()>;
+    fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
 }
 
 /// Services provided to the master by the slave without interior mutability.
@@ -106,6 +107,7 @@ pub trait VhostUserSlaveReqHandlerMut {
     fn set_slave_req_fd(&mut self, _vu_req: SlaveFsCacheReq) {}
     fn get_max_mem_slots(&mut self) -> Result<u64>;
     fn add_mem_region(&mut self, region: &VhostUserSingleMemoryRegion, fd: RawFd) -> Result<()>;
+    fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
 }
 
 impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
@@ -201,6 +203,10 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
 
     fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: RawFd) -> Result<()> {
         self.lock().unwrap().add_mem_region(region, fd)
+    }
+
+    fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()> {
+        self.lock().unwrap().remove_mem_region(region)
     }
 }
 
@@ -460,6 +466,19 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 let msg =
                     self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
                 let res = self.backend.add_mem_region(&msg, fd);
+                self.send_ack_message(&hdr, res)?;
+            }
+            MasterReq::REM_MEM_REG => {
+                if self.acked_protocol_features
+                    & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits()
+                    == 0
+                {
+                    return Err(Error::InvalidOperation);
+                }
+
+                let msg =
+                    self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
+                let res = self.backend.remove_mem_region(&msg);
                 self.send_ack_message(&hdr, res)?;
             }
             _ => {
