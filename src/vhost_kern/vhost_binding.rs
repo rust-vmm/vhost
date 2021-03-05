@@ -65,6 +65,20 @@ ioctl_iow_nr!(VHOST_SCSI_SET_EVENTS_MISSED, VHOST, 0x43, raw::c_uint);
 ioctl_iow_nr!(VHOST_SCSI_GET_EVENTS_MISSED, VHOST, 0x44, raw::c_uint);
 ioctl_iow_nr!(VHOST_VSOCK_SET_GUEST_CID, VHOST, 0x60, raw::c_ulonglong);
 ioctl_iow_nr!(VHOST_VSOCK_SET_RUNNING, VHOST, 0x61, raw::c_int);
+ioctl_ior_nr!(VHOST_VDPA_GET_DEVICE_ID, VHOST, 0x70, raw::c_uint);
+ioctl_ior_nr!(VHOST_VDPA_GET_STATUS, VHOST, 0x71, raw::c_uchar);
+ioctl_iow_nr!(VHOST_VDPA_SET_STATUS, VHOST, 0x72, raw::c_uchar);
+ioctl_ior_nr!(VHOST_VDPA_GET_CONFIG, VHOST, 0x73, vhost_vdpa_config);
+ioctl_iow_nr!(VHOST_VDPA_SET_CONFIG, VHOST, 0x74, vhost_vdpa_config);
+ioctl_iow_nr!(VHOST_VDPA_SET_VRING_ENABLE, VHOST, 0x75, vhost_vring_state);
+ioctl_ior_nr!(VHOST_VDPA_GET_VRING_NUM, VHOST, 0x76, raw::c_ushort);
+ioctl_iow_nr!(VHOST_VDPA_SET_CONFIG_CALL, VHOST, 0x77, raw::c_int);
+ioctl_ior_nr!(
+    VHOST_VDPA_GET_IOVA_RANGE,
+    VHOST,
+    0x78,
+    vhost_vdpa_iova_range
+);
 
 #[repr(C)]
 #[derive(Default)]
@@ -236,6 +250,21 @@ impl Default for vhost_scsi_target {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct vhost_vdpa_config {
+    pub off: raw::c_uint,
+    pub len: raw::c_uint,
+    pub buf: __IncompleteArrayField<raw::c_uchar>,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct vhost_vdpa_iova_range {
+    pub first: raw::c_ulonglong,
+    pub last: raw::c_ulonglong,
 }
 
 /// Helper to support vhost::set_mem_table()
@@ -437,6 +466,34 @@ mod tests {
             ::std::mem::align_of::<vhost_scsi_target>(),
             4usize,
             concat!("Alignment of ", stringify!(vhost_scsi_target))
+        );
+    }
+
+    #[test]
+    fn bindgen_test_layout_vhost_vdpa_config() {
+        assert_eq!(
+            ::std::mem::size_of::<vhost_vdpa_config>(),
+            8usize,
+            concat!("Size of: ", stringify!(vhost_vdpa_config))
+        );
+        assert_eq!(
+            ::std::mem::align_of::<vhost_vdpa_config>(),
+            4usize,
+            concat!("Alignment of ", stringify!(vhost_vdpa_config))
+        );
+    }
+
+    #[test]
+    fn bindgen_test_layout_vhost_vdpa_iova_range() {
+        assert_eq!(
+            ::std::mem::size_of::<vhost_vdpa_iova_range>(),
+            16usize,
+            concat!("Size of: ", stringify!(vhost_vdpa_iova_range))
+        );
+        assert_eq!(
+            ::std::mem::align_of::<vhost_vdpa_iova_range>(),
+            8usize,
+            concat!("Alignment of ", stringify!(vhost_vdpa_iova_range))
         );
     }
 
