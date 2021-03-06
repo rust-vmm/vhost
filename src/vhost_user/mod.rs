@@ -181,6 +181,7 @@ mod dummy_slave;
 #[cfg(all(test, feature = "vhost-user-master", feature = "vhost-user-slave"))]
 mod tests {
     use std::os::unix::io::AsRawFd;
+    use std::path::{Path, PathBuf};
     use std::sync::{Arc, Barrier, Mutex};
     use std::thread;
     use vmm_sys_util::rand::rand_alphanumerics;
@@ -191,20 +192,21 @@ mod tests {
     use crate::backend::VhostBackend;
     use crate::{VhostUserMemoryRegionInfo, VringConfigData};
 
-    fn temp_path() -> String {
-        format!(
+    fn temp_path() -> PathBuf {
+        PathBuf::from(format!(
             "/tmp/vhost_test_{}",
             rand_alphanumerics(8).to_str().unwrap()
-        )
+        ))
     }
 
-    fn create_slave<S: VhostUserSlaveReqHandler>(
-        path: &str,
-        backend: Arc<S>,
-    ) -> (Master, SlaveReqHandler<S>) {
-        let listener = Listener::new(path, true).unwrap();
+    fn create_slave<P, S>(path: P, backend: Arc<S>) -> (Master, SlaveReqHandler<S>)
+    where
+        P: AsRef<Path>,
+        S: VhostUserSlaveReqHandler,
+    {
+        let listener = Listener::new(&path, true).unwrap();
         let mut slave_listener = SlaveListener::new(listener, backend).unwrap();
-        let master = Master::connect(path, 1).unwrap();
+        let master = Master::connect(&path, 1).unwrap();
         (master, slave_listener.accept().unwrap().unwrap())
     }
 

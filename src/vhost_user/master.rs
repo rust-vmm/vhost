@@ -6,6 +6,7 @@
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
+use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use vmm_sys_util::eventfd::EventFd;
@@ -93,10 +94,10 @@ impl Master {
     ///
     /// # Arguments
     /// * `path` - path of Unix domain socket listener to connect to
-    pub fn connect(path: &str, max_queue_num: u64) -> Result<Self> {
+    pub fn connect<P: AsRef<Path>>(path: P, max_queue_num: u64) -> Result<Self> {
         let mut retry_count = 5;
         let endpoint = loop {
-            match Endpoint::<MasterReq>::connect(path) {
+            match Endpoint::<MasterReq>::connect(&path) {
                 Ok(endpoint) => break Ok(endpoint),
                 Err(e) => match &e {
                     VhostUserError::SocketConnect(why) => {
@@ -646,15 +647,17 @@ mod tests {
     use super::*;
     use vmm_sys_util::rand::rand_alphanumerics;
 
-    fn temp_path() -> String {
-        format!(
+    use std::path::PathBuf;
+
+    fn temp_path() -> PathBuf {
+        PathBuf::from(format!(
             "/tmp/vhost_test_{}",
             rand_alphanumerics(8).to_str().unwrap()
-        )
+        ))
     }
 
-    fn create_pair(path: &str) -> (Master, Endpoint<MasterReq>) {
-        let listener = Listener::new(path, true).unwrap();
+    fn create_pair<P: AsRef<Path>>(path: P) -> (Master, Endpoint<MasterReq>) {
+        let listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let master = Master::connect(path, 2).unwrap();
         let slave = listener.accept().unwrap().unwrap();
