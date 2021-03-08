@@ -205,10 +205,6 @@ struct AddrMapping {
     gpa_base: u64,
 }
 
-struct Memory {
-    mappings: Vec<AddrMapping>,
-}
-
 pub struct Vring {
     queue: Queue<GuestMemoryAtomic<GuestMemoryMmap>>,
     kick: Option<EventFd>,
@@ -446,7 +442,7 @@ struct VhostUserHandler<S: VhostUserBackend> {
     num_queues: usize,
     max_queue_size: usize,
     queues_per_thread: Vec<u64>,
-    memory: Option<Memory>,
+    mappings: Vec<AddrMapping>,
     atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>,
     vrings: Vec<Arc<RwLock<Vring>>>,
     worker_threads: Vec<thread::JoinHandle<VringWorkerResult<()>>>,
@@ -529,7 +525,7 @@ impl<S: VhostUserBackend> VhostUserHandler<S> {
             num_queues,
             max_queue_size,
             queues_per_thread,
-            memory: None,
+            mappings: Vec::new(),
             atomic_mem,
             vrings,
             worker_threads,
@@ -541,13 +537,11 @@ impl<S: VhostUserBackend> VhostUserHandler<S> {
     }
 
     fn vmm_va_to_gpa(&self, vmm_va: u64) -> VhostUserHandlerResult<u64> {
-        if let Some(memory) = &self.memory {
-            for mapping in memory.mappings.iter() {
+            for mapping in self.mappings.iter() {
                 if vmm_va >= mapping.vmm_addr && vmm_va < mapping.vmm_addr + mapping.size {
                     return Ok(vmm_va - mapping.vmm_addr + mapping.gpa_base);
                 }
             }
-        }
 
         Err(VhostUserHandlerError::MissingMemoryMapping)
     }
@@ -654,7 +648,7 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
             .map_err(|e| {
                 VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
             })?;
-        self.memory = Some(Memory { mappings });
+        self.mappings = mappings;
 
         Ok(())
     }
@@ -684,7 +678,7 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
             return Err(VhostUserError::InvalidParam);
         }
 
-        if self.memory.is_some() {
+        if !self.mappings.is_empty() {
             let desc_table = self.vmm_va_to_gpa(descriptor).map_err(|e| {
                 VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
             })?;
