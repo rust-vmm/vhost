@@ -333,6 +333,9 @@ mod tests {
             slave.handle_request().unwrap();
             slave.handle_request().unwrap();
 
+            // get_max_mem_slots()
+            slave.handle_request().unwrap();
+
             sbar.wait();
         });
 
@@ -394,6 +397,9 @@ mod tests {
         master.set_vring_call(0, &eventfd).unwrap();
         master.set_vring_kick(0, &eventfd).unwrap();
         master.set_vring_err(0, &eventfd).unwrap();
+
+        let max_mem_slots = master.get_max_mem_slots().unwrap();
+        assert_eq!(max_mem_slots, 32);
 
         mbar.wait();
     }

@@ -62,6 +62,7 @@ pub trait VhostUserSlaveReqHandler {
     fn get_config(&self, offset: u32, size: u32, flags: VhostUserConfigFlags) -> Result<Vec<u8>>;
     fn set_config(&self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
     fn set_slave_req_fd(&self, _vu_req: SlaveFsCacheReq) {}
+    fn get_max_mem_slots(&self) -> Result<u64>;
 }
 
 /// Services provided to the master by the slave without interior mutability.
@@ -102,6 +103,7 @@ pub trait VhostUserSlaveReqHandlerMut {
     ) -> Result<Vec<u8>>;
     fn set_config(&mut self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
     fn set_slave_req_fd(&mut self, _vu_req: SlaveFsCacheReq) {}
+    fn get_max_mem_slots(&mut self) -> Result<u64>;
 }
 
 impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
@@ -189,6 +191,10 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
 
     fn set_slave_req_fd(&self, vu_req: SlaveFsCacheReq) {
         self.lock().unwrap().set_slave_req_fd(vu_req)
+    }
+
+    fn get_max_mem_slots(&self) -> Result<u64> {
+        self.lock().unwrap().get_max_mem_slots()
     }
 }
 
@@ -416,6 +422,18 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 }
                 self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
                 self.set_slave_req_fd(&hdr, rfds)?;
+            }
+            MasterReq::GET_MAX_MEM_SLOTS => {
+                if self.acked_protocol_features
+                    & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits()
+                    == 0
+                {
+                    return Err(Error::InvalidOperation);
+                }
+                self.check_request_size(&hdr, size, 0)?;
+                let num = self.backend.get_max_mem_slots()?;
+                let msg = VhostUserU64::new(num);
+                self.send_reply_message(&hdr, &msg)?;
             }
             _ => {
                 return Err(Error::InvalidMessage);
