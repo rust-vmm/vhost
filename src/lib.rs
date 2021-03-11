@@ -873,6 +873,10 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
     }
 
     fn set_slave_req_fd(&mut self, vu_req: SlaveFsCacheReq) {
+        if self.acked_protocol_features & VhostUserProtocolFeatures::REPLY_ACK.bits() != 0 {
+            vu_req.set_reply_ack_flag(true);
+        }
+
         self.backend.write().unwrap().set_slave_req_fd(vu_req);
     }
 }
