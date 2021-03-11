@@ -180,10 +180,13 @@ mod dummy_slave;
 
 #[cfg(all(test, feature = "vhost-user-master", feature = "vhost-user-slave"))]
 mod tests {
+    use std::fs::File;
     use std::os::unix::io::AsRawFd;
+    use std::path::{Path, PathBuf};
     use std::sync::{Arc, Barrier, Mutex};
     use std::thread;
     use vmm_sys_util::rand::rand_alphanumerics;
+    use vmm_sys_util::tempfile::TempFile;
 
     use super::dummy_slave::{DummySlaveReqHandler, VIRTIO_FEATURES};
     use super::message::*;
@@ -191,20 +194,21 @@ mod tests {
     use crate::backend::VhostBackend;
     use crate::{VhostUserMemoryRegionInfo, VringConfigData};
 
-    fn temp_path() -> String {
-        format!(
+    fn temp_path() -> PathBuf {
+        PathBuf::from(format!(
             "/tmp/vhost_test_{}",
             rand_alphanumerics(8).to_str().unwrap()
-        )
+        ))
     }
 
-    fn create_slave<S: VhostUserSlaveReqHandler>(
-        path: &str,
-        backend: Arc<S>,
-    ) -> (Master, SlaveReqHandler<S>) {
-        let listener = Listener::new(path, true).unwrap();
+    fn create_slave<P, S>(path: P, backend: Arc<S>) -> (Master, SlaveReqHandler<S>)
+    where
+        P: AsRef<Path>,
+        S: VhostUserSlaveReqHandler,
+    {
+        let listener = Listener::new(&path, true).unwrap();
         let mut slave_listener = SlaveListener::new(listener, backend).unwrap();
-        let master = Master::connect(path, 1).unwrap();
+        let master = Master::connect(&path, 1).unwrap();
         (master, slave_listener.accept().unwrap().unwrap())
     }
 
@@ -331,6 +335,15 @@ mod tests {
             slave.handle_request().unwrap();
             slave.handle_request().unwrap();
 
+            // get_max_mem_slots()
+            slave.handle_request().unwrap();
+
+            // add_mem_region()
+            slave.handle_request().unwrap();
+
+            // remove_mem_region()
+            slave.handle_request().unwrap();
+
             sbar.wait();
         });
 
@@ -393,6 +406,21 @@ mod tests {
         master.set_vring_kick(0, &eventfd).unwrap();
         master.set_vring_err(0, &eventfd).unwrap();
 
+        let max_mem_slots = master.get_max_mem_slots().unwrap();
+        assert_eq!(max_mem_slots, 32);
+
+        let region_file: File = TempFile::new().unwrap().into_file();
+        let region = VhostUserMemoryRegionInfo {
+            guest_phys_addr: 0x10_0000,
+            memory_size: 0x10_0000,
+            userspace_addr: 0,
+            mmap_offset: 0,
+            mmap_handle: region_file.as_raw_fd(),
+        };
+        master.add_mem_region(&region).unwrap();
+
+        master.remove_mem_region(&region).unwrap();
+
         mbar.wait();
     }
 
@@ -417,7 +445,7 @@ mod tests {
 
     #[test]
     fn test_error_from_sys_util_error() {
-        let e: Error = vmm_sys_util::errno::Error::new(libc::EAGAIN.into()).into();
+        let e: Error = vmm_sys_util::errno::Error::new(libc::EAGAIN).into();
         if let Error::SocketRetry(e1) = e {
             assert_eq!(e1.raw_os_error().unwrap(), libc::EAGAIN);
         } else {

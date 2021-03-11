@@ -6,6 +6,7 @@
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
+use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use vmm_sys_util::eventfd::EventFd;
@@ -49,6 +50,15 @@ pub trait VhostUserMaster: VhostBackend {
 
     /// Setup slave communication channel.
     fn set_slave_request_fd(&mut self, fd: RawFd) -> Result<()>;
+
+    /// Query the maximum amount of memory slots supported by the backend.
+    fn get_max_mem_slots(&mut self) -> Result<u64>;
+
+    /// Add a new guest memory mapping for vhost to use.
+    fn add_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()>;
+
+    /// Remove a guest memory mapping from vhost.
+    fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()>;
 }
 
 fn error_code<T>(err: VhostUserError) -> Result<T> {
@@ -93,10 +103,10 @@ impl Master {
     ///
     /// # Arguments
     /// * `path` - path of Unix domain socket listener to connect to
-    pub fn connect(path: &str, max_queue_num: u64) -> Result<Self> {
+    pub fn connect<P: AsRef<Path>>(path: P, max_queue_num: u64) -> Result<Self> {
         let mut retry_count = 5;
         let endpoint = loop {
-            match Endpoint::<MasterReq>::connect(path) {
+            match Endpoint::<MasterReq>::connect(&path) {
                 Ok(endpoint) => break Ok(endpoint),
                 Err(e) => match &e {
                     VhostUserError::SocketConnect(why) => {
@@ -395,9 +405,10 @@ impl VhostUserMaster for Master {
             return error_code(VhostUserError::InvalidMessage);
         } else if body_reply.size == 0 {
             return error_code(VhostUserError::SlaveInternalError);
-        } else if body_reply.size != body.size || body_reply.size as usize != buf.len() {
-            return error_code(VhostUserError::InvalidMessage);
-        } else if body_reply.offset != body.offset {
+        } else if body_reply.size != body.size
+            || body_reply.size as usize != buf.len()
+            || body_reply.offset != body.offset
+        {
             return error_code(VhostUserError::InvalidMessage);
         }
 
@@ -432,6 +443,60 @@ impl VhostUserMaster for Master {
         let fds = [fd];
         node.send_request_header(MasterReq::SET_SLAVE_REQ_FD, Some(&fds))?;
         Ok(())
+    }
+
+    fn get_max_mem_slots(&mut self) -> Result<u64> {
+        let mut node = self.node();
+        if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
+        {
+            return error_code(VhostUserError::InvalidOperation);
+        }
+
+        let hdr = node.send_request_header(MasterReq::GET_MAX_MEM_SLOTS, None)?;
+        let val = node.recv_reply::<VhostUserU64>(&hdr)?;
+
+        Ok(val.value)
+    }
+
+    fn add_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()> {
+        let mut node = self.node();
+        if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
+        {
+            return error_code(VhostUserError::InvalidOperation);
+        }
+        if region.memory_size == 0 || region.mmap_handle < 0 {
+            return error_code(VhostUserError::InvalidParam);
+        }
+
+        let body = VhostUserSingleMemoryRegion::new(
+            region.guest_phys_addr,
+            region.memory_size,
+            region.userspace_addr,
+            region.mmap_offset,
+        );
+        let fds = [region.mmap_handle];
+        let hdr = node.send_request_with_body(MasterReq::ADD_MEM_REG, &body, Some(&fds))?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
+    }
+
+    fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()> {
+        let mut node = self.node();
+        if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
+        {
+            return error_code(VhostUserError::InvalidOperation);
+        }
+        if region.memory_size == 0 {
+            return error_code(VhostUserError::InvalidParam);
+        }
+
+        let body = VhostUserSingleMemoryRegion::new(
+            region.guest_phys_addr,
+            region.memory_size,
+            region.userspace_addr,
+            region.mmap_offset,
+        );
+        let hdr = node.send_request_with_body(MasterReq::REM_MEM_REG, &body, None)?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 }
 
@@ -645,15 +710,17 @@ mod tests {
     use super::*;
     use vmm_sys_util::rand::rand_alphanumerics;
 
-    fn temp_path() -> String {
-        format!(
+    use std::path::PathBuf;
+
+    fn temp_path() -> PathBuf {
+        PathBuf::from(format!(
             "/tmp/vhost_test_{}",
             rand_alphanumerics(8).to_str().unwrap()
-        )
+        ))
     }
 
-    fn create_pair(path: &str) -> (Master, Endpoint<MasterReq>) {
-        let listener = Listener::new(path, true).unwrap();
+    fn create_pair<P: AsRef<Path>>(path: P) -> (Master, Endpoint<MasterReq>) {
+        let listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let master = Master::connect(path, 2).unwrap();
         let slave = listener.accept().unwrap().unwrap();

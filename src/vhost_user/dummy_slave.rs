@@ -8,6 +8,7 @@ use super::*;
 
 pub const MAX_QUEUE_NUM: usize = 2;
 pub const MAX_VRING_NUM: usize = 256;
+pub const MAX_MEM_SLOTS: usize = 32;
 pub const VIRTIO_FEATURES: u64 = 0x40000003;
 
 #[derive(Default)]
@@ -57,9 +58,7 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     }
 
     fn set_features(&mut self, features: u64) -> Result<()> {
-        if !self.owned {
-            return Err(Error::InvalidOperation);
-        } else if self.features_acked {
+        if !self.owned || self.features_acked {
             return Err(Error::InvalidOperation);
         } else if (features & !VIRTIO_FEATURES) != 0 {
             return Err(Error::InvalidParam);
@@ -224,8 +223,7 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     ) -> Result<Vec<u8>> {
         if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
             return Err(Error::InvalidOperation);
-        } else if offset < VHOST_USER_CONFIG_OFFSET
-            || offset >= VHOST_USER_CONFIG_SIZE
+        } else if !(VHOST_USER_CONFIG_OFFSET..VHOST_USER_CONFIG_SIZE).contains(&offset)
             || size > VHOST_USER_CONFIG_SIZE - VHOST_USER_CONFIG_OFFSET
             || size + offset > VHOST_USER_CONFIG_SIZE
         {
@@ -238,13 +236,24 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
         let size = buf.len() as u32;
         if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
             return Err(Error::InvalidOperation);
-        } else if offset < VHOST_USER_CONFIG_OFFSET
-            || offset >= VHOST_USER_CONFIG_SIZE
+        } else if !(VHOST_USER_CONFIG_OFFSET..VHOST_USER_CONFIG_SIZE).contains(&offset)
             || size > VHOST_USER_CONFIG_SIZE - VHOST_USER_CONFIG_OFFSET
             || size + offset > VHOST_USER_CONFIG_SIZE
         {
             return Err(Error::InvalidParam);
         }
+        Ok(())
+    }
+
+    fn get_max_mem_slots(&mut self) -> Result<u64> {
+        Ok(MAX_MEM_SLOTS as u64)
+    }
+
+    fn add_mem_region(&mut self, _region: &VhostUserSingleMemoryRegion, _fd: RawFd) -> Result<()> {
+        Ok(())
+    }
+
+    fn remove_mem_region(&mut self, _region: &VhostUserSingleMemoryRegion) -> Result<()> {
         Ok(())
     }
 }

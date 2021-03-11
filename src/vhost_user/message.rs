@@ -114,10 +114,30 @@ pub enum MasterReq {
     POSTCOPY_END = 30,
     /// Get a shared buffer from slave.
     GET_INFLIGHT_FD = 31,
-    /// Send the shared inflight buffer back to slave
+    /// Send the shared inflight buffer back to slave.
     SET_INFLIGHT_FD = 32,
+    /// Sets the GPU protocol socket file descriptor.
+    GPU_SET_SOCKET = 33,
+    /// Ask the vhost user backend to disable all rings and reset all internal
+    /// device state to the initial state.
+    RESET_DEVICE = 34,
+    /// Indicate that a buffer was added to the vring instead of signalling it
+    /// using the vring’s kick file descriptor.
+    VRING_KICK = 35,
+    /// Return a u64 payload containing the maximum number of memory slots.
+    GET_MAX_MEM_SLOTS = 36,
+    /// Update the memory tables by adding the region described.
+    ADD_MEM_REG = 37,
+    /// Update the memory tables by removing the region described.
+    REM_MEM_REG = 38,
+    /// Notify the backend with updated device status as defined in the VIRTIO
+    /// specification.
+    SET_STATUS = 39,
+    /// Query the backend for its device status as defined in the VIRTIO
+    /// specification.
+    GET_STATUS = 40,
     /// Upper bound of valid commands.
-    MAX_CMD = 33,
+    MAX_CMD = 41,
 }
 
 impl Into<u32> for MasterReq {
@@ -458,6 +478,49 @@ impl VhostUserMsgValidator for VhostUserMemoryRegion {
 
 /// Payload of the VhostUserMemory message.
 pub type VhostUserMemoryPayload = Vec<VhostUserMemoryRegion>;
+
+/// Single memory region descriptor as payload for ADD_MEM_REG and REM_MEM_REG
+/// requests.
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct VhostUserSingleMemoryRegion {
+    /// Padding for correct alignment
+    padding: u64,
+    /// Guest physical address of the memory region.
+    pub guest_phys_addr: u64,
+    /// Size of the memory region.
+    pub memory_size: u64,
+    /// Virtual address in the current process.
+    pub user_addr: u64,
+    /// Offset where region starts in the mapped memory.
+    pub mmap_offset: u64,
+}
+
+impl VhostUserSingleMemoryRegion {
+    /// Create a new instance.
+    pub fn new(guest_phys_addr: u64, memory_size: u64, user_addr: u64, mmap_offset: u64) -> Self {
+        VhostUserSingleMemoryRegion {
+            padding: 0,
+            guest_phys_addr,
+            memory_size,
+            user_addr,
+            mmap_offset,
+        }
+    }
+}
+
+impl VhostUserMsgValidator for VhostUserSingleMemoryRegion {
+    fn is_valid(&self) -> bool {
+        if self.memory_size == 0
+            || self.guest_phys_addr.checked_add(self.memory_size).is_none()
+            || self.user_addr.checked_add(self.memory_size).is_none()
+            || self.mmap_offset.checked_add(self.memory_size).is_none()
+        {
+            return false;
+        }
+        true
+    }
+}
 
 /// Vring state descriptor.
 #[repr(packed)]
@@ -809,7 +872,7 @@ mod tests {
         msg.guest_phys_addr = 0xFFFFFFFFFFFF0000;
         msg.memory_size = 0;
         assert!(!msg.is_valid());
-        let a = msg.clone().guest_phys_addr;
+        let a = msg.guest_phys_addr;
         let b = msg.guest_phys_addr;
         assert_eq!(a, b);
 

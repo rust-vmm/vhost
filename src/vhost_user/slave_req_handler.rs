@@ -62,6 +62,9 @@ pub trait VhostUserSlaveReqHandler {
     fn get_config(&self, offset: u32, size: u32, flags: VhostUserConfigFlags) -> Result<Vec<u8>>;
     fn set_config(&self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
     fn set_slave_req_fd(&self, _vu_req: SlaveFsCacheReq) {}
+    fn get_max_mem_slots(&self) -> Result<u64>;
+    fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: RawFd) -> Result<()>;
+    fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
 }
 
 /// Services provided to the master by the slave without interior mutability.
@@ -102,6 +105,9 @@ pub trait VhostUserSlaveReqHandlerMut {
     ) -> Result<Vec<u8>>;
     fn set_config(&mut self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
     fn set_slave_req_fd(&mut self, _vu_req: SlaveFsCacheReq) {}
+    fn get_max_mem_slots(&mut self) -> Result<u64>;
+    fn add_mem_region(&mut self, region: &VhostUserSingleMemoryRegion, fd: RawFd) -> Result<()>;
+    fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
 }
 
 impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
@@ -189,6 +195,18 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
 
     fn set_slave_req_fd(&self, vu_req: SlaveFsCacheReq) {
         self.lock().unwrap().set_slave_req_fd(vu_req)
+    }
+
+    fn get_max_mem_slots(&self) -> Result<u64> {
+        self.lock().unwrap().get_max_mem_slots()
+    }
+
+    fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: RawFd) -> Result<()> {
+        self.lock().unwrap().add_mem_region(region, fd)
+    }
+
+    fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()> {
+        self.lock().unwrap().remove_mem_region(region)
     }
 }
 
@@ -417,6 +435,52 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
                 self.set_slave_req_fd(&hdr, rfds)?;
             }
+            MasterReq::GET_MAX_MEM_SLOTS => {
+                if self.acked_protocol_features
+                    & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits()
+                    == 0
+                {
+                    return Err(Error::InvalidOperation);
+                }
+                self.check_request_size(&hdr, size, 0)?;
+                let num = self.backend.get_max_mem_slots()?;
+                let msg = VhostUserU64::new(num);
+                self.send_reply_message(&hdr, &msg)?;
+            }
+            MasterReq::ADD_MEM_REG => {
+                if self.acked_protocol_features
+                    & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits()
+                    == 0
+                {
+                    return Err(Error::InvalidOperation);
+                }
+                let fd = if let Some(fds) = &rfds {
+                    if fds.len() != 1 {
+                        return Err(Error::InvalidParam);
+                    }
+                    fds[0]
+                } else {
+                    return Err(Error::InvalidParam);
+                };
+
+                let msg =
+                    self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
+                let res = self.backend.add_mem_region(&msg, fd);
+                self.send_ack_message(&hdr, res)?;
+            }
+            MasterReq::REM_MEM_REG => {
+                if self.acked_protocol_features
+                    & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits()
+                    == 0
+                {
+                    return Err(Error::InvalidOperation);
+                }
+
+                let msg =
+                    self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
+                let res = self.backend.remove_mem_region(&msg);
+                self.send_ack_message(&hdr, res)?;
+            }
             _ => {
                 return Err(Error::InvalidMessage);
             }
@@ -579,10 +643,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         // invalid FD flag. This flag is set when there is no file descriptor
         // in the ancillary data. This signals that polling will be used
         // instead of waiting for the call.
-        let nofd = match msg.value & 0x100u64 {
-            0x100u64 => true,
-            _ => false,
-        };
+        let nofd = (msg.value & 0x100u64) == 0x100u64;
 
         let mut rfd = None;
         match rfds {
@@ -640,6 +701,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
             MasterReq::SET_LOG_FD => Ok(rfds),
             MasterReq::SET_SLAVE_REQ_FD => Ok(rfds),
             MasterReq::SET_INFLIGHT_FD => Ok(rfds),
+            MasterReq::ADD_MEM_REG => Ok(rfds),
             _ => {
                 if rfds.is_some() {
                     Endpoint::<MasterReq>::close_rfds(rfds);

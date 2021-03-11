@@ -9,6 +9,7 @@ use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::{Path, PathBuf};
 use std::{mem, slice};
 
 use libc::{c_void, iovec};
@@ -20,7 +21,7 @@ use super::{Error, Result};
 /// Unix domain socket listener for accepting incoming connections.
 pub struct Listener {
     fd: UnixListener,
-    path: String,
+    path: PathBuf,
 }
 
 impl Listener {
@@ -29,14 +30,14 @@ impl Listener {
     /// # Return:
     /// * - the new Listener object on success.
     /// * - SocketError: failed to create listener socket.
-    pub fn new(path: &str, unlink: bool) -> Result<Self> {
+    pub fn new<P: AsRef<Path>>(path: P, unlink: bool) -> Result<Self> {
         if unlink {
-            let _ = std::fs::remove_file(path);
+            let _ = std::fs::remove_file(&path);
         }
-        let fd = UnixListener::bind(path).map_err(Error::SocketError)?;
+        let fd = UnixListener::bind(&path).map_err(Error::SocketError)?;
         Ok(Listener {
             fd,
-            path: path.to_string(),
+            path: path.as_ref().to_owned(),
         })
     }
 
@@ -83,7 +84,7 @@ impl AsRawFd for Listener {
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(self.path.clone());
+        let _ = std::fs::remove_file(&self.path);
     }
 }
 
@@ -99,7 +100,7 @@ impl<R: Req> Endpoint<R> {
     /// # Return:
     /// * - the new Endpoint object on success.
     /// * - SocketConnect: failed to connect to peer.
-    pub fn connect(path: &str) -> Result<Self> {
+    pub fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
         let sock = UnixStream::connect(path).map_err(Error::SocketConnect)?;
         Ok(Self::from_stream(sock))
     }
@@ -613,11 +614,11 @@ mod tests {
     use vmm_sys_util::rand::rand_alphanumerics;
     use vmm_sys_util::tempfile::TempFile;
 
-    fn temp_path() -> String {
-        format!(
+    fn temp_path() -> PathBuf {
+        PathBuf::from(format!(
             "/tmp/vhost_test_{}",
             rand_alphanumerics(8).to_str().unwrap()
-        )
+        ))
     }
 
     #[test]
