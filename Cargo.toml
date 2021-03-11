@@ -14,6 +14,7 @@ edition = "2018"
 default = []
 vhost-vsock = []
 vhost-kern = []
+vhost-vdpa = ["vhost-kern"]
 vhost-user = []
 vhost-user-master = ["vhost-user"]
 vhost-user-slave = ["vhost-user"]
