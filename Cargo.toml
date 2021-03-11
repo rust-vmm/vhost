@@ -13,6 +13,7 @@ edition = "2018"
 [features]
 default = []
 vhost-vsock = []
+vhost-vdpa = []
 vhost-kern = ["vm-memory"]
 vhost-user = []
 vhost-user-master = ["vhost-user"]
