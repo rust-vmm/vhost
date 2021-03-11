@@ -38,6 +38,8 @@ pub const VHOST_VRING_BIG_ENDIAN: raw::c_uint = 1;
 pub const VHOST_F_LOG_ALL: raw::c_uint = 26;
 pub const VHOST_NET_F_VIRTIO_NET_HDR: raw::c_uint = 27;
 pub const VHOST_SCSI_ABI_VERSION: raw::c_uint = 1;
+pub const VHOST_BACKEND_F_IOTLB_MSG_V2: raw::c_ulonglong = 0x1;
+pub const VHOST_BACKEND_F_IOTLB_BATCH: raw::c_ulonglong = 0x2;
 
 ioctl_ior_nr!(VHOST_GET_FEATURES, VHOST, 0x00, raw::c_ulonglong);
 ioctl_iow_nr!(VHOST_SET_FEATURES, VHOST, 0x00, raw::c_ulonglong);
@@ -53,6 +55,8 @@ ioctl_iowr_nr!(VHOST_GET_VRING_BASE, VHOST, 0x12, vhost_vring_state);
 ioctl_iow_nr!(VHOST_SET_VRING_KICK, VHOST, 0x20, vhost_vring_file);
 ioctl_iow_nr!(VHOST_SET_VRING_CALL, VHOST, 0x21, vhost_vring_file);
 ioctl_iow_nr!(VHOST_SET_VRING_ERR, VHOST, 0x22, vhost_vring_file);
+ioctl_iow_nr!(VHOST_SET_BACKEND_FEATURES, VHOST, 0x25, raw::c_ulonglong);
+ioctl_ior_nr!(VHOST_GET_BACKEND_FEATURES, VHOST, 0x26, raw::c_ulonglong);
 ioctl_iow_nr!(VHOST_NET_SET_BACKEND, VHOST, 0x30, vhost_vring_file);
 ioctl_iow_nr!(VHOST_SCSI_SET_ENDPOINT, VHOST, 0x40, vhost_scsi_target);
 ioctl_iow_nr!(VHOST_SCSI_CLEAR_ENDPOINT, VHOST, 0x41, vhost_scsi_target);
