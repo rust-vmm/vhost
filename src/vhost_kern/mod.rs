@@ -281,3 +281,37 @@ impl<T: VhostKernBackend> VhostBackend for T {
         ioctl_result(ret, ())
     }
 }
+
+/// Interface to handle in-kernel backend features.
+pub trait VhostKernFeatures: Sized + AsRawFd {
+    /// Get features acked with the vhost backend.
+    fn get_backend_features_acked(&self) -> u64;
+
+    /// Set features acked with the vhost backend.
+    fn set_backend_features_acked(&mut self, features: u64);
+
+    /// Get a bitmask of supported vhost backend features.
+    fn get_backend_features(&self) -> Result<u64> {
+        let mut avail_features: u64 = 0;
+        // This ioctl is called on a valid vhost fd and has its return value checked.
+        let ret =
+            unsafe { ioctl_with_mut_ref(self, VHOST_GET_BACKEND_FEATURES(), &mut avail_features) };
+        ioctl_result(ret, avail_features)
+    }
+
+    /// Inform the vhost subsystem which backend features to enable. This should
+    /// be a subset of supported features from VHOST_GET_BACKEND_FEATURES.
+    ///
+    /// # Arguments
+    /// * `features` - Bitmask of features to set.
+    fn set_backend_features(&mut self, features: u64) -> Result<()> {
+        // This ioctl is called on a valid vhost fd and has its return value checked.
+        let ret = unsafe { ioctl_with_ref(self, VHOST_SET_BACKEND_FEATURES(), &features) };
+
+        if ret >= 0 {
+            self.set_backend_features_acked(features);
+        }
+
+        ioctl_result(ret, ())
+    }
+}
