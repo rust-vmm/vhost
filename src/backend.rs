@@ -85,6 +85,96 @@ pub struct VhostUserDirtyLogRegion {
     pub mmap_handle: RawFd,
 }
 
+/// Vhost memory access permission (VHOST_ACCESS_* mapping)
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum VhostAccess {
+    /// No access.
+    No = 0,
+    /// Read-Only access.
+    ReadOnly = 1,
+    /// Write-Only access.
+    WriteOnly = 2,
+    /// Read and Write access.
+    ReadWrite = 3,
+}
+
+impl Default for VhostAccess {
+    fn default() -> Self {
+        VhostAccess::No
+    }
+}
+
+/// Vhost IOTLB message type (VHOST_IOTLB_* mapping)
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum VhostIotlbType {
+    /// Empty message (not valid).
+    Empty = 0,
+    /// I/O virtual address mapping is missing or invalidated.
+    Miss = 1,
+    /// Update the I/O virtual address mapping.
+    Update = 2,
+    /// Invalidate the I/O virtual address mapping.
+    Invalidate = 3,
+    /// Access failed to an I/O virtual address.
+    AccessFail = 4,
+    /// Batch of multiple `Update` messages begins.
+    BatchBegin = 5,
+    /// Batch of multiple `Update` messages ends.
+    BatchEnd = 6,
+}
+
+impl Default for VhostIotlbType {
+    fn default() -> Self {
+        VhostIotlbType::Empty
+    }
+}
+
+/// Vhost IOTLB message structure.
+#[derive(Default, Clone, Copy)]
+pub struct VhostIotlbMsg {
+    /// I/O virtual address.
+    pub iova: u64,
+    /// Size of the I/O mapping.
+    pub size: u64,
+    /// Virtual address in the current process.
+    pub userspace_addr: u64,
+    /// Access permissions.
+    pub perm: VhostAccess,
+    /// Type of the message.
+    pub msg_type: VhostIotlbType,
+}
+
+/// Vhost IOTLB message parser.
+pub trait VhostIotlbMsgParser {
+    /// Parse the IOTLB message and fill a VhostIotlbMsg.
+    ///
+    /// # Arguments
+    /// * `msg` - IOTLB message parsed.
+    fn parse(&self, msg: &mut VhostIotlbMsg) -> Result<()>;
+}
+
+/// An interface for IOTLB messages support for vhost-based backend
+pub trait VhostIotlbBackend: std::marker::Sized {
+    /// Send an IOTLB message to the vhost-based backend.
+    ///
+    /// # Arguments
+    /// * `msg` - IOTLB message to send.
+    fn send_iotlb_msg(&self, msg: &VhostIotlbMsg) -> Result<()>;
+
+    /// Parse a buffer received from the vhost-based backend and fill a VhostIotlbMsg.
+    ///
+    /// # Arguments
+    /// * `buffer` - Buffer containing the raw data received from the vhost-based backend.
+    /// * `msg` - IOTLB message parsed.
+    fn parse_iotlb_msg<T: Sized + VhostIotlbMsgParser>(
+        &self,
+        buffer: &T,
+        msg: &mut VhostIotlbMsg,
+    ) -> Result<()>;
+}
+
 /// An interface for setting up vhost-based backend drivers with interior mutability.
 ///
 /// Vhost devices are subset of virtio devices, which improve virtio device's performance by
