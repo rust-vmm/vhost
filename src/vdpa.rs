@@ -72,4 +72,20 @@ pub trait VhostVdpa: VhostBackend {
 
     /// Get the valid I/O virtual addresses range supported by the device.
     fn get_iova_range(&self) -> Result<VhostVdpaIovaRange>;
+
+    /// Map DMA region.
+    ///
+    /// # Arguments
+    /// * `iova` - I/O virtual address.
+    /// * `size` - Size of the I/O mapping.
+    /// * `vaddr` - Virtual address in the current process.
+    /// * `readonly` - true if the region is read-only, false if reads and writes are allowed.
+    fn dma_map(&self, iova: u64, size: u64, vaddr: *const u8, readonly: bool) -> Result<()>;
+
+    /// Unmap DMA region.
+    ///
+    /// # Arguments
+    /// * `iova` - I/O virtual address.
+    /// * `size` - Size of the I/O mapping.
+    fn dma_unmap(&self, iova: u64, size: u64) -> Result<()>;
 }
