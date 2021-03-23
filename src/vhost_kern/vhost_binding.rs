@@ -30,6 +30,7 @@ pub const VHOST_IOTLB_ACCESS_FAIL: raw::c_uchar = 4;
 pub const VHOST_IOTLB_BATCH_BEGIN: raw::c_uchar = 5;
 pub const VHOST_IOTLB_BATCH_END: raw::c_uchar = 6;
 pub const VHOST_IOTLB_MSG: raw::c_int = 1;
+pub const VHOST_IOTLB_MSG_V2: raw::c_uint = 2;
 pub const VHOST_PAGE_SIZE: raw::c_uint = 4096;
 pub const VHOST_VIRTIO: raw::c_uint = 175;
 pub const VHOST_VRING_LITTLE_ENDIAN: raw::c_uint = 0;
@@ -167,6 +168,34 @@ pub union vhost_msg__bindgen_ty_1 {
 }
 
 impl Default for vhost_msg__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct vhost_msg_v2 {
+    pub type_: raw::c_uint,
+    pub reserved: raw::c_uint,
+    pub __bindgen_anon_1: vhost_msg_v2__bindgen_ty_1,
+}
+
+impl Default for vhost_msg_v2 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union vhost_msg_v2__bindgen_ty_1 {
+    pub iotlb: vhost_iotlb_msg,
+    pub padding: [raw::c_uchar; 64usize],
+    _bindgen_union_align: [u64; 8usize],
+}
+
+impl Default for vhost_msg_v2__bindgen_ty_1 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
@@ -320,6 +349,34 @@ mod tests {
             ::std::mem::align_of::<vhost_msg>(),
             8usize,
             concat!("Alignment of ", stringify!(vhost_msg))
+        );
+    }
+
+    #[test]
+    fn bindgen_test_layout_vhost_msg_v2__bindgen_ty_1() {
+        assert_eq!(
+            ::std::mem::size_of::<vhost_msg_v2__bindgen_ty_1>(),
+            64usize,
+            concat!("Size of: ", stringify!(vhost_msg_v2__bindgen_ty_1))
+        );
+        assert_eq!(
+            ::std::mem::align_of::<vhost_msg_v2__bindgen_ty_1>(),
+            8usize,
+            concat!("Alignment of ", stringify!(vhost_msg_v2__bindgen_ty_1))
+        );
+    }
+
+    #[test]
+    fn bindgen_test_layout_vhost_msg_v2() {
+        assert_eq!(
+            ::std::mem::size_of::<vhost_msg_v2>(),
+            72usize,
+            concat!("Size of: ", stringify!(vhost_msg_v2))
+        );
+        assert_eq!(
+            ::std::mem::align_of::<vhost_msg_v2>(),
+            8usize,
+            concat!("Alignment of ", stringify!(vhost_msg_v2))
         );
     }
 
