@@ -16,13 +16,15 @@ use std::alloc::{alloc, dealloc, Layout};
 use std::mem;
 
 use super::vhost_binding::*;
-use super::{ioctl_result, Error, Result, VhostKernBackend};
+use super::{ioctl_result, Error, Result, VhostKernBackend, VhostKernFeatures};
 use crate::vdpa::*;
+use crate::{VhostAccess, VhostIotlbBackend, VhostIotlbMsg, VhostIotlbType};
 
 /// Handle for running VHOST_VDPA ioctls.
 pub struct VhostKernVdpa<AS: GuestAddressSpace> {
     fd: File,
     mem: AS,
+    backend_features_acked: u64,
 }
 
 impl<AS: GuestAddressSpace> VhostKernVdpa<AS> {
@@ -36,6 +38,7 @@ impl<AS: GuestAddressSpace> VhostKernVdpa<AS> {
                 .open(path)
                 .map_err(Error::VhostOpen)?,
             mem,
+            backend_features_acked: 0,
         })
     }
 }
@@ -140,6 +143,32 @@ impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
 
         ioctl_result(ret, iova_range)
     }
+
+    fn dma_map(&self, iova: u64, size: u64, vaddr: *const u8, readonly: bool) -> Result<()> {
+        let iotlb = VhostIotlbMsg {
+            iova,
+            size,
+            userspace_addr: vaddr as u64,
+            perm: match readonly {
+                true => VhostAccess::ReadOnly,
+                false => VhostAccess::ReadWrite,
+            },
+            msg_type: VhostIotlbType::Update,
+        };
+
+        self.send_iotlb_msg(&iotlb)
+    }
+
+    fn dma_unmap(&self, iova: u64, size: u64) -> Result<()> {
+        let iotlb = VhostIotlbMsg {
+            iova,
+            size,
+            msg_type: VhostIotlbType::Invalidate,
+            ..Default::default()
+        };
+
+        self.send_iotlb_msg(&iotlb)
+    }
 }
 
 impl<AS: GuestAddressSpace> VhostKernBackend for VhostKernVdpa<AS> {
@@ -153,6 +182,16 @@ impl<AS: GuestAddressSpace> VhostKernBackend for VhostKernVdpa<AS> {
 impl<AS: GuestAddressSpace> AsRawFd for VhostKernVdpa<AS> {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.as_raw_fd()
+    }
+}
+
+impl<AS: GuestAddressSpace> VhostKernFeatures for VhostKernVdpa<AS> {
+    fn get_backend_features_acked(&self) -> u64 {
+        self.backend_features_acked
+    }
+
+    fn set_backend_features_acked(&mut self, features: u64) {
+        self.backend_features_acked = features;
     }
 }
 
@@ -280,5 +319,36 @@ mod tests {
 
         vdpa.set_vring_enable(0, true).unwrap();
         vdpa.set_vring_enable(0, false).unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn test_vdpa_kern_dma() {
+        let m = GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0), 0x10_0000)]).unwrap();
+        let mut vdpa = VhostKernVdpa::new(VHOST_VDPA_PATH, &m).unwrap();
+
+        let features = vdpa.get_features().unwrap();
+        // VIRTIO_F_VERSION_1 (bit 32) should be set
+        assert_ne!(features & (1 << 32), 0);
+        vdpa.set_features(features).unwrap();
+
+        let backend_features = vdpa.get_backend_features().unwrap();
+        assert_ne!(backend_features & (1 << VHOST_BACKEND_F_IOTLB_MSG_V2), 0);
+        vdpa.set_backend_features(backend_features).unwrap();
+
+        vdpa.set_owner().unwrap();
+
+        vdpa.dma_map(0xFFFF_0000, 0xFFFF, std::ptr::null::<u8>(), false)
+            .unwrap_err();
+
+        unsafe {
+            let layout = Layout::from_size_align(0xFFFF, 1).unwrap();
+            let ptr = alloc(layout);
+
+            vdpa.dma_map(0xFFFF_0000, 0xFFFF, ptr, false).unwrap();
+            vdpa.dma_unmap(0xFFFF_0000, 0xFFFF).unwrap();
+
+            dealloc(ptr, layout);
+        };
     }
 }
