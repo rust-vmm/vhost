@@ -85,11 +85,13 @@ impl std::fmt::Display for Error {
             Error::InvalidOperation => write!(f, "invalid vhost operations"),
             Error::InvalidGuestMemory => write!(f, "invalid guest memory object"),
             Error::InvalidGuestMemoryRegion => write!(f, "invalid guest memory region"),
-            Error::InvalidQueue => write!(f, "invalid virtque"),
-            Error::DescriptorTableAddress => write!(f, "invalid virtque descriptor talbe address"),
-            Error::UsedAddress => write!(f, "invalid virtque used talbe address"),
-            Error::AvailAddress => write!(f, "invalid virtque available table address"),
-            Error::LogAddress => write!(f, "invalid virtque log address"),
+            Error::InvalidQueue => write!(f, "invalid virtqueue"),
+            Error::DescriptorTableAddress => {
+                write!(f, "invalid virtqueue descriptor table address")
+            }
+            Error::UsedAddress => write!(f, "invalid virtqueue used table address"),
+            Error::AvailAddress => write!(f, "invalid virtqueue available table address"),
+            Error::LogAddress => write!(f, "invalid virtqueue log address"),
             Error::IOError(e) => write!(f, "IO error: {}", e),
             #[cfg(feature = "vhost-kern")]
             Error::VhostOpen(e) => write!(f, "failure in opening vhost file: {}", e),
@@ -121,7 +123,7 @@ mod tests {
     fn test_error() {
         assert_eq!(
             format!("{}", Error::AvailAddress),
-            "invalid virtque available table address"
+            "invalid virtqueue available table address"
         );
         assert_eq!(
             format!("{}", Error::InvalidOperation),
@@ -135,18 +137,18 @@ mod tests {
             format!("{}", Error::InvalidGuestMemoryRegion),
             "invalid guest memory region"
         );
-        assert_eq!(format!("{}", Error::InvalidQueue), "invalid virtque");
+        assert_eq!(format!("{}", Error::InvalidQueue), "invalid virtqueue");
         assert_eq!(
             format!("{}", Error::DescriptorTableAddress),
-            "invalid virtque descriptor talbe address"
+            "invalid virtqueue descriptor table address"
         );
         assert_eq!(
             format!("{}", Error::UsedAddress),
-            "invalid virtque used talbe address"
+            "invalid virtqueue used table address"
         );
         assert_eq!(
             format!("{}", Error::LogAddress),
-            "invalid virtque log address"
+            "invalid virtqueue log address"
         );
 
         assert_eq!(format!("{:?}", Error::AvailAddress), "AvailAddress");
