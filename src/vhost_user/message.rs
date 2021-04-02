@@ -657,14 +657,13 @@ impl VhostUserConfig {
 impl VhostUserMsgValidator for VhostUserConfig {
     #[allow(clippy::if_same_then_else)]
     fn is_valid(&self) -> bool {
+        let end_addr = match self.size.checked_add(self.offset) {
+            Some(addr) => addr,
+            None => return false,
+        };
         if (self.flags & !VhostUserConfigFlags::all().bits()) != 0 {
             return false;
-        } else if self.offset < 0x100 {
-            return false;
-        } else if self.size == 0
-            || self.size > VHOST_USER_CONFIG_SIZE
-            || self.size + self.offset > VHOST_USER_CONFIG_SIZE
-        {
+        } else if self.size == 0 || end_addr > VHOST_USER_CONFIG_SIZE {
             return false;
         }
         true
@@ -997,18 +996,15 @@ mod tests {
 
     #[test]
     fn check_user_config_msg() {
-        let mut msg = VhostUserConfig::new(
-            VHOST_USER_CONFIG_OFFSET,
-            VHOST_USER_CONFIG_SIZE - VHOST_USER_CONFIG_OFFSET,
-            VhostUserConfigFlags::WRITABLE,
-        );
+        let mut msg =
+            VhostUserConfig::new(0, VHOST_USER_CONFIG_SIZE, VhostUserConfigFlags::WRITABLE);
 
         assert!(msg.is_valid());
         msg.size = 0;
         assert!(!msg.is_valid());
         msg.size = 1;
         assert!(msg.is_valid());
-        msg.offset = 0;
+        msg.offset = u32::MAX;
         assert!(!msg.is_valid());
         msg.offset = VHOST_USER_CONFIG_SIZE;
         assert!(!msg.is_valid());
