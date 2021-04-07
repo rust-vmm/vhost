@@ -400,8 +400,8 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
             }
             MasterReq::SET_VRING_ENABLE => {
                 let msg = self.extract_request_body::<VhostUserVringState>(&hdr, size, &buf)?;
-                if self.acked_protocol_features & VhostUserProtocolFeatures::MQ.bits() == 0
-                    && msg.index > 0
+                if self.acked_virtio_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits()
+                    == 0
                 {
                     return Err(Error::InvalidOperation);
                 }
