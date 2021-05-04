@@ -23,7 +23,7 @@ use std::io::Error as IOError;
 pub mod message;
 
 mod connection;
-pub use self::connection::Listener;
+pub use self::connection::{Endpoint, Listener};
 
 #[cfg(feature = "vhost-user-master")]
 mod master;

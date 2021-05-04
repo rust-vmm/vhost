@@ -89,7 +89,7 @@ impl Drop for Listener {
 }
 
 /// Unix domain socket endpoint for vhost-user connection.
-pub(super) struct Endpoint<R: Req> {
+pub struct Endpoint<R: Req> {
     sock: UnixStream,
     _r: PhantomData<R>,
 }
