@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::fs::File;
-use std::os::unix::io::{AsRawFd, RawFd};
 
 use super::message::*;
 use super::*;
@@ -21,9 +20,9 @@ pub struct DummySlaveReqHandler {
     pub queue_num: usize,
     pub vring_num: [u32; MAX_QUEUE_NUM],
     pub vring_base: [u32; MAX_QUEUE_NUM],
-    pub call_fd: [Option<RawFd>; MAX_QUEUE_NUM],
-    pub kick_fd: [Option<RawFd>; MAX_QUEUE_NUM],
-    pub err_fd: [Option<RawFd>; MAX_QUEUE_NUM],
+    pub call_fd: [Option<File>; MAX_QUEUE_NUM],
+    pub kick_fd: [Option<File>; MAX_QUEUE_NUM],
+    pub err_fd: [Option<File>; MAX_QUEUE_NUM],
     pub vring_started: [bool; MAX_QUEUE_NUM],
     pub vring_enabled: [bool; MAX_QUEUE_NUM],
     pub inflight_file: Option<File>,
@@ -85,7 +84,7 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
         Ok(())
     }
 
-    fn set_mem_table(&mut self, _ctx: &[VhostUserMemoryRegion], _fds: &[RawFd]) -> Result<()> {
+    fn set_mem_table(&mut self, _ctx: &[VhostUserMemoryRegion], _files: Vec<File>) -> Result<()> {
         Ok(())
     }
 
@@ -136,13 +135,9 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
         ))
     }
 
-    fn set_vring_kick(&mut self, index: u8, fd: Option<RawFd>) -> Result<()> {
+    fn set_vring_kick(&mut self, index: u8, fd: Option<File>) -> Result<()> {
         if index as usize >= self.queue_num || index as usize > self.queue_num {
             return Err(Error::InvalidParam);
-        }
-        if self.kick_fd[index as usize].is_some() {
-            // Close file descriptor set by previous operations.
-            let _ = unsafe { libc::close(self.kick_fd[index as usize].unwrap()) };
         }
         self.kick_fd[index as usize] = fd;
 
@@ -157,25 +152,17 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
         Ok(())
     }
 
-    fn set_vring_call(&mut self, index: u8, fd: Option<RawFd>) -> Result<()> {
+    fn set_vring_call(&mut self, index: u8, fd: Option<File>) -> Result<()> {
         if index as usize >= self.queue_num || index as usize > self.queue_num {
             return Err(Error::InvalidParam);
-        }
-        if self.call_fd[index as usize].is_some() {
-            // Close file descriptor set by previous operations.
-            let _ = unsafe { libc::close(self.call_fd[index as usize].unwrap()) };
         }
         self.call_fd[index as usize] = fd;
         Ok(())
     }
 
-    fn set_vring_err(&mut self, index: u8, fd: Option<RawFd>) -> Result<()> {
+    fn set_vring_err(&mut self, index: u8, fd: Option<File>) -> Result<()> {
         if index as usize >= self.queue_num || index as usize > self.queue_num {
             return Err(Error::InvalidParam);
-        }
-        if self.err_fd[index as usize].is_some() {
-            // Close file descriptor set by previous operations.
-            let _ = unsafe { libc::close(self.err_fd[index as usize].unwrap()) };
         }
         self.err_fd[index as usize] = fd;
         Ok(())
@@ -250,10 +237,9 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     fn get_inflight_fd(
         &mut self,
         inflight: &VhostUserInflight,
-    ) -> Result<(VhostUserInflight, RawFd)> {
+    ) -> Result<(VhostUserInflight, File)> {
         let file = tempfile::tempfile().unwrap();
-        let fd = file.as_raw_fd();
-        self.inflight_file = Some(file);
+        self.inflight_file = Some(file.try_clone().unwrap());
         Ok((
             VhostUserInflight {
                 mmap_size: 0x1000,
@@ -261,7 +247,7 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
                 num_queues: inflight.num_queues,
                 queue_size: inflight.queue_size,
             },
-            fd,
+            file,
         ))
     }
 
@@ -273,7 +259,7 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
         Ok(MAX_MEM_SLOTS as u64)
     }
 
-    fn add_mem_region(&mut self, _region: &VhostUserSingleMemoryRegion, _fd: RawFd) -> Result<()> {
+    fn add_mem_region(&mut self, _region: &VhostUserSingleMemoryRegion, _fd: File) -> Result<()> {
         Ok(())
     }
 

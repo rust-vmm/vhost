@@ -1,6 +1,7 @@
 // Copyright (C) 2019-2021 Alibaba Cloud. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::fs::File;
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
@@ -33,9 +34,7 @@ pub trait VhostUserMasterReqHandler {
     }
 
     /// Handle virtio-fs map file requests.
-    fn fs_slave_map(&self, _fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<u64> {
-        // Safe because we have just received the rawfd from kernel.
-        unsafe { libc::close(fd) };
+    fn fs_slave_map(&self, _fs: &VhostUserFSSlaveMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
@@ -50,14 +49,12 @@ pub trait VhostUserMasterReqHandler {
     }
 
     /// Handle virtio-fs file IO requests.
-    fn fs_slave_io(&self, _fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<u64> {
-        // Safe because we have just received the rawfd from kernel.
-        unsafe { libc::close(fd) };
+    fn fs_slave_io(&self, _fs: &VhostUserFSSlaveMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     // fn handle_iotlb_msg(&mut self, iotlb: VhostUserIotlb);
-    // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: RawFd);
+    // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: &dyn AsRawFd);
 }
 
 /// A helper trait mirroring [VhostUserMasterReqHandler] but without interior mutability.
@@ -70,9 +67,7 @@ pub trait VhostUserMasterReqHandlerMut {
     }
 
     /// Handle virtio-fs map file requests.
-    fn fs_slave_map(&mut self, _fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<u64> {
-        // Safe because we have just received the rawfd from kernel.
-        unsafe { libc::close(fd) };
+    fn fs_slave_map(&mut self, _fs: &VhostUserFSSlaveMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
@@ -87,9 +82,7 @@ pub trait VhostUserMasterReqHandlerMut {
     }
 
     /// Handle virtio-fs file IO requests.
-    fn fs_slave_io(&mut self, _fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<u64> {
-        // Safe because we have just received the rawfd from kernel.
-        unsafe { libc::close(fd) };
+    fn fs_slave_io(&mut self, _fs: &VhostUserFSSlaveMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
@@ -102,7 +95,7 @@ impl<S: VhostUserMasterReqHandlerMut> VhostUserMasterReqHandler for Mutex<S> {
         self.lock().unwrap().handle_config_change()
     }
 
-    fn fs_slave_map(&self, fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<u64> {
+    fn fs_slave_map(&self, fs: &VhostUserFSSlaveMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
         self.lock().unwrap().fs_slave_map(fs, fd)
     }
 
@@ -114,7 +107,7 @@ impl<S: VhostUserMasterReqHandlerMut> VhostUserMasterReqHandler for Mutex<S> {
         self.lock().unwrap().fs_slave_sync(fs)
     }
 
-    fn fs_slave_io(&self, fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<u64> {
+    fn fs_slave_io(&self, fs: &VhostUserFSSlaveMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
         self.lock().unwrap().fs_slave_io(fs, fd)
     }
 }
@@ -206,8 +199,8 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         // . recv optional message body and payload according size field in
         //   message header
         // . validate message body and optional payload
-        let (hdr, rfds) = self.sub_sock.recv_header()?;
-        let rfds = self.check_attached_rfds(&hdr, rfds)?;
+        let (hdr, files) = self.sub_sock.recv_header()?;
+        self.check_attached_files(&hdr, &files)?;
         let (size, buf) = match hdr.get_size() {
             0 => (0, vec![0u8; 0]),
             len => {
@@ -231,9 +224,9 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
             }
             SlaveReq::FS_MAP => {
                 let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
-                // check_attached_rfds() has validated rfds
+                // check_attached_files() has validated files
                 self.backend
-                    .fs_slave_map(&msg, rfds.unwrap()[0])
+                    .fs_slave_map(&msg, &files.unwrap()[0])
                     .map_err(Error::ReqHandlerError)
             }
             SlaveReq::FS_UNMAP => {
@@ -250,9 +243,9 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
             }
             SlaveReq::FS_IO => {
                 let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
-                // check_attached_rfds() has validated rfds
+                // check_attached_files() has validated files
                 self.backend
-                    .fs_slave_io(&msg, rfds.unwrap()[0])
+                    .fs_slave_io(&msg, &files.unwrap()[0])
                     .map_err(Error::ReqHandlerError)
             }
             _ => Err(Error::InvalidMessage),
@@ -286,34 +279,21 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         Ok(())
     }
 
-    fn check_attached_rfds(
+    fn check_attached_files(
         &self,
         hdr: &VhostUserMsgHeader<SlaveReq>,
-        rfds: Option<Vec<RawFd>>,
-    ) -> Result<Option<Vec<RawFd>>> {
+        files: &Option<Vec<File>>,
+    ) -> Result<()> {
         match hdr.get_code() {
             SlaveReq::FS_MAP | SlaveReq::FS_IO => {
-                // Expect an fd set with a single fd.
-                match rfds {
-                    None => Err(Error::InvalidMessage),
-                    Some(fds) => {
-                        if fds.len() != 1 {
-                            Endpoint::<SlaveReq>::close_rfds(Some(fds));
-                            Err(Error::InvalidMessage)
-                        } else {
-                            Ok(Some(fds))
-                        }
-                    }
+                // Expect a single file is passed.
+                match files {
+                    Some(files) if files.len() == 1 => Ok(()),
+                    _ => Err(Error::InvalidMessage),
                 }
             }
-            _ => {
-                if rfds.is_some() {
-                    Endpoint::<SlaveReq>::close_rfds(rfds);
-                    Err(Error::InvalidMessage)
-                } else {
-                    Ok(rfds)
-                }
-            }
+            _ if files.is_some() => Err(Error::InvalidMessage),
+            _ => Ok(()),
         }
     }
 
@@ -390,9 +370,11 @@ mod tests {
 
     impl VhostUserMasterReqHandlerMut for MockMasterReqHandler {
         /// Handle virtio-fs map file requests from the slave.
-        fn fs_slave_map(&mut self, _fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<u64> {
-            // Safe because we have just received the rawfd from kernel.
-            unsafe { libc::close(fd) };
+        fn fs_slave_map(
+            &mut self,
+            _fs: &VhostUserFSSlaveMsg,
+            _fd: &dyn AsRawFd,
+        ) -> HandlerResult<u64> {
             Ok(0)
         }
 
@@ -437,7 +419,7 @@ mod tests {
         });
 
         fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &fd)
             .unwrap();
         // When REPLY_ACK has not been negotiated, the master has no way to detect failure from
         // slave side.
@@ -468,7 +450,7 @@ mod tests {
 
         fs_cache.set_reply_ack_flag(true);
         fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &fd)
             .unwrap();
         fs_cache
             .fs_slave_unmap(&VhostUserFSSlaveMsg::default())
