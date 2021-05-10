@@ -401,7 +401,7 @@ mod tests {
         assert_eq!(offset, 0x100);
         assert_eq!(reply_payload[0], 0xa5);
 
-        master.set_slave_request_fd(eventfd.as_raw_fd()).unwrap();
+        master.set_slave_request_fd(&eventfd).unwrap();
         master.set_vring_enable(0, true).unwrap();
 
         // unimplemented yet

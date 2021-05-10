@@ -3,7 +3,7 @@
 
 use std::io;
 use std::mem;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -55,7 +55,6 @@ impl SlaveFsCacheReqInternal {
 
         let (reply, body, rfds) = self.sock.recv_body::<VhostUserU64>()?;
         if !reply.is_reply_for(&hdr) || rfds.is_some() || !body.is_valid() {
-            Endpoint::<SlaveReq>::close_rfds(rfds);
             return Err(Error::InvalidMessage);
         }
         if body.value != 0 {
@@ -129,8 +128,8 @@ impl SlaveFsCacheReq {
 
 impl VhostUserMasterReqHandler for SlaveFsCacheReq {
     /// Forward vhost-user-fs map file requests to the slave.
-    fn fs_slave_map(&self, fs: &VhostUserFSSlaveMsg, fd: RawFd) -> HandlerResult<u64> {
-        self.send_message(SlaveReq::FS_MAP, fs, Some(&[fd]))
+    fn fs_slave_map(&self, fs: &VhostUserFSSlaveMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
+        self.send_message(SlaveReq::FS_MAP, fs, Some(&[fd.as_raw_fd()]))
     }
 
     /// Forward vhost-user-fs unmap file requests to the master.
@@ -158,31 +157,21 @@ mod tests {
     #[test]
     fn test_slave_fs_cache_send_failure() {
         let (p1, p2) = UnixStream::pair().unwrap();
-        let fd = p2.as_raw_fd();
         let fs_cache = SlaveFsCacheReq::from_stream(p1);
 
         fs_cache.set_failed(libc::ECONNRESET);
         fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &p2)
             .unwrap_err();
         fs_cache
             .fs_slave_unmap(&VhostUserFSSlaveMsg::default())
             .unwrap_err();
         fs_cache.node().error = None;
-
-        drop(p2);
-        fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
-            .unwrap_err();
-        fs_cache
-            .fs_slave_unmap(&VhostUserFSSlaveMsg::default())
-            .unwrap_err();
     }
 
     #[test]
     fn test_slave_fs_cache_recv_negative() {
         let (p1, p2) = UnixStream::pair().unwrap();
-        let fd = p2.as_raw_fd();
         let fs_cache = SlaveFsCacheReq::from_stream(p1);
         let mut master = Endpoint::<SlaveReq>::from_stream(p2);
 
@@ -194,33 +183,35 @@ mod tests {
         );
         let body = VhostUserU64::new(0);
 
-        master.send_message(&hdr, &body, Some(&[fd])).unwrap();
+        master
+            .send_message(&hdr, &body, Some(&[master.as_raw_fd()]))
+            .unwrap();
         fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
             .unwrap();
 
         fs_cache.set_reply_ack_flag(true);
         fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
             .unwrap_err();
 
         hdr.set_code(SlaveReq::FS_UNMAP);
         master.send_message(&hdr, &body, None).unwrap();
         fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
             .unwrap_err();
         hdr.set_code(SlaveReq::FS_MAP);
 
         let body = VhostUserU64::new(1);
         master.send_message(&hdr, &body, None).unwrap();
         fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
             .unwrap_err();
 
         let body = VhostUserU64::new(0);
         master.send_message(&hdr, &body, None).unwrap();
         fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), fd)
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
             .unwrap();
     }
 }
