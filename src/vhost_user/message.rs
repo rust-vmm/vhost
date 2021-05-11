@@ -140,9 +140,9 @@ pub enum MasterReq {
     MAX_CMD = 41,
 }
 
-impl Into<u32> for MasterReq {
-    fn into(self) -> u32 {
-        self as u32
+impl From<MasterReq> for u32 {
+    fn from(req: MasterReq) -> u32 {
+        req as u32
     }
 }
 
@@ -180,9 +180,9 @@ pub enum SlaveReq {
     MAX_CMD = 10,
 }
 
-impl Into<u32> for SlaveReq {
-    fn into(self) -> u32 {
-        self as u32
+impl From<SlaveReq> for u32 {
+    fn from(req: SlaveReq) -> u32 {
+        req as u32
     }
 }
 
