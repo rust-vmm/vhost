@@ -317,7 +317,7 @@ impl VhostUserMaster for Master {
     fn get_protocol_features(&mut self) -> Result<VhostUserProtocolFeatures> {
         let mut node = self.node();
         let flag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-        if node.virtio_features & flag == 0 || node.acked_virtio_features & flag == 0 {
+        if node.virtio_features & flag == 0 {
             return error_code(VhostUserError::InvalidOperation);
         }
         let hdr = node.send_request_header(MasterReq::GET_PROTOCOL_FEATURES, None)?;
@@ -334,7 +334,7 @@ impl VhostUserMaster for Master {
     fn set_protocol_features(&mut self, features: VhostUserProtocolFeatures) -> Result<()> {
         let mut node = self.node();
         let flag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-        if node.virtio_features & flag == 0 || node.acked_virtio_features & flag == 0 {
+        if node.virtio_features & flag == 0 {
             return error_code(VhostUserError::InvalidOperation);
         }
         let val = VhostUserU64::new(features.bits());
