@@ -210,12 +210,33 @@ mod tests {
     use super::*;
     use crate::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
     use serial_test::serial;
+    use std::io::ErrorKind;
+
+    /// macro to skip test if vhost-vdpa device path is not found.
+    ///
+    /// vDPA simulators are available since Linux 5.7, but the CI may have
+    /// an older kernel, so for now we skip the test if we don't find
+    /// the device.
+    macro_rules! unwrap_not_found {
+        ( $e:expr ) => {
+            match $e {
+                Ok(v) => v,
+                Err(error) => match error {
+                    Error::VhostOpen(ref e) if e.kind() == ErrorKind::NotFound => {
+                        println!("Err: {:?} SKIPPED", e);
+                        return;
+                    }
+                    e => panic!("Err: {:?}", e),
+                },
+            }
+        };
+    }
 
     #[test]
     #[serial]
     fn test_vdpa_kern_new_device() {
         let m = GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 0x10_0000)]).unwrap();
-        let vdpa = VhostKernVdpa::new(VHOST_VDPA_PATH, &m).unwrap();
+        let vdpa = unwrap_not_found!(VhostKernVdpa::new(VHOST_VDPA_PATH, &m));
 
         assert!(vdpa.as_raw_fd() >= 0);
         assert!(vdpa.mem().find_region(GuestAddress(0x100)).is_some());
@@ -226,7 +247,7 @@ mod tests {
     #[serial]
     fn test_vdpa_kern_is_valid() {
         let m = GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 0x10_0000)]).unwrap();
-        let vdpa = VhostKernVdpa::new(VHOST_VDPA_PATH, &m).unwrap();
+        let vdpa = unwrap_not_found!(VhostKernVdpa::new(VHOST_VDPA_PATH, &m));
 
         let mut config = VringConfigData {
             queue_max_size: 32,
@@ -251,7 +272,7 @@ mod tests {
     #[serial]
     fn test_vdpa_kern_ioctls() {
         let m = GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 0x10_0000)]).unwrap();
-        let vdpa = VhostKernVdpa::new(VHOST_VDPA_PATH, &m).unwrap();
+        let vdpa = unwrap_not_found!(VhostKernVdpa::new(VHOST_VDPA_PATH, &m));
 
         let features = vdpa.get_features().unwrap();
         // VIRTIO_F_VERSION_1 (bit 32) should be set
@@ -320,7 +341,7 @@ mod tests {
     #[serial]
     fn test_vdpa_kern_dma() {
         let m = GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 0x10_0000)]).unwrap();
-        let mut vdpa = VhostKernVdpa::new(VHOST_VDPA_PATH, &m).unwrap();
+        let mut vdpa = unwrap_not_found!(VhostKernVdpa::new(VHOST_VDPA_PATH, &m));
 
         let features = vdpa.get_features().unwrap();
         // VIRTIO_F_VERSION_1 (bit 32) should be set
