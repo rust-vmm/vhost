@@ -84,6 +84,7 @@ impl Master {
                 protocol_features_ready: false,
                 max_queue_num,
                 error: None,
+                hdr_flags: VhostUserHeaderFlag::empty(),
             })),
         }
     }
@@ -124,6 +125,12 @@ impl Master {
         }?;
 
         Ok(Self::new(endpoint, max_queue_num))
+    }
+
+    /// Set the header flags that should be applied to all following messages.
+    pub fn set_hdr_flags(&self, flags: VhostUserHeaderFlag) {
+        let mut node = self.node();
+        node.hdr_flags = flags;
     }
 }
 
@@ -546,6 +553,8 @@ struct MasterInternal {
     max_queue_num: u64,
     // Internal flag to mark failure state.
     error: Option<i32>,
+    // List of header flags.
+    hdr_flags: VhostUserHeaderFlag,
 }
 
 impl MasterInternal {
@@ -555,7 +564,7 @@ impl MasterInternal {
         fds: Option<&[RawFd]>,
     ) -> VhostUserResult<VhostUserMsgHeader<MasterReq>> {
         self.check_state()?;
-        let hdr = Self::new_request_header(code, 0);
+        let hdr = self.new_request_header(code, 0);
         self.main_sock.send_header(&hdr, fds)?;
         Ok(hdr)
     }
@@ -571,7 +580,7 @@ impl MasterInternal {
         }
         self.check_state()?;
 
-        let hdr = Self::new_request_header(code, mem::size_of::<T>() as u32);
+        let hdr = self.new_request_header(code, mem::size_of::<T>() as u32);
         self.main_sock.send_message(&hdr, msg, fds)?;
         Ok(hdr)
     }
@@ -594,7 +603,7 @@ impl MasterInternal {
         }
         self.check_state()?;
 
-        let hdr = Self::new_request_header(code, len as u32);
+        let hdr = self.new_request_header(code, len as u32);
         self.main_sock
             .send_message_with_payload(&hdr, msg, payload, fds)?;
         Ok(hdr)
@@ -615,7 +624,7 @@ impl MasterInternal {
         // This flag is set when there is no file descriptor in the ancillary data. This signals
         // that polling will be used instead of waiting for the call.
         let msg = VhostUserU64::new(queue_index as u64);
-        let hdr = Self::new_request_header(code, mem::size_of::<VhostUserU64>() as u32);
+        let hdr = self.new_request_header(code, mem::size_of::<VhostUserU64>() as u32);
         self.main_sock.send_message(&hdr, &msg, Some(&[fd]))?;
         Ok(hdr)
     }
@@ -698,9 +707,8 @@ impl MasterInternal {
     }
 
     #[inline]
-    fn new_request_header(request: MasterReq, size: u32) -> VhostUserMsgHeader<MasterReq> {
-        // TODO: handle NEED_REPLY flag
-        VhostUserMsgHeader::new(request, 0x1, size)
+    fn new_request_header(&self, request: MasterReq, size: u32) -> VhostUserMsgHeader<MasterReq> {
+        VhostUserMsgHeader::new(request, self.hdr_flags.bits() | 0x1, size)
     }
 }
 
