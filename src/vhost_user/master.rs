@@ -158,11 +158,9 @@ impl VhostBackend for Master {
     fn set_features(&self, features: u64) -> Result<()> {
         let mut node = self.node();
         let val = VhostUserU64::new(features);
-        let _ = node.send_request_with_body(MasterReq::SET_FEATURES, &val, None)?;
-        // Don't wait for ACK here because the protocol feature negotiation process hasn't been
-        // completed yet.
+        let hdr = node.send_request_with_body(MasterReq::SET_FEATURES, &val, None)?;
         node.acked_virtio_features = features & node.virtio_features;
-        Ok(())
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     /// Set the current Master as an owner of the session.
@@ -170,18 +168,14 @@ impl VhostBackend for Master {
         // We unwrap() the return value to assert that we are not expecting threads to ever fail
         // while holding the lock.
         let mut node = self.node();
-        let _ = node.send_request_header(MasterReq::SET_OWNER, None)?;
-        // Don't wait for ACK here because the protocol feature negotiation process hasn't been
-        // completed yet.
-        Ok(())
+        let hdr = node.send_request_header(MasterReq::SET_OWNER, None)?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     fn reset_owner(&self) -> Result<()> {
         let mut node = self.node();
-        let _ = node.send_request_header(MasterReq::RESET_OWNER, None)?;
-        // Don't wait for ACK here because the protocol feature negotiation process hasn't been
-        // completed yet.
-        Ok(())
+        let hdr = node.send_request_header(MasterReq::RESET_OWNER, None)?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     /// Set the memory map regions on the slave so it can translate the vring
@@ -237,8 +231,8 @@ impl VhostBackend for Master {
     fn set_log_fd(&self, fd: RawFd) -> Result<()> {
         let mut node = self.node();
         let fds = [fd];
-        node.send_request_header(MasterReq::SET_LOG_FD, Some(&fds))?;
-        Ok(())
+        let hdr = node.send_request_header(MasterReq::SET_LOG_FD, Some(&fds))?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     /// Set the size of the queue.
@@ -300,8 +294,8 @@ impl VhostBackend for Master {
         if queue_index as u64 >= node.max_queue_num {
             return error_code(VhostUserError::InvalidParam);
         }
-        node.send_fd_for_vring(MasterReq::SET_VRING_CALL, queue_index, fd.as_raw_fd())?;
-        Ok(())
+        let hdr = node.send_fd_for_vring(MasterReq::SET_VRING_CALL, queue_index, fd.as_raw_fd())?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     /// Set the event file descriptor for adding buffers to the vring.
@@ -313,8 +307,8 @@ impl VhostBackend for Master {
         if queue_index as u64 >= node.max_queue_num {
             return error_code(VhostUserError::InvalidParam);
         }
-        node.send_fd_for_vring(MasterReq::SET_VRING_KICK, queue_index, fd.as_raw_fd())?;
-        Ok(())
+        let hdr = node.send_fd_for_vring(MasterReq::SET_VRING_KICK, queue_index, fd.as_raw_fd())?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     /// Set the event file descriptor to signal when error occurs.
@@ -325,8 +319,8 @@ impl VhostBackend for Master {
         if queue_index as u64 >= node.max_queue_num {
             return error_code(VhostUserError::InvalidParam);
         }
-        node.send_fd_for_vring(MasterReq::SET_VRING_ERR, queue_index, fd.as_raw_fd())?;
-        Ok(())
+        let hdr = node.send_fd_for_vring(MasterReq::SET_VRING_ERR, queue_index, fd.as_raw_fd())?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 }
 
@@ -355,12 +349,12 @@ impl VhostUserMaster for Master {
             return error_code(VhostUserError::InvalidOperation);
         }
         let val = VhostUserU64::new(features.bits());
-        let _ = node.send_request_with_body(MasterReq::SET_PROTOCOL_FEATURES, &val, None)?;
+        let hdr = node.send_request_with_body(MasterReq::SET_PROTOCOL_FEATURES, &val, None)?;
         // Don't wait for ACK here because the protocol feature negotiation process hasn't been
         // completed yet.
         node.acked_protocol_features = features.bits();
         node.protocol_features_ready = true;
-        Ok(())
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     fn get_queue_num(&mut self) -> Result<u64> {
@@ -458,8 +452,8 @@ impl VhostUserMaster for Master {
         }
 
         let fds = [fd];
-        node.send_request_header(MasterReq::SET_SLAVE_REQ_FD, Some(&fds))?;
-        Ok(())
+        let hdr = node.send_request_header(MasterReq::SET_SLAVE_REQ_FD, Some(&fds))?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     fn get_inflight_fd(
