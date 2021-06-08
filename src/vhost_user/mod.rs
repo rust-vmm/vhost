@@ -307,6 +307,11 @@ mod tests {
                 VhostUserProtocolFeatures::all().bits()
             );
 
+            // get_inflight_fd()
+            slave.handle_request().unwrap();
+            // set_inflight_fd()
+            slave.handle_request().unwrap();
+
             // get_queue_num()
             slave.handle_request().unwrap();
 
@@ -358,6 +363,19 @@ mod tests {
         let features = master.get_protocol_features().unwrap();
         assert_eq!(features.bits(), VhostUserProtocolFeatures::all().bits());
         master.set_protocol_features(features).unwrap();
+
+        // Retrieve inflight I/O tracking information
+        let (inflight_info, inflight_file) = master
+            .get_inflight_fd(&VhostUserInflight {
+                num_queues: 2,
+                queue_size: 256,
+                ..Default::default()
+            })
+            .unwrap();
+        // Set the buffer back to the backend
+        master
+            .set_inflight_fd(&inflight_info, inflight_file.as_raw_fd())
+            .unwrap();
 
         let num = master.get_queue_num().unwrap();
         assert_eq!(num, 2);
