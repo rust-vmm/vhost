@@ -3,8 +3,9 @@
 
 //! Traits and Struct for vhost-user master.
 
+use std::fs::File;
 use std::mem;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -50,6 +51,15 @@ pub trait VhostUserMaster: VhostBackend {
 
     /// Setup slave communication channel.
     fn set_slave_request_fd(&mut self, fd: RawFd) -> Result<()>;
+
+    /// Retrieve shared buffer for inflight I/O tracking.
+    fn get_inflight_fd(
+        &mut self,
+        inflight: &VhostUserInflight,
+    ) -> Result<(VhostUserInflight, File)>;
+
+    /// Set shared buffer for inflight I/O tracking.
+    fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, fd: RawFd) -> Result<()>;
 
     /// Query the maximum amount of memory slots supported by the backend.
     fn get_max_mem_slots(&mut self) -> Result<u64>;
@@ -452,6 +462,47 @@ impl VhostUserMaster for Master {
         Ok(())
     }
 
+    fn get_inflight_fd(
+        &mut self,
+        inflight: &VhostUserInflight,
+    ) -> Result<(VhostUserInflight, File)> {
+        let mut node = self.node();
+        if node.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits() == 0 {
+            return error_code(VhostUserError::InvalidOperation);
+        }
+
+        let hdr = node.send_request_with_body(MasterReq::GET_INFLIGHT_FD, inflight, None)?;
+        let (inflight, fds) = node.recv_reply_with_fds::<VhostUserInflight>(&hdr)?;
+
+        if let Some(fds) = &fds {
+            if fds.len() == 1 && fds[0] >= 0 {
+                // Safe because we know the fd is valid.
+                let file = unsafe { File::from_raw_fd(fds[0]) };
+                return Ok((inflight, file));
+            }
+        }
+
+        // Make sure to close the fds before returning the error.
+        Endpoint::<MasterReq>::close_rfds(fds);
+
+        error_code(VhostUserError::IncorrectFds)
+    }
+
+    fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, fd: RawFd) -> Result<()> {
+        let mut node = self.node();
+        if node.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits() == 0 {
+            return error_code(VhostUserError::InvalidOperation);
+        }
+
+        if inflight.mmap_size == 0 || inflight.num_queues == 0 || inflight.queue_size == 0 || fd < 0
+        {
+            return error_code(VhostUserError::InvalidParam);
+        }
+
+        let hdr = node.send_request_with_body(MasterReq::SET_INFLIGHT_FD, inflight, Some(&[fd]))?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
+    }
+
     fn get_max_mem_slots(&mut self) -> Result<u64> {
         let mut node = self.node();
         if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
@@ -644,6 +695,23 @@ impl MasterInternal {
             return Err(VhostUserError::InvalidMessage);
         }
         Ok(body)
+    }
+
+    fn recv_reply_with_fds<T: Sized + Default + VhostUserMsgValidator>(
+        &mut self,
+        hdr: &VhostUserMsgHeader<MasterReq>,
+    ) -> VhostUserResult<(T, Option<Vec<RawFd>>)> {
+        if mem::size_of::<T>() > MAX_MSG_SIZE || hdr.is_reply() {
+            return Err(VhostUserError::InvalidParam);
+        }
+        self.check_state()?;
+
+        let (reply, body, rfds) = self.main_sock.recv_body::<T>()?;
+        if !reply.is_reply_for(&hdr) || rfds.is_none() || !body.is_valid() {
+            Endpoint::<MasterReq>::close_rfds(rfds);
+            return Err(VhostUserError::InvalidMessage);
+        }
+        Ok((body, rfds))
     }
 
     fn recv_reply_with_payload<T: Sized + Default + VhostUserMsgValidator>(

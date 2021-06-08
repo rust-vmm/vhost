@@ -1,7 +1,8 @@
 // Copyright (C) 2019 Alibaba Cloud Computing. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::os::unix::io::RawFd;
+use std::fs::File;
+use std::os::unix::io::{AsRawFd, RawFd};
 
 use super::message::*;
 use super::*;
@@ -25,6 +26,7 @@ pub struct DummySlaveReqHandler {
     pub err_fd: [Option<RawFd>; MAX_QUEUE_NUM],
     pub vring_started: [bool; MAX_QUEUE_NUM],
     pub vring_enabled: [bool; MAX_QUEUE_NUM],
+    pub inflight_file: Option<File>,
 }
 
 impl DummySlaveReqHandler {
@@ -242,6 +244,28 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
         {
             return Err(Error::InvalidParam);
         }
+        Ok(())
+    }
+
+    fn get_inflight_fd(
+        &mut self,
+        inflight: &VhostUserInflight,
+    ) -> Result<(VhostUserInflight, RawFd)> {
+        let file = tempfile::tempfile().unwrap();
+        let fd = file.as_raw_fd();
+        self.inflight_file = Some(file);
+        Ok((
+            VhostUserInflight {
+                mmap_size: 0x1000,
+                mmap_offset: 0,
+                num_queues: inflight.num_queues,
+                queue_size: inflight.queue_size,
+            },
+            fd,
+        ))
+    }
+
+    fn set_inflight_fd(&mut self, _inflight: &VhostUserInflight, _file: File) -> Result<()> {
         Ok(())
     }
 
