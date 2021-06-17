@@ -673,6 +673,42 @@ impl VhostUserMsgValidator for VhostUserConfig {
 /// Payload for the VhostUserConfig message.
 pub type VhostUserConfigPayload = Vec<u8>;
 
+/// Single memory region descriptor as payload for ADD_MEM_REG and REM_MEM_REG
+/// requests.
+#[repr(C)]
+#[derive(Default, Clone)]
+pub struct VhostUserInflight {
+    /// Size of the area to track inflight I/O.
+    pub mmap_size: u64,
+    /// Offset of this area from the start of the supplied file descriptor.
+    pub mmap_offset: u64,
+    /// Number of virtqueues.
+    pub num_queues: u16,
+    /// Size of virtqueues.
+    pub queue_size: u16,
+}
+
+impl VhostUserInflight {
+    /// Create a new instance.
+    pub fn new(mmap_size: u64, mmap_offset: u64, num_queues: u16, queue_size: u16) -> Self {
+        VhostUserInflight {
+            mmap_size,
+            mmap_offset,
+            num_queues,
+            queue_size,
+        }
+    }
+}
+
+impl VhostUserMsgValidator for VhostUserInflight {
+    fn is_valid(&self) -> bool {
+        if self.num_queues == 0 || self.queue_size == 0 {
+            return false;
+        }
+        true
+    }
+}
+
 /*
  * TODO: support dirty log, live migration and IOTLB operations.
 #[repr(packed)]

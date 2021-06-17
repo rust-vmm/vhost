@@ -3,8 +3,9 @@
 
 //! Traits and Struct for vhost-user master.
 
+use std::fs::File;
 use std::mem;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -51,6 +52,15 @@ pub trait VhostUserMaster: VhostBackend {
     /// Setup slave communication channel.
     fn set_slave_request_fd(&mut self, fd: RawFd) -> Result<()>;
 
+    /// Retrieve shared buffer for inflight I/O tracking.
+    fn get_inflight_fd(
+        &mut self,
+        inflight: &VhostUserInflight,
+    ) -> Result<(VhostUserInflight, File)>;
+
+    /// Set shared buffer for inflight I/O tracking.
+    fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, fd: RawFd) -> Result<()>;
+
     /// Query the maximum amount of memory slots supported by the backend.
     fn get_max_mem_slots(&mut self) -> Result<u64>;
 
@@ -84,6 +94,7 @@ impl Master {
                 protocol_features_ready: false,
                 max_queue_num,
                 error: None,
+                hdr_flags: VhostUserHeaderFlag::empty(),
             })),
         }
     }
@@ -125,6 +136,12 @@ impl Master {
 
         Ok(Self::new(endpoint, max_queue_num))
     }
+
+    /// Set the header flags that should be applied to all following messages.
+    pub fn set_hdr_flags(&self, flags: VhostUserHeaderFlag) {
+        let mut node = self.node();
+        node.hdr_flags = flags;
+    }
 }
 
 impl VhostBackend for Master {
@@ -141,11 +158,9 @@ impl VhostBackend for Master {
     fn set_features(&self, features: u64) -> Result<()> {
         let mut node = self.node();
         let val = VhostUserU64::new(features);
-        let _ = node.send_request_with_body(MasterReq::SET_FEATURES, &val, None)?;
-        // Don't wait for ACK here because the protocol feature negotiation process hasn't been
-        // completed yet.
+        let hdr = node.send_request_with_body(MasterReq::SET_FEATURES, &val, None)?;
         node.acked_virtio_features = features & node.virtio_features;
-        Ok(())
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     /// Set the current Master as an owner of the session.
@@ -153,18 +168,14 @@ impl VhostBackend for Master {
         // We unwrap() the return value to assert that we are not expecting threads to ever fail
         // while holding the lock.
         let mut node = self.node();
-        let _ = node.send_request_header(MasterReq::SET_OWNER, None)?;
-        // Don't wait for ACK here because the protocol feature negotiation process hasn't been
-        // completed yet.
-        Ok(())
+        let hdr = node.send_request_header(MasterReq::SET_OWNER, None)?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     fn reset_owner(&self) -> Result<()> {
         let mut node = self.node();
-        let _ = node.send_request_header(MasterReq::RESET_OWNER, None)?;
-        // Don't wait for ACK here because the protocol feature negotiation process hasn't been
-        // completed yet.
-        Ok(())
+        let hdr = node.send_request_header(MasterReq::RESET_OWNER, None)?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     /// Set the memory map regions on the slave so it can translate the vring
@@ -220,8 +231,8 @@ impl VhostBackend for Master {
     fn set_log_fd(&self, fd: RawFd) -> Result<()> {
         let mut node = self.node();
         let fds = [fd];
-        node.send_request_header(MasterReq::SET_LOG_FD, Some(&fds))?;
-        Ok(())
+        let hdr = node.send_request_header(MasterReq::SET_LOG_FD, Some(&fds))?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     /// Set the size of the queue.
@@ -283,8 +294,8 @@ impl VhostBackend for Master {
         if queue_index as u64 >= node.max_queue_num {
             return error_code(VhostUserError::InvalidParam);
         }
-        node.send_fd_for_vring(MasterReq::SET_VRING_CALL, queue_index, fd.as_raw_fd())?;
-        Ok(())
+        let hdr = node.send_fd_for_vring(MasterReq::SET_VRING_CALL, queue_index, fd.as_raw_fd())?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     /// Set the event file descriptor for adding buffers to the vring.
@@ -296,8 +307,8 @@ impl VhostBackend for Master {
         if queue_index as u64 >= node.max_queue_num {
             return error_code(VhostUserError::InvalidParam);
         }
-        node.send_fd_for_vring(MasterReq::SET_VRING_KICK, queue_index, fd.as_raw_fd())?;
-        Ok(())
+        let hdr = node.send_fd_for_vring(MasterReq::SET_VRING_KICK, queue_index, fd.as_raw_fd())?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     /// Set the event file descriptor to signal when error occurs.
@@ -308,8 +319,8 @@ impl VhostBackend for Master {
         if queue_index as u64 >= node.max_queue_num {
             return error_code(VhostUserError::InvalidParam);
         }
-        node.send_fd_for_vring(MasterReq::SET_VRING_ERR, queue_index, fd.as_raw_fd())?;
-        Ok(())
+        let hdr = node.send_fd_for_vring(MasterReq::SET_VRING_ERR, queue_index, fd.as_raw_fd())?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 }
 
@@ -317,7 +328,7 @@ impl VhostUserMaster for Master {
     fn get_protocol_features(&mut self) -> Result<VhostUserProtocolFeatures> {
         let mut node = self.node();
         let flag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-        if node.virtio_features & flag == 0 || node.acked_virtio_features & flag == 0 {
+        if node.virtio_features & flag == 0 {
             return error_code(VhostUserError::InvalidOperation);
         }
         let hdr = node.send_request_header(MasterReq::GET_PROTOCOL_FEATURES, None)?;
@@ -334,16 +345,16 @@ impl VhostUserMaster for Master {
     fn set_protocol_features(&mut self, features: VhostUserProtocolFeatures) -> Result<()> {
         let mut node = self.node();
         let flag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-        if node.virtio_features & flag == 0 || node.acked_virtio_features & flag == 0 {
+        if node.virtio_features & flag == 0 {
             return error_code(VhostUserError::InvalidOperation);
         }
         let val = VhostUserU64::new(features.bits());
-        let _ = node.send_request_with_body(MasterReq::SET_PROTOCOL_FEATURES, &val, None)?;
+        let hdr = node.send_request_with_body(MasterReq::SET_PROTOCOL_FEATURES, &val, None)?;
         // Don't wait for ACK here because the protocol feature negotiation process hasn't been
         // completed yet.
         node.acked_protocol_features = features.bits();
         node.protocol_features_ready = true;
-        Ok(())
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     fn get_queue_num(&mut self) -> Result<u64> {
@@ -441,8 +452,49 @@ impl VhostUserMaster for Master {
         }
 
         let fds = [fd];
-        node.send_request_header(MasterReq::SET_SLAVE_REQ_FD, Some(&fds))?;
-        Ok(())
+        let hdr = node.send_request_header(MasterReq::SET_SLAVE_REQ_FD, Some(&fds))?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
+    }
+
+    fn get_inflight_fd(
+        &mut self,
+        inflight: &VhostUserInflight,
+    ) -> Result<(VhostUserInflight, File)> {
+        let mut node = self.node();
+        if node.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits() == 0 {
+            return error_code(VhostUserError::InvalidOperation);
+        }
+
+        let hdr = node.send_request_with_body(MasterReq::GET_INFLIGHT_FD, inflight, None)?;
+        let (inflight, fds) = node.recv_reply_with_fds::<VhostUserInflight>(&hdr)?;
+
+        if let Some(fds) = &fds {
+            if fds.len() == 1 && fds[0] >= 0 {
+                // Safe because we know the fd is valid.
+                let file = unsafe { File::from_raw_fd(fds[0]) };
+                return Ok((inflight, file));
+            }
+        }
+
+        // Make sure to close the fds before returning the error.
+        Endpoint::<MasterReq>::close_rfds(fds);
+
+        error_code(VhostUserError::IncorrectFds)
+    }
+
+    fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, fd: RawFd) -> Result<()> {
+        let mut node = self.node();
+        if node.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits() == 0 {
+            return error_code(VhostUserError::InvalidOperation);
+        }
+
+        if inflight.mmap_size == 0 || inflight.num_queues == 0 || inflight.queue_size == 0 || fd < 0
+        {
+            return error_code(VhostUserError::InvalidParam);
+        }
+
+        let hdr = node.send_request_with_body(MasterReq::SET_INFLIGHT_FD, inflight, Some(&[fd]))?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     fn get_max_mem_slots(&mut self) -> Result<u64> {
@@ -546,6 +598,8 @@ struct MasterInternal {
     max_queue_num: u64,
     // Internal flag to mark failure state.
     error: Option<i32>,
+    // List of header flags.
+    hdr_flags: VhostUserHeaderFlag,
 }
 
 impl MasterInternal {
@@ -555,7 +609,7 @@ impl MasterInternal {
         fds: Option<&[RawFd]>,
     ) -> VhostUserResult<VhostUserMsgHeader<MasterReq>> {
         self.check_state()?;
-        let hdr = Self::new_request_header(code, 0);
+        let hdr = self.new_request_header(code, 0);
         self.main_sock.send_header(&hdr, fds)?;
         Ok(hdr)
     }
@@ -571,7 +625,7 @@ impl MasterInternal {
         }
         self.check_state()?;
 
-        let hdr = Self::new_request_header(code, mem::size_of::<T>() as u32);
+        let hdr = self.new_request_header(code, mem::size_of::<T>() as u32);
         self.main_sock.send_message(&hdr, msg, fds)?;
         Ok(hdr)
     }
@@ -594,7 +648,7 @@ impl MasterInternal {
         }
         self.check_state()?;
 
-        let hdr = Self::new_request_header(code, len as u32);
+        let hdr = self.new_request_header(code, len as u32);
         self.main_sock
             .send_message_with_payload(&hdr, msg, payload, fds)?;
         Ok(hdr)
@@ -615,7 +669,7 @@ impl MasterInternal {
         // This flag is set when there is no file descriptor in the ancillary data. This signals
         // that polling will be used instead of waiting for the call.
         let msg = VhostUserU64::new(queue_index as u64);
-        let hdr = Self::new_request_header(code, mem::size_of::<VhostUserU64>() as u32);
+        let hdr = self.new_request_header(code, mem::size_of::<VhostUserU64>() as u32);
         self.main_sock.send_message(&hdr, &msg, Some(&[fd]))?;
         Ok(hdr)
     }
@@ -635,6 +689,23 @@ impl MasterInternal {
             return Err(VhostUserError::InvalidMessage);
         }
         Ok(body)
+    }
+
+    fn recv_reply_with_fds<T: Sized + Default + VhostUserMsgValidator>(
+        &mut self,
+        hdr: &VhostUserMsgHeader<MasterReq>,
+    ) -> VhostUserResult<(T, Option<Vec<RawFd>>)> {
+        if mem::size_of::<T>() > MAX_MSG_SIZE || hdr.is_reply() {
+            return Err(VhostUserError::InvalidParam);
+        }
+        self.check_state()?;
+
+        let (reply, body, rfds) = self.main_sock.recv_body::<T>()?;
+        if !reply.is_reply_for(&hdr) || rfds.is_none() || !body.is_valid() {
+            Endpoint::<MasterReq>::close_rfds(rfds);
+            return Err(VhostUserError::InvalidMessage);
+        }
+        Ok((body, rfds))
     }
 
     fn recv_reply_with_payload<T: Sized + Default + VhostUserMsgValidator>(
@@ -698,9 +769,8 @@ impl MasterInternal {
     }
 
     #[inline]
-    fn new_request_header(request: MasterReq, size: u32) -> VhostUserMsgHeader<MasterReq> {
-        // TODO: handle NEED_REPLY flag
-        VhostUserMsgHeader::new(request, 0x1, size)
+    fn new_request_header(&self, request: MasterReq, size: u32) -> VhostUserMsgHeader<MasterReq> {
+        VhostUserMsgHeader::new(request, self.hdr_flags.bits() | 0x1, size)
     }
 }
 
