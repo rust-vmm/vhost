@@ -269,6 +269,11 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         }
     }
 
+    /// Create a vhost-user slave endpoint from a connected socket.
+    pub fn from_stream(socket: UnixStream, backend: Arc<S>) -> Self {
+        Self::new(Endpoint::from_stream(socket), backend)
+    }
+
     /// Create a new vhost-user slave endpoint.
     ///
     /// # Arguments
