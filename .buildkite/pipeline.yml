@@ -13,5 +13,5 @@ steps:
     os: linux
    plugins:
     - docker#v3.0.1:
-       image: "rustvmm/dev:v11"
+       image: "rustvmm/dev:v12"
        always-pull: true
