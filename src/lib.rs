@@ -40,6 +40,8 @@ extern crate vmm_sys_util;
 mod backend;
 pub use backend::*;
 
+#[cfg(feature = "vhost-vdpa")]
+pub mod vdpa;
 #[cfg(feature = "vhost-kern")]
 pub mod vhost_kern;
 #[cfg(feature = "vhost-user")]
@@ -56,6 +58,8 @@ pub enum Error {
     InvalidGuestMemory,
     /// Invalid guest memory region.
     InvalidGuestMemoryRegion,
+    /// Invalid IOTLB message.
+    InvalidIotlbMsg,
     /// Invalid queue.
     InvalidQueue,
     /// Invalid descriptor table address.
@@ -85,6 +89,7 @@ impl std::fmt::Display for Error {
             Error::InvalidOperation => write!(f, "invalid vhost operations"),
             Error::InvalidGuestMemory => write!(f, "invalid guest memory object"),
             Error::InvalidGuestMemoryRegion => write!(f, "invalid guest memory region"),
+            Error::InvalidIotlbMsg => write!(f, "invalid IOTLB message"),
             Error::InvalidQueue => write!(f, "invalid virtqueue"),
             Error::DescriptorTableAddress => {
                 write!(f, "invalid virtqueue descriptor table address")
@@ -136,6 +141,10 @@ mod tests {
         assert_eq!(
             format!("{}", Error::InvalidGuestMemoryRegion),
             "invalid guest memory region"
+        );
+        assert_eq!(
+            format!("{}", Error::InvalidIotlbMsg),
+            "invalid IOTLB message"
         );
         assert_eq!(format!("{}", Error::InvalidQueue), "invalid virtqueue");
         assert_eq!(

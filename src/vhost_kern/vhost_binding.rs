@@ -20,14 +20,17 @@ use std::os::raw;
 
 pub const VHOST: raw::c_uint = 0xaf;
 pub const VHOST_VRING_F_LOG: raw::c_uint = 0;
-pub const VHOST_ACCESS_RO: raw::c_uint = 1;
-pub const VHOST_ACCESS_WO: raw::c_uint = 2;
-pub const VHOST_ACCESS_RW: raw::c_uint = 3;
-pub const VHOST_IOTLB_MISS: raw::c_uint = 1;
-pub const VHOST_IOTLB_UPDATE: raw::c_uint = 2;
-pub const VHOST_IOTLB_INVALIDATE: raw::c_uint = 3;
-pub const VHOST_IOTLB_ACCESS_FAIL: raw::c_uint = 4;
-pub const VHOST_IOTLB_MSG: raw::c_uint = 1;
+pub const VHOST_ACCESS_RO: raw::c_uchar = 1;
+pub const VHOST_ACCESS_WO: raw::c_uchar = 2;
+pub const VHOST_ACCESS_RW: raw::c_uchar = 3;
+pub const VHOST_IOTLB_MISS: raw::c_uchar = 1;
+pub const VHOST_IOTLB_UPDATE: raw::c_uchar = 2;
+pub const VHOST_IOTLB_INVALIDATE: raw::c_uchar = 3;
+pub const VHOST_IOTLB_ACCESS_FAIL: raw::c_uchar = 4;
+pub const VHOST_IOTLB_BATCH_BEGIN: raw::c_uchar = 5;
+pub const VHOST_IOTLB_BATCH_END: raw::c_uchar = 6;
+pub const VHOST_IOTLB_MSG: raw::c_int = 1;
+pub const VHOST_IOTLB_MSG_V2: raw::c_uint = 2;
 pub const VHOST_PAGE_SIZE: raw::c_uint = 4096;
 pub const VHOST_VIRTIO: raw::c_uint = 175;
 pub const VHOST_VRING_LITTLE_ENDIAN: raw::c_uint = 0;
@@ -35,6 +38,8 @@ pub const VHOST_VRING_BIG_ENDIAN: raw::c_uint = 1;
 pub const VHOST_F_LOG_ALL: raw::c_uint = 26;
 pub const VHOST_NET_F_VIRTIO_NET_HDR: raw::c_uint = 27;
 pub const VHOST_SCSI_ABI_VERSION: raw::c_uint = 1;
+pub const VHOST_BACKEND_F_IOTLB_MSG_V2: raw::c_ulonglong = 0x1;
+pub const VHOST_BACKEND_F_IOTLB_BATCH: raw::c_ulonglong = 0x2;
 
 ioctl_ior_nr!(VHOST_GET_FEATURES, VHOST, 0x00, raw::c_ulonglong);
 ioctl_iow_nr!(VHOST_SET_FEATURES, VHOST, 0x00, raw::c_ulonglong);
@@ -50,6 +55,8 @@ ioctl_iowr_nr!(VHOST_GET_VRING_BASE, VHOST, 0x12, vhost_vring_state);
 ioctl_iow_nr!(VHOST_SET_VRING_KICK, VHOST, 0x20, vhost_vring_file);
 ioctl_iow_nr!(VHOST_SET_VRING_CALL, VHOST, 0x21, vhost_vring_file);
 ioctl_iow_nr!(VHOST_SET_VRING_ERR, VHOST, 0x22, vhost_vring_file);
+ioctl_iow_nr!(VHOST_SET_BACKEND_FEATURES, VHOST, 0x25, raw::c_ulonglong);
+ioctl_ior_nr!(VHOST_GET_BACKEND_FEATURES, VHOST, 0x26, raw::c_ulonglong);
 ioctl_iow_nr!(VHOST_NET_SET_BACKEND, VHOST, 0x30, vhost_vring_file);
 ioctl_iow_nr!(VHOST_SCSI_SET_ENDPOINT, VHOST, 0x40, vhost_scsi_target);
 ioctl_iow_nr!(VHOST_SCSI_CLEAR_ENDPOINT, VHOST, 0x41, vhost_scsi_target);
@@ -58,6 +65,20 @@ ioctl_iow_nr!(VHOST_SCSI_SET_EVENTS_MISSED, VHOST, 0x43, raw::c_uint);
 ioctl_iow_nr!(VHOST_SCSI_GET_EVENTS_MISSED, VHOST, 0x44, raw::c_uint);
 ioctl_iow_nr!(VHOST_VSOCK_SET_GUEST_CID, VHOST, 0x60, raw::c_ulonglong);
 ioctl_iow_nr!(VHOST_VSOCK_SET_RUNNING, VHOST, 0x61, raw::c_int);
+ioctl_ior_nr!(VHOST_VDPA_GET_DEVICE_ID, VHOST, 0x70, raw::c_uint);
+ioctl_ior_nr!(VHOST_VDPA_GET_STATUS, VHOST, 0x71, raw::c_uchar);
+ioctl_iow_nr!(VHOST_VDPA_SET_STATUS, VHOST, 0x72, raw::c_uchar);
+ioctl_ior_nr!(VHOST_VDPA_GET_CONFIG, VHOST, 0x73, vhost_vdpa_config);
+ioctl_iow_nr!(VHOST_VDPA_SET_CONFIG, VHOST, 0x74, vhost_vdpa_config);
+ioctl_iow_nr!(VHOST_VDPA_SET_VRING_ENABLE, VHOST, 0x75, vhost_vring_state);
+ioctl_ior_nr!(VHOST_VDPA_GET_VRING_NUM, VHOST, 0x76, raw::c_ushort);
+ioctl_iow_nr!(VHOST_VDPA_SET_CONFIG_CALL, VHOST, 0x77, raw::c_int);
+ioctl_ior_nr!(
+    VHOST_VDPA_GET_IOVA_RANGE,
+    VHOST,
+    0x78,
+    vhost_vdpa_iova_range
+);
 
 #[repr(C)]
 #[derive(Default)]
@@ -171,6 +192,34 @@ impl Default for vhost_msg__bindgen_ty_1 {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
+pub struct vhost_msg_v2 {
+    pub type_: raw::c_uint,
+    pub reserved: raw::c_uint,
+    pub __bindgen_anon_1: vhost_msg_v2__bindgen_ty_1,
+}
+
+impl Default for vhost_msg_v2 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union vhost_msg_v2__bindgen_ty_1 {
+    pub iotlb: vhost_iotlb_msg,
+    pub padding: [raw::c_uchar; 64usize],
+    _bindgen_union_align: [u64; 8usize],
+}
+
+impl Default for vhost_msg_v2__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+
+#[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct vhost_memory_region {
     pub guest_phys_addr: raw::c_ulonglong,
@@ -201,6 +250,21 @@ impl Default for vhost_scsi_target {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct vhost_vdpa_config {
+    pub off: raw::c_uint,
+    pub len: raw::c_uint,
+    pub buf: __IncompleteArrayField<raw::c_uchar>,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct vhost_vdpa_iova_range {
+    pub first: raw::c_ulonglong,
+    pub last: raw::c_ulonglong,
 }
 
 /// Helper to support vhost::set_mem_table()
@@ -322,6 +386,34 @@ mod tests {
     }
 
     #[test]
+    fn bindgen_test_layout_vhost_msg_v2__bindgen_ty_1() {
+        assert_eq!(
+            ::std::mem::size_of::<vhost_msg_v2__bindgen_ty_1>(),
+            64usize,
+            concat!("Size of: ", stringify!(vhost_msg_v2__bindgen_ty_1))
+        );
+        assert_eq!(
+            ::std::mem::align_of::<vhost_msg_v2__bindgen_ty_1>(),
+            8usize,
+            concat!("Alignment of ", stringify!(vhost_msg_v2__bindgen_ty_1))
+        );
+    }
+
+    #[test]
+    fn bindgen_test_layout_vhost_msg_v2() {
+        assert_eq!(
+            ::std::mem::size_of::<vhost_msg_v2>(),
+            72usize,
+            concat!("Size of: ", stringify!(vhost_msg_v2))
+        );
+        assert_eq!(
+            ::std::mem::align_of::<vhost_msg_v2>(),
+            8usize,
+            concat!("Alignment of ", stringify!(vhost_msg_v2))
+        );
+    }
+
+    #[test]
     fn bindgen_test_layout_vhost_memory_region() {
         assert_eq!(
             ::std::mem::size_of::<vhost_memory_region>(),
@@ -374,6 +466,34 @@ mod tests {
             ::std::mem::align_of::<vhost_scsi_target>(),
             4usize,
             concat!("Alignment of ", stringify!(vhost_scsi_target))
+        );
+    }
+
+    #[test]
+    fn bindgen_test_layout_vhost_vdpa_config() {
+        assert_eq!(
+            ::std::mem::size_of::<vhost_vdpa_config>(),
+            8usize,
+            concat!("Size of: ", stringify!(vhost_vdpa_config))
+        );
+        assert_eq!(
+            ::std::mem::align_of::<vhost_vdpa_config>(),
+            4usize,
+            concat!("Alignment of ", stringify!(vhost_vdpa_config))
+        );
+    }
+
+    #[test]
+    fn bindgen_test_layout_vhost_vdpa_iova_range() {
+        assert_eq!(
+            ::std::mem::size_of::<vhost_vdpa_iova_range>(),
+            16usize,
+            concat!("Size of: ", stringify!(vhost_vdpa_iova_range))
+        );
+        assert_eq!(
+            ::std::mem::align_of::<vhost_vdpa_iova_range>(),
+            8usize,
+            concat!("Alignment of ", stringify!(vhost_vdpa_iova_range))
         );
     }
 

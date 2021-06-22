@@ -13,6 +13,7 @@ edition = "2018"
 [features]
 default = []
 vhost-vsock = []
+vhost-vdpa = []
 vhost-kern = ["vm-memory"]
 vhost-user = []
 vhost-user-master = ["vhost-user"]
@@ -28,3 +29,4 @@ vm-memory = { version = "0.2.0", optional = true }
 [dev-dependencies]
 tempfile = ">=3.2.0"
 vm-memory = { version = "0.2.0", features=["backend-mmap"] }
+serial_test = "*"
