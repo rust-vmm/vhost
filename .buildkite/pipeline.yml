@@ -3,15 +3,28 @@
 # found in the LICENSE-BSD-Google file.
 
 steps:
- - label: "clippy-x86-custom"
-   commands:
+  - label: "clippy-x86-custom"
+    commands:
     - cargo clippy --all-features --all-targets --workspace -- -D warnings
-   retry:
-    automatic: false
-   agents:
-    platform: x86_64.metal
-    os: linux
-   plugins:
+    retry:
+      automatic: false
+    agents:
+      platform: x86_64.metal
+      os: linux
+    plugins:
     - docker#v3.0.1:
-       image: "rustvmm/dev:v11"
+       image: "rustvmm/dev:v12"
        always-pull: true
+  - label: "test-vdpa"
+    commands:
+      - cargo test --features vhost-vdpa,vhost-kern vhost_kern::vdpa -- --nocapture
+    retry:
+      automatic: false
+    agents:
+      platform: x86_64.metal
+      os: linux
+    plugins:
+      - docker#v3.0.1:
+          image: "rustvmm/dev:v12"
+          always-pull: true
+          devices: [ "/dev/vhost-vdpa-0" ]
