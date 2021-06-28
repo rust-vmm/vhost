@@ -769,10 +769,6 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
             return Err(VhostUserError::InvalidParam);
         }
 
-        if let Some(kick) = self.vrings[index as usize].write().unwrap().kick.take() {
-            // Close file descriptor set by previous operations.
-            let _ = unsafe { libc::close(kick.as_raw_fd()) };
-        }
         // SAFETY: EventFd requires that it has sole ownership of its fd. So
         // does File, so this is safe.
         // Ideally, we'd have a generic way to refer to a uniquely-owned fd,
@@ -811,10 +807,6 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
             return Err(VhostUserError::InvalidParam);
         }
 
-        if let Some(call) = self.vrings[index as usize].write().unwrap().call.take() {
-            // Close file descriptor set by previous operations.
-            let _ = unsafe { libc::close(call.as_raw_fd()) };
-        }
         // SAFETY: see comment in set_vring_kick()
         self.vrings[index as usize].write().unwrap().call =
             file.map(|f| unsafe { EventFd::from_raw_fd(f.into_raw_fd()) });
@@ -827,10 +819,6 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
             return Err(VhostUserError::InvalidParam);
         }
 
-        if let Some(err) = self.vrings[index as usize].write().unwrap().err.take() {
-            // Close file descriptor set by previous operations.
-            let _ = unsafe { libc::close(err.as_raw_fd()) };
-        }
         // SAFETY: see comment in set_vring_kick()
         self.vrings[index as usize].write().unwrap().err =
             file.map(|f| unsafe { EventFd::from_raw_fd(f.into_raw_fd()) });
