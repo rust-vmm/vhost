@@ -29,7 +29,7 @@ use vm_memory::{
     GuestAddress, GuestAddressSpace, GuestMemoryAtomic, GuestMemoryMmap, GuestRegionMmap,
     MmapRegion,
 };
-use vm_virtio::Queue;
+use virtio_queue::Queue;
 use vmm_sys_util::eventfd::EventFd;
 
 const MAX_MEM_SLOTS: u64 = 32;

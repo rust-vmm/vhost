@@ -12,5 +12,5 @@ log = ">=0.4.6"
 vhost = { git = "https://github.com/rust-vmm/vhost", features = ["vhost-user-slave"] }
 virtio-bindings = "0.1.0"
 vm-memory = {version = ">=0.2.0", features = ["backend-mmap", "backend-atomic"]}
-vm-virtio = { git = "https://github.com/rust-vmm/vm-virtio" }
+virtio-queue = { git = "https://github.com/rust-vmm/vm-virtio" }
 vmm-sys-util = ">=0.3.1"
