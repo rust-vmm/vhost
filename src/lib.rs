@@ -11,6 +11,7 @@ use std::error;
 use std::fs::File;
 use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::prelude::IntoRawFd;
 use std::result;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
@@ -618,17 +619,16 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
     fn set_mem_table(
         &mut self,
         ctx: &[VhostUserMemoryRegion],
-        fds: &[RawFd],
+        files: Vec<File>,
     ) -> VhostUserResult<()> {
         // We need to create tuple of ranges from the list of VhostUserMemoryRegion
         // that we get from the caller.
         let mut regions: Vec<(GuestAddress, usize, Option<FileOffset>)> = Vec::new();
         let mut mappings: Vec<AddrMapping> = Vec::new();
 
-        for (idx, region) in ctx.iter().enumerate() {
+        for (region, file) in ctx.iter().zip(files) {
             let g_addr = GuestAddress(region.guest_phys_addr);
             let len = region.memory_size as usize;
-            let file = unsafe { File::from_raw_fd(fds[idx]) };
             let f_off = FileOffset::new(file, region.mmap_offset);
 
             regions.push((g_addr, len, Some(f_off)));
@@ -764,7 +764,7 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
         Ok(VhostUserVringState::new(index, u32::from(next_avail)))
     }
 
-    fn set_vring_kick(&mut self, index: u8, fd: Option<RawFd>) -> VhostUserResult<()> {
+    fn set_vring_kick(&mut self, index: u8, file: Option<File>) -> VhostUserResult<()> {
         if index as usize >= self.num_queues {
             return Err(VhostUserError::InvalidParam);
         }
@@ -773,8 +773,12 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
             // Close file descriptor set by previous operations.
             let _ = unsafe { libc::close(kick.as_raw_fd()) };
         }
+        // SAFETY: EventFd requires that it has sole ownership of its fd. So
+        // does File, so this is safe.
+        // Ideally, we'd have a generic way to refer to a uniquely-owned fd,
+        // such as that proposed by Rust RFC #3128.
         self.vrings[index as usize].write().unwrap().kick =
-            fd.map(|x| unsafe { EventFd::from_raw_fd(x) });
+            file.map(|f| unsafe { EventFd::from_raw_fd(f.into_raw_fd()) });
 
         // Quote from vhost-user specification:
         // Client must start ring upon receiving a kick (that is, detecting
@@ -802,7 +806,7 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
         Ok(())
     }
 
-    fn set_vring_call(&mut self, index: u8, fd: Option<RawFd>) -> VhostUserResult<()> {
+    fn set_vring_call(&mut self, index: u8, file: Option<File>) -> VhostUserResult<()> {
         if index as usize >= self.num_queues {
             return Err(VhostUserError::InvalidParam);
         }
@@ -811,13 +815,14 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
             // Close file descriptor set by previous operations.
             let _ = unsafe { libc::close(call.as_raw_fd()) };
         }
+        // SAFETY: see comment in set_vring_kick()
         self.vrings[index as usize].write().unwrap().call =
-            fd.map(|x| unsafe { EventFd::from_raw_fd(x) });
+            file.map(|f| unsafe { EventFd::from_raw_fd(f.into_raw_fd()) });
 
         Ok(())
     }
 
-    fn set_vring_err(&mut self, index: u8, fd: Option<RawFd>) -> VhostUserResult<()> {
+    fn set_vring_err(&mut self, index: u8, file: Option<File>) -> VhostUserResult<()> {
         if index as usize >= self.num_queues {
             return Err(VhostUserError::InvalidParam);
         }
@@ -826,8 +831,9 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
             // Close file descriptor set by previous operations.
             let _ = unsafe { libc::close(err.as_raw_fd()) };
         }
+        // SAFETY: see comment in set_vring_kick()
         self.vrings[index as usize].write().unwrap().err =
-            fd.map(|x| unsafe { EventFd::from_raw_fd(x) });
+            file.map(|f| unsafe { EventFd::from_raw_fd(f.into_raw_fd()) });
 
         Ok(())
     }
@@ -887,9 +893,8 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
     fn add_mem_region(
         &mut self,
         region: &VhostUserSingleMemoryRegion,
-        fd: RawFd,
+        file: File,
     ) -> VhostUserResult<()> {
-        let file = unsafe { File::from_raw_fd(fd) };
         let mmap_region = MmapRegion::from_file(
             FileOffset::new(file, region.mmap_offset),
             region.memory_size as usize,
