@@ -945,6 +945,20 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
 
         Ok(())
     }
+
+    fn get_inflight_fd(
+        &mut self,
+        _inflight: &vhost::vhost_user::message::VhostUserInflight,
+    ) -> VhostUserResult<(vhost::vhost_user::message::VhostUserInflight, File)> {
+        // Assume the backend hasn't negotiated the inflight feature; it
+        // wouldn't be correct for the backend to do so, as we don't (yet)
+        // provide a way for it to handle such requests.
+        Err(VhostUserError::InvalidOperation)
+    }
+
+    fn set_inflight_fd(&mut self, _inflight: &vhost::vhost_user::message::VhostUserInflight, _file: File) -> VhostUserResult<()> {
+        Err(VhostUserError::InvalidOperation)
+    }
 }
 
 impl<S: VhostUserBackend> Drop for VhostUserHandler<S> {
