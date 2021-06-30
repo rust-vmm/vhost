@@ -781,6 +781,62 @@ impl VhostUserMsgValidator for VhostUserFSSlaveMsg {
     }
 }
 
+/// Inflight I/O descriptor state for split virtqueues
+#[repr(packed)]
+#[derive(Clone, Copy)]
+struct DescStateSplit {
+    /// Indicate whether this descriptor (only head) is inflight or not.
+    inflight: u8,
+    /// Padding
+    padding: [u8; 5],
+    /// List of last batch of used descriptors, only when batching is used for submitting
+    next: u16,
+    /// Preserve order of fetching available descriptors, only for head descriptor
+    counter: u64,
+}
+
+impl DescStateSplit {
+    fn new() -> Self {
+        DescStateSplit {
+            inflight: 0,
+            padding: [0; 5],
+            next: 0,
+            counter: 0,
+        }
+    }
+}
+
+/// Inflight I/O queue region for split virtqueues
+#[allow(safe_packed_borrows)]
+#[repr(packed)]
+struct QueueRegionSplit {
+    /// Features flags of this region
+    features: u64,
+    /// Version of this region
+    version: u16,
+    /// Number of DescStateSplit entries
+    desc_num: u16,
+    /// List to track last batch of used descriptors
+    last_batch_head: u16,
+    /// Idx value of used ring
+    used_idx: u16,
+    /// Pointer to an array of DescStateSplit entries
+    desc: u64,
+}
+
+impl QueueRegionSplit {
+    fn new(features: u64, queue_size: u16) -> Self {
+        QueueRegionSplit {
+            features,
+            version: 1,
+            desc_num: queue_size,
+            last_batch_head: 0,
+            used_idx: 0,
+            desc: 0,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
