@@ -5,7 +5,7 @@
 
 use std::fs::File;
 use std::mem;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -14,6 +14,7 @@ use vmm_sys_util::eventfd::EventFd;
 
 use super::connection::Endpoint;
 use super::message::*;
+use super::slave_req_handler::take_single_file;
 use super::{Error as VhostUserError, Result as VhostUserResult};
 use crate::backend::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
 use crate::{Error, Result};
@@ -50,7 +51,7 @@ pub trait VhostUserMaster: VhostBackend {
     fn set_config(&mut self, offset: u32, flags: VhostUserConfigFlags, buf: &[u8]) -> Result<()>;
 
     /// Setup slave communication channel.
-    fn set_slave_request_fd(&mut self, fd: RawFd) -> Result<()>;
+    fn set_slave_request_fd(&mut self, fd: &dyn AsRawFd) -> Result<()>;
 
     /// Retrieve shared buffer for inflight I/O tracking.
     fn get_inflight_fd(
@@ -412,7 +413,6 @@ impl VhostUserMaster for Master {
         let (body_reply, buf_reply, rfds) =
             node.recv_reply_with_payload::<VhostUserConfig>(&hdr)?;
         if rfds.is_some() {
-            Endpoint::<MasterReq>::close_rfds(rfds);
             return error_code(VhostUserError::InvalidMessage);
         } else if body_reply.size == 0 {
             return error_code(VhostUserError::SlaveInternalError);
@@ -445,13 +445,12 @@ impl VhostUserMaster for Master {
         node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
-    fn set_slave_request_fd(&mut self, fd: RawFd) -> Result<()> {
+    fn set_slave_request_fd(&mut self, fd: &dyn AsRawFd) -> Result<()> {
         let mut node = self.node();
         if node.acked_protocol_features & VhostUserProtocolFeatures::SLAVE_REQ.bits() == 0 {
             return error_code(VhostUserError::InvalidOperation);
         }
-
-        let fds = [fd];
+        let fds = [fd.as_raw_fd()];
         let hdr = node.send_request_header(MasterReq::SET_SLAVE_REQ_FD, Some(&fds))?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
@@ -466,20 +465,12 @@ impl VhostUserMaster for Master {
         }
 
         let hdr = node.send_request_with_body(MasterReq::GET_INFLIGHT_FD, inflight, None)?;
-        let (inflight, fds) = node.recv_reply_with_fds::<VhostUserInflight>(&hdr)?;
+        let (inflight, files) = node.recv_reply_with_files::<VhostUserInflight>(&hdr)?;
 
-        if let Some(fds) = &fds {
-            if fds.len() == 1 && fds[0] >= 0 {
-                // Safe because we know the fd is valid.
-                let file = unsafe { File::from_raw_fd(fds[0]) };
-                return Ok((inflight, file));
-            }
+        match take_single_file(files) {
+            Some(file) => Ok((inflight, file)),
+            None => error_code(VhostUserError::IncorrectFds),
         }
-
-        // Make sure to close the fds before returning the error.
-        Endpoint::<MasterReq>::close_rfds(fds);
-
-        error_code(VhostUserError::IncorrectFds)
     }
 
     fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, fd: RawFd) -> Result<()> {
@@ -685,33 +676,31 @@ impl MasterInternal {
 
         let (reply, body, rfds) = self.main_sock.recv_body::<T>()?;
         if !reply.is_reply_for(&hdr) || rfds.is_some() || !body.is_valid() {
-            Endpoint::<MasterReq>::close_rfds(rfds);
             return Err(VhostUserError::InvalidMessage);
         }
         Ok(body)
     }
 
-    fn recv_reply_with_fds<T: Sized + Default + VhostUserMsgValidator>(
+    fn recv_reply_with_files<T: Sized + Default + VhostUserMsgValidator>(
         &mut self,
         hdr: &VhostUserMsgHeader<MasterReq>,
-    ) -> VhostUserResult<(T, Option<Vec<RawFd>>)> {
+    ) -> VhostUserResult<(T, Option<Vec<File>>)> {
         if mem::size_of::<T>() > MAX_MSG_SIZE || hdr.is_reply() {
             return Err(VhostUserError::InvalidParam);
         }
         self.check_state()?;
 
-        let (reply, body, rfds) = self.main_sock.recv_body::<T>()?;
-        if !reply.is_reply_for(&hdr) || rfds.is_none() || !body.is_valid() {
-            Endpoint::<MasterReq>::close_rfds(rfds);
+        let (reply, body, files) = self.main_sock.recv_body::<T>()?;
+        if !reply.is_reply_for(&hdr) || files.is_none() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
-        Ok((body, rfds))
+        Ok((body, files))
     }
 
     fn recv_reply_with_payload<T: Sized + Default + VhostUserMsgValidator>(
         &mut self,
         hdr: &VhostUserMsgHeader<MasterReq>,
-    ) -> VhostUserResult<(T, Vec<u8>, Option<Vec<RawFd>>)> {
+    ) -> VhostUserResult<(T, Vec<u8>, Option<Vec<File>>)> {
         if mem::size_of::<T>() > MAX_MSG_SIZE
             || hdr.get_size() as usize <= mem::size_of::<T>()
             || hdr.get_size() as usize > MAX_MSG_SIZE
@@ -722,18 +711,17 @@ impl MasterInternal {
         self.check_state()?;
 
         let mut buf: Vec<u8> = vec![0; hdr.get_size() as usize - mem::size_of::<T>()];
-        let (reply, body, bytes, rfds) = self.main_sock.recv_payload_into_buf::<T>(&mut buf)?;
+        let (reply, body, bytes, files) = self.main_sock.recv_payload_into_buf::<T>(&mut buf)?;
         if !reply.is_reply_for(hdr)
             || reply.get_size() as usize != mem::size_of::<T>() + bytes
-            || rfds.is_some()
+            || files.is_some()
             || !body.is_valid()
+            || bytes != buf.len()
         {
-            Endpoint::<MasterReq>::close_rfds(rfds);
-            return Err(VhostUserError::InvalidMessage);
-        } else if bytes != buf.len() {
             return Err(VhostUserError::InvalidMessage);
         }
-        Ok((body, buf, rfds))
+
+        Ok((body, buf, files))
     }
 
     fn wait_for_ack(&mut self, hdr: &VhostUserMsgHeader<MasterReq>) -> VhostUserResult<()> {
@@ -746,7 +734,6 @@ impl MasterInternal {
 
         let (reply, body, rfds) = self.main_sock.recv_body::<VhostUserU64>()?;
         if !reply.is_reply_for(&hdr) || rfds.is_some() || !body.is_valid() {
-            Endpoint::<MasterReq>::close_rfds(rfds);
             return Err(VhostUserError::InvalidMessage);
         }
         if body.value != 0 {

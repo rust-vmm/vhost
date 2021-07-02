@@ -3,7 +3,7 @@
 
 use std::fs::File;
 use std::mem;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::slice;
 use std::sync::{Arc, Mutex};
@@ -39,7 +39,7 @@ pub trait VhostUserSlaveReqHandler {
     fn reset_owner(&self) -> Result<()>;
     fn get_features(&self) -> Result<u64>;
     fn set_features(&self, features: u64) -> Result<()>;
-    fn set_mem_table(&self, ctx: &[VhostUserMemoryRegion], fds: &[RawFd]) -> Result<()>;
+    fn set_mem_table(&self, ctx: &[VhostUserMemoryRegion], files: Vec<File>) -> Result<()>;
     fn set_vring_num(&self, index: u32, num: u32) -> Result<()>;
     fn set_vring_addr(
         &self,
@@ -52,9 +52,9 @@ pub trait VhostUserSlaveReqHandler {
     ) -> Result<()>;
     fn set_vring_base(&self, index: u32, base: u32) -> Result<()>;
     fn get_vring_base(&self, index: u32) -> Result<VhostUserVringState>;
-    fn set_vring_kick(&self, index: u8, fd: Option<RawFd>) -> Result<()>;
-    fn set_vring_call(&self, index: u8, fd: Option<RawFd>) -> Result<()>;
-    fn set_vring_err(&self, index: u8, fd: Option<RawFd>) -> Result<()>;
+    fn set_vring_kick(&self, index: u8, fd: Option<File>) -> Result<()>;
+    fn set_vring_call(&self, index: u8, fd: Option<File>) -> Result<()>;
+    fn set_vring_err(&self, index: u8, fd: Option<File>) -> Result<()>;
 
     fn get_protocol_features(&self) -> Result<VhostUserProtocolFeatures>;
     fn set_protocol_features(&self, features: u64) -> Result<()>;
@@ -63,10 +63,10 @@ pub trait VhostUserSlaveReqHandler {
     fn get_config(&self, offset: u32, size: u32, flags: VhostUserConfigFlags) -> Result<Vec<u8>>;
     fn set_config(&self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
     fn set_slave_req_fd(&self, _vu_req: SlaveFsCacheReq) {}
-    fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, RawFd)>;
+    fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, File)>;
     fn set_inflight_fd(&self, inflight: &VhostUserInflight, file: File) -> Result<()>;
     fn get_max_mem_slots(&self) -> Result<u64>;
-    fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: RawFd) -> Result<()>;
+    fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
     fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
 }
 
@@ -79,7 +79,7 @@ pub trait VhostUserSlaveReqHandlerMut {
     fn reset_owner(&mut self) -> Result<()>;
     fn get_features(&mut self) -> Result<u64>;
     fn set_features(&mut self, features: u64) -> Result<()>;
-    fn set_mem_table(&mut self, ctx: &[VhostUserMemoryRegion], fds: &[RawFd]) -> Result<()>;
+    fn set_mem_table(&mut self, ctx: &[VhostUserMemoryRegion], files: Vec<File>) -> Result<()>;
     fn set_vring_num(&mut self, index: u32, num: u32) -> Result<()>;
     fn set_vring_addr(
         &mut self,
@@ -92,9 +92,9 @@ pub trait VhostUserSlaveReqHandlerMut {
     ) -> Result<()>;
     fn set_vring_base(&mut self, index: u32, base: u32) -> Result<()>;
     fn get_vring_base(&mut self, index: u32) -> Result<VhostUserVringState>;
-    fn set_vring_kick(&mut self, index: u8, fd: Option<RawFd>) -> Result<()>;
-    fn set_vring_call(&mut self, index: u8, fd: Option<RawFd>) -> Result<()>;
-    fn set_vring_err(&mut self, index: u8, fd: Option<RawFd>) -> Result<()>;
+    fn set_vring_kick(&mut self, index: u8, fd: Option<File>) -> Result<()>;
+    fn set_vring_call(&mut self, index: u8, fd: Option<File>) -> Result<()>;
+    fn set_vring_err(&mut self, index: u8, fd: Option<File>) -> Result<()>;
 
     fn get_protocol_features(&mut self) -> Result<VhostUserProtocolFeatures>;
     fn set_protocol_features(&mut self, features: u64) -> Result<()>;
@@ -111,10 +111,10 @@ pub trait VhostUserSlaveReqHandlerMut {
     fn get_inflight_fd(
         &mut self,
         inflight: &VhostUserInflight,
-    ) -> Result<(VhostUserInflight, RawFd)>;
+    ) -> Result<(VhostUserInflight, File)>;
     fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, file: File) -> Result<()>;
     fn get_max_mem_slots(&mut self) -> Result<u64>;
-    fn add_mem_region(&mut self, region: &VhostUserSingleMemoryRegion, fd: RawFd) -> Result<()>;
+    fn add_mem_region(&mut self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
     fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
 }
 
@@ -135,8 +135,8 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
         self.lock().unwrap().set_features(features)
     }
 
-    fn set_mem_table(&self, ctx: &[VhostUserMemoryRegion], fds: &[RawFd]) -> Result<()> {
-        self.lock().unwrap().set_mem_table(ctx, fds)
+    fn set_mem_table(&self, ctx: &[VhostUserMemoryRegion], files: Vec<File>) -> Result<()> {
+        self.lock().unwrap().set_mem_table(ctx, files)
     }
 
     fn set_vring_num(&self, index: u32, num: u32) -> Result<()> {
@@ -165,15 +165,15 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
         self.lock().unwrap().get_vring_base(index)
     }
 
-    fn set_vring_kick(&self, index: u8, fd: Option<RawFd>) -> Result<()> {
+    fn set_vring_kick(&self, index: u8, fd: Option<File>) -> Result<()> {
         self.lock().unwrap().set_vring_kick(index, fd)
     }
 
-    fn set_vring_call(&self, index: u8, fd: Option<RawFd>) -> Result<()> {
+    fn set_vring_call(&self, index: u8, fd: Option<File>) -> Result<()> {
         self.lock().unwrap().set_vring_call(index, fd)
     }
 
-    fn set_vring_err(&self, index: u8, fd: Option<RawFd>) -> Result<()> {
+    fn set_vring_err(&self, index: u8, fd: Option<File>) -> Result<()> {
         self.lock().unwrap().set_vring_err(index, fd)
     }
 
@@ -205,7 +205,7 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
         self.lock().unwrap().set_slave_req_fd(vu_req)
     }
 
-    fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, RawFd)> {
+    fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, File)> {
         self.lock().unwrap().get_inflight_fd(inflight)
     }
 
@@ -217,7 +217,7 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
         self.lock().unwrap().get_max_mem_slots()
     }
 
-    fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: RawFd) -> Result<()> {
+    fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()> {
         self.lock().unwrap().add_mem_region(region, fd)
     }
 
@@ -269,6 +269,11 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         }
     }
 
+    /// Create a vhost-user slave endpoint from a connected socket.
+    pub fn from_stream(socket: UnixStream, backend: Arc<S>) -> Self {
+        Self::new(Endpoint::from_stream(socket), backend)
+    }
+
     /// Create a new vhost-user slave endpoint.
     ///
     /// # Arguments
@@ -302,8 +307,9 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         // . recv optional message body and payload according size field in
         //   message header
         // . validate message body and optional payload
-        let (hdr, rfds) = self.main_sock.recv_header()?;
-        let rfds = self.check_attached_rfds(&hdr, rfds)?;
+        let (hdr, files) = self.main_sock.recv_header()?;
+        self.check_attached_files(&hdr, &files)?;
+
         let (size, buf) = match hdr.get_size() {
             0 => (0, vec![0u8; 0]),
             len => {
@@ -342,7 +348,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 self.send_ack_message(&hdr, res)?;
             }
             MasterReq::SET_MEM_TABLE => {
-                let res = self.set_mem_table(&hdr, size, &buf, rfds);
+                let res = self.set_mem_table(&hdr, size, &buf, files);
                 self.send_ack_message(&hdr, res)?;
             }
             MasterReq::SET_VRING_NUM => {
@@ -378,20 +384,20 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
             }
             MasterReq::SET_VRING_CALL => {
                 self.check_request_size(&hdr, size, mem::size_of::<VhostUserU64>())?;
-                let (index, rfds) = self.handle_vring_fd_request(&buf, rfds)?;
-                let res = self.backend.set_vring_call(index, rfds);
+                let (index, file) = self.handle_vring_fd_request(&buf, files)?;
+                let res = self.backend.set_vring_call(index, file);
                 self.send_ack_message(&hdr, res)?;
             }
             MasterReq::SET_VRING_KICK => {
                 self.check_request_size(&hdr, size, mem::size_of::<VhostUserU64>())?;
-                let (index, rfds) = self.handle_vring_fd_request(&buf, rfds)?;
-                let res = self.backend.set_vring_kick(index, rfds);
+                let (index, file) = self.handle_vring_fd_request(&buf, files)?;
+                let res = self.backend.set_vring_kick(index, file);
                 self.send_ack_message(&hdr, res)?;
             }
             MasterReq::SET_VRING_ERR => {
                 self.check_request_size(&hdr, size, mem::size_of::<VhostUserU64>())?;
-                let (index, rfds) = self.handle_vring_fd_request(&buf, rfds)?;
-                let res = self.backend.set_vring_err(index, rfds);
+                let (index, file) = self.handle_vring_fd_request(&buf, files)?;
+                let res = self.backend.set_vring_err(index, file);
                 self.send_ack_message(&hdr, res)?;
             }
             MasterReq::GET_PROTOCOL_FEATURES => {
@@ -454,7 +460,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                     return Err(Error::InvalidOperation);
                 }
                 self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
-                let res = self.set_slave_req_fd(rfds);
+                let res = self.set_slave_req_fd(files);
                 self.send_ack_message(&hdr, res)?;
             }
             MasterReq::GET_INFLIGHT_FD => {
@@ -465,10 +471,10 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 }
 
                 let msg = self.extract_request_body::<VhostUserInflight>(&hdr, size, &buf)?;
-                let (inflight, fd) = self.backend.get_inflight_fd(&msg)?;
+                let (inflight, file) = self.backend.get_inflight_fd(&msg)?;
                 let reply_hdr = self.new_reply_header::<VhostUserInflight>(&hdr, 0)?;
                 self.main_sock
-                    .send_message(&reply_hdr, &inflight, Some(&[fd]))?;
+                    .send_message(&reply_hdr, &inflight, Some(&[file.as_raw_fd()]))?;
             }
             MasterReq::SET_INFLIGHT_FD => {
                 if self.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits()
@@ -476,18 +482,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 {
                     return Err(Error::InvalidOperation);
                 }
-                let file = if let Some(fds) = rfds {
-                    if fds.len() != 1 || fds[0] < 0 {
-                        Endpoint::<MasterReq>::close_rfds(Some(fds));
-                        return Err(Error::IncorrectFds);
-                    }
-
-                    // Safe because we know the fd is valid.
-                    unsafe { File::from_raw_fd(fds[0]) }
-                } else {
-                    return Err(Error::IncorrectFds);
-                };
-
+                let file = take_single_file(files).ok_or(Error::IncorrectFds)?;
                 let msg = self.extract_request_body::<VhostUserInflight>(&hdr, size, &buf)?;
                 let res = self.backend.set_inflight_fd(&msg, file);
                 self.send_ack_message(&hdr, res)?;
@@ -511,18 +506,13 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 {
                     return Err(Error::InvalidOperation);
                 }
-                let fd = if let Some(fds) = &rfds {
-                    if fds.len() != 1 {
-                        return Err(Error::InvalidParam);
-                    }
-                    fds[0]
-                } else {
+                let mut files = files.ok_or(Error::InvalidParam)?;
+                if files.len() != 1 {
                     return Err(Error::InvalidParam);
-                };
-
+                }
                 let msg =
                     self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
-                let res = self.backend.add_mem_region(&msg, fd);
+                let res = self.backend.add_mem_region(&msg, files.swap_remove(0));
                 self.send_ack_message(&hdr, res)?;
             }
             MasterReq::REM_MEM_REG => {
@@ -550,37 +540,28 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         hdr: &VhostUserMsgHeader<MasterReq>,
         size: usize,
         buf: &[u8],
-        rfds: Option<Vec<RawFd>>,
+        files: Option<Vec<File>>,
     ) -> Result<()> {
         self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
 
         // check message size is consistent
         let hdrsize = mem::size_of::<VhostUserMemory>();
         if size < hdrsize {
-            Endpoint::<MasterReq>::close_rfds(rfds);
             return Err(Error::InvalidMessage);
         }
         let msg = unsafe { &*(buf.as_ptr() as *const VhostUserMemory) };
         if !msg.is_valid() {
-            Endpoint::<MasterReq>::close_rfds(rfds);
             return Err(Error::InvalidMessage);
         }
         if size != hdrsize + msg.num_regions as usize * mem::size_of::<VhostUserMemoryRegion>() {
-            Endpoint::<MasterReq>::close_rfds(rfds);
             return Err(Error::InvalidMessage);
         }
 
         // validate number of fds matching number of memory regions
-        let fds = match rfds {
-            None => return Err(Error::InvalidMessage),
-            Some(fds) => {
-                if fds.len() != msg.num_regions as usize {
-                    Endpoint::<MasterReq>::close_rfds(Some(fds));
-                    return Err(Error::InvalidMessage);
-                }
-                fds
-            }
-        };
+        let files = files.ok_or(Error::InvalidMessage)?;
+        if files.len() != msg.num_regions as usize {
+            return Err(Error::InvalidMessage);
+        }
 
         // Validate memory regions
         let regions = unsafe {
@@ -591,12 +572,11 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         };
         for region in regions.iter() {
             if !region.is_valid() {
-                Endpoint::<MasterReq>::close_rfds(Some(fds));
                 return Err(Error::InvalidMessage);
             }
         }
 
-        self.backend.set_mem_table(&regions, &fds)
+        self.backend.set_mem_table(&regions, files)
     }
 
     fn get_config(&mut self, hdr: &VhostUserMsgHeader<MasterReq>, buf: &[u8]) -> Result<()> {
@@ -657,26 +637,19 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         self.backend.set_config(msg.offset, buf, flags)
     }
 
-    fn set_slave_req_fd(&mut self, rfds: Option<Vec<RawFd>>) -> Result<()> {
-        if let Some(fds) = rfds {
-            if fds.len() == 1 {
-                let sock = unsafe { UnixStream::from_raw_fd(fds[0]) };
-                let vu_req = SlaveFsCacheReq::from_stream(sock);
-                self.backend.set_slave_req_fd(vu_req);
-                Ok(())
-            } else {
-                Err(Error::InvalidMessage)
-            }
-        } else {
-            Err(Error::InvalidMessage)
-        }
+    fn set_slave_req_fd(&mut self, files: Option<Vec<File>>) -> Result<()> {
+        let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
+        let sock = unsafe { UnixStream::from_raw_fd(file.into_raw_fd()) };
+        let vu_req = SlaveFsCacheReq::from_stream(sock);
+        self.backend.set_slave_req_fd(vu_req);
+        Ok(())
     }
 
     fn handle_vring_fd_request(
         &mut self,
         buf: &[u8],
-        rfds: Option<Vec<RawFd>>,
-    ) -> Result<(u8, Option<RawFd>)> {
+        files: Option<Vec<File>>,
+    ) -> Result<(u8, Option<File>)> {
         if buf.len() > MAX_MSG_SIZE || buf.len() < mem::size_of::<VhostUserU64>() {
             return Err(Error::InvalidMessage);
         }
@@ -686,28 +659,19 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         }
 
         // Bits (0-7) of the payload contain the vring index. Bit 8 is the
-        // invalid FD flag. This flag is set when there is no file descriptor
+        // invalid FD flag. This bit is set when there is no file descriptor
         // in the ancillary data. This signals that polling will be used
         // instead of waiting for the call.
-        let nofd = (msg.value & 0x100u64) == 0x100u64;
+        // If Bit 8 is unset, the data must contain a file descriptor.
+        let has_fd = (msg.value & 0x100u64) == 0;
 
-        let mut rfd = None;
-        match rfds {
-            Some(fds) => {
-                if !nofd && fds.len() == 1 {
-                    rfd = Some(fds[0]);
-                } else if (nofd && !fds.is_empty()) || (!nofd && fds.len() != 1) {
-                    Endpoint::<MasterReq>::close_rfds(Some(fds));
-                    return Err(Error::InvalidMessage);
-                }
-            }
-            None => {
-                if !nofd {
-                    return Err(Error::InvalidMessage);
-                }
-            }
+        let file = take_single_file(files);
+
+        if has_fd && file.is_none() || !has_fd && file.is_some() {
+            return Err(Error::InvalidMessage);
         }
-        Ok((msg.value as u8, rfd))
+
+        Ok((msg.value as u8, file))
     }
 
     fn check_state(&self) -> Result<()> {
@@ -733,29 +697,23 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         Ok(())
     }
 
-    fn check_attached_rfds(
+    fn check_attached_files(
         &self,
         hdr: &VhostUserMsgHeader<MasterReq>,
-        rfds: Option<Vec<RawFd>>,
-    ) -> Result<Option<Vec<RawFd>>> {
+        files: &Option<Vec<File>>,
+    ) -> Result<()> {
         match hdr.get_code() {
-            MasterReq::SET_MEM_TABLE => Ok(rfds),
-            MasterReq::SET_VRING_CALL => Ok(rfds),
-            MasterReq::SET_VRING_KICK => Ok(rfds),
-            MasterReq::SET_VRING_ERR => Ok(rfds),
-            MasterReq::SET_LOG_BASE => Ok(rfds),
-            MasterReq::SET_LOG_FD => Ok(rfds),
-            MasterReq::SET_SLAVE_REQ_FD => Ok(rfds),
-            MasterReq::SET_INFLIGHT_FD => Ok(rfds),
-            MasterReq::ADD_MEM_REG => Ok(rfds),
-            _ => {
-                if rfds.is_some() {
-                    Endpoint::<MasterReq>::close_rfds(rfds);
-                    Err(Error::InvalidMessage)
-                } else {
-                    Ok(rfds)
-                }
-            }
+            MasterReq::SET_MEM_TABLE
+            | MasterReq::SET_VRING_CALL
+            | MasterReq::SET_VRING_KICK
+            | MasterReq::SET_VRING_ERR
+            | MasterReq::SET_LOG_BASE
+            | MasterReq::SET_LOG_FD
+            | MasterReq::SET_SLAVE_REQ_FD
+            | MasterReq::SET_INFLIGHT_FD
+            | MasterReq::ADD_MEM_REG => Ok(()),
+            _ if files.is_some() => Err(Error::InvalidMessage),
+            _ => Ok(()),
         }
     }
 
@@ -777,7 +735,6 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         let vflag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let pflag = VhostUserProtocolFeatures::REPLY_ACK;
         if (self.virtio_features & vflag) != 0
-            && (self.acked_virtio_features & vflag) != 0
             && self.protocol_features.contains(pflag)
             && (self.acked_protocol_features & pflag.bits()) != 0
         {
@@ -844,6 +801,16 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
             .send_message_with_payload(&hdr, msg, payload, None)?;
         Ok(())
     }
+}
+
+/// Utility function to take the first element from option of a vector of files.
+/// Returns `None` if the vector contains no file or more than one file.
+pub(crate) fn take_single_file(files: Option<Vec<File>>) -> Option<File> {
+    let mut files = files?;
+    if files.len() != 1 {
+        return None;
+    }
+    Some(files.swap_remove(0))
 }
 
 impl<S: VhostUserSlaveReqHandler> AsRawFd for SlaveReqHandler<S> {
