@@ -14,8 +14,7 @@ use vmm_sys_util::eventfd::EventFd;
 
 use super::connection::Endpoint;
 use super::message::*;
-use super::slave_req_handler::take_single_file;
-use super::{Error as VhostUserError, Result as VhostUserResult};
+use super::{take_single_file, Error as VhostUserError, Result as VhostUserResult};
 use crate::backend::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
 use crate::{Error, Result};
 
