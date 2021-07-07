@@ -781,6 +781,151 @@ impl VhostUserMsgValidator for VhostUserFSSlaveMsg {
     }
 }
 
+/// Inflight I/O descriptor state for split virtqueues
+#[repr(packed)]
+#[derive(Clone, Copy)]
+struct DescStateSplit {
+    /// Indicate whether this descriptor (only head) is inflight or not.
+    inflight: u8,
+    /// Padding
+    padding: [u8; 5],
+    /// List of last batch of used descriptors, only when batching is used for submitting
+    next: u16,
+    /// Preserve order of fetching available descriptors, only for head descriptor
+    counter: u64,
+}
+
+impl DescStateSplit {
+    fn new() -> Self {
+        DescStateSplit {
+            inflight: 0,
+            padding: [0; 5],
+            next: 0,
+            counter: 0,
+        }
+    }
+}
+
+/// Inflight I/O queue region for split virtqueues
+#[allow(safe_packed_borrows)]
+#[repr(packed)]
+struct QueueRegionSplit {
+    /// Features flags of this region
+    features: u64,
+    /// Version of this region
+    version: u16,
+    /// Number of DescStateSplit entries
+    desc_num: u16,
+    /// List to track last batch of used descriptors
+    last_batch_head: u16,
+    /// Idx value of used ring
+    used_idx: u16,
+    /// Pointer to an array of DescStateSplit entries
+    desc: u64,
+}
+
+impl QueueRegionSplit {
+    fn new(features: u64, queue_size: u16) -> Self {
+        QueueRegionSplit {
+            features,
+            version: 1,
+            desc_num: queue_size,
+            last_batch_head: 0,
+            used_idx: 0,
+            desc: 0,
+        }
+    }
+}
+
+/// Inflight I/O descriptor state for packed virtqueues
+#[repr(packed)]
+#[derive(Clone, Copy)]
+struct DescStatePacked {
+    /// Indicate whether this descriptor (only head) is inflight or not.
+    inflight: u8,
+    /// Padding
+    padding: u8,
+    /// Link to next free entry
+    next: u16,
+    /// Link to last entry of descriptor list, only for head
+    last: u16,
+    /// Length of descriptor list, only for head
+    num: u16,
+    /// Preserve order of fetching avail descriptors, only for head
+    counter: u64,
+    /// Buffer ID
+    id: u16,
+    /// Descriptor flags
+    flags: u16,
+    /// Buffer length
+    len: u32,
+    /// Buffer address
+    addr: u64,
+}
+
+impl DescStatePacked {
+    fn new() -> Self {
+        DescStatePacked {
+            inflight: 0,
+            padding: 0,
+            next: 0,
+            last: 0,
+            num: 0,
+            counter: 0,
+            id: 0,
+            flags: 0,
+            len: 0,
+            addr: 0,
+        }
+    }
+}
+
+/// Inflight I/O queue region for packed virtqueues
+#[allow(safe_packed_borrows)]
+#[repr(packed)]
+struct QueueRegionPacked {
+    /// Features flags of this region
+    features: u64,
+    /// version of this region
+    version: u16,
+    /// size of descriptor state array
+    desc_num: u16,
+    /// head of free DescStatePacked entry list
+    free_head: u16,
+    /// old head of free DescStatePacked entry list
+    old_free_head: u16,
+    /// used idx of descriptor ring
+    used_idx: u16,
+    /// old used idx of descriptor ring
+    old_used_idx: u16,
+    /// device ring wrap counter
+    used_wrap_counter: u8,
+    /// old device ring wrap counter
+    old_used_wrap_counter: u8,
+    /// Padding
+    padding: [u8; 7],
+    /// Pointer to array tracking state of each descriptor from descriptor ring
+    desc: u64,
+}
+
+impl QueueRegionPacked {
+    fn new(features: u64, queue_size: u16) -> Self {
+        QueueRegionPacked {
+            features,
+            version: 1,
+            desc_num: queue_size,
+            free_head: 0,
+            old_free_head: 0,
+            used_idx: 0,
+            old_used_idx: 0,
+            used_wrap_counter: 0,
+            old_used_wrap_counter: 0,
+            padding: [0; 7],
+            desc: 0,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
