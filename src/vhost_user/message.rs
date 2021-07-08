@@ -784,7 +784,7 @@ impl VhostUserMsgValidator for VhostUserFSSlaveMsg {
 /// Inflight I/O descriptor state for split virtqueues
 #[repr(packed)]
 #[derive(Clone, Copy)]
-struct DescStateSplit {
+pub struct DescStateSplit {
     /// Indicate whether this descriptor (only head) is inflight or not.
     inflight: u8,
     /// Padding
@@ -795,8 +795,8 @@ struct DescStateSplit {
     counter: u64,
 }
 
-impl DescStateSplit {
-    fn new() -> Self {
+impl Default for DescStateSplit {
+    fn default() -> Self {
         DescStateSplit {
             inflight: 0,
             padding: [0; 5],
@@ -806,10 +806,17 @@ impl DescStateSplit {
     }
 }
 
+impl DescStateSplit {
+    /// New instance of DescStateSplit struct
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
 /// Inflight I/O queue region for split virtqueues
 #[allow(safe_packed_borrows)]
 #[repr(packed)]
-struct QueueRegionSplit {
+pub struct QueueRegionSplit {
     /// Features flags of this region
     features: u64,
     /// Version of this region
@@ -825,7 +832,8 @@ struct QueueRegionSplit {
 }
 
 impl QueueRegionSplit {
-    fn new(features: u64, queue_size: u16) -> Self {
+    /// New instance of QueueRegionSplit struct
+    pub fn new(features: u64, queue_size: u16) -> Self {
         QueueRegionSplit {
             features,
             version: 1,
@@ -840,7 +848,7 @@ impl QueueRegionSplit {
 /// Inflight I/O descriptor state for packed virtqueues
 #[repr(packed)]
 #[derive(Clone, Copy)]
-struct DescStatePacked {
+pub struct DescStatePacked {
     /// Indicate whether this descriptor (only head) is inflight or not.
     inflight: u8,
     /// Padding
@@ -863,8 +871,8 @@ struct DescStatePacked {
     addr: u64,
 }
 
-impl DescStatePacked {
-    fn new() -> Self {
+impl Default for DescStatePacked {
+    fn default() -> Self {
         DescStatePacked {
             inflight: 0,
             padding: 0,
@@ -880,10 +888,17 @@ impl DescStatePacked {
     }
 }
 
+impl DescStatePacked {
+    /// New instance of DescStatePacked struct
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
 /// Inflight I/O queue region for packed virtqueues
 #[allow(safe_packed_borrows)]
 #[repr(packed)]
-struct QueueRegionPacked {
+pub struct QueueRegionPacked {
     /// Features flags of this region
     features: u64,
     /// version of this region
@@ -909,7 +924,8 @@ struct QueueRegionPacked {
 }
 
 impl QueueRegionPacked {
-    fn new(features: u64, queue_size: u16) -> Self {
+    /// New instance of QueueRegionPacked struct
+    pub fn new(features: u64, queue_size: u16) -> Self {
         QueueRegionPacked {
             features,
             version: 1,
