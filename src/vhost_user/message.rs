@@ -223,14 +223,35 @@ bitflags! {
 /// Common message header for vhost-user requests and replies.
 /// A vhost-user message consists of 3 header fields and an optional payload. All numbers are in the
 /// machine native byte order.
-#[allow(safe_packed_borrows)]
 #[repr(packed)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Copy)]
 pub(super) struct VhostUserMsgHeader<R: Req> {
     request: u32,
     flags: u32,
     size: u32,
     _r: PhantomData<R>,
+}
+
+impl<R: Req> Debug for VhostUserMsgHeader<R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Point")
+            .field("request", &{ self.request })
+            .field("flags", &{ self.flags })
+            .field("size", &{ self.size })
+            .finish()
+    }
+}
+
+impl<R: Req> Clone for VhostUserMsgHeader<R> {
+    fn clone(&self) -> VhostUserMsgHeader<R> {
+        *self
+    }
+}
+
+impl<R: Req> PartialEq for VhostUserMsgHeader<R> {
+    fn eq(&self, other: &Self) -> bool {
+        self.request == other.request && self.flags == other.flags && self.size == other.size
+    }
 }
 
 impl<R: Req> VhostUserMsgHeader<R> {
@@ -249,7 +270,7 @@ impl<R: Req> VhostUserMsgHeader<R> {
     /// Get message type.
     pub fn get_code(&self) -> R {
         // It's safe because R is marked as repr(u32).
-        unsafe { std::mem::transmute_copy::<u32, R>(&self.request) }
+        unsafe { std::mem::transmute_copy::<u32, R>(&{ self.request }) }
     }
 
     /// Set message type.
@@ -786,13 +807,13 @@ impl VhostUserMsgValidator for VhostUserFSSlaveMsg {
 #[derive(Clone, Copy, Default)]
 pub struct DescStateSplit {
     /// Indicate whether this descriptor (only head) is inflight or not.
-    inflight: u8,
+    pub inflight: u8,
     /// Padding
     padding: [u8; 5],
     /// List of last batch of used descriptors, only when batching is used for submitting
-    next: u16,
+    pub next: u16,
     /// Preserve order of fetching available descriptors, only for head descriptor
-    counter: u64,
+    pub counter: u64,
 }
 
 impl DescStateSplit {
@@ -803,21 +824,20 @@ impl DescStateSplit {
 }
 
 /// Inflight I/O queue region for split virtqueues
-#[allow(safe_packed_borrows)]
 #[repr(packed)]
 pub struct QueueRegionSplit {
     /// Features flags of this region
-    features: u64,
+    pub features: u64,
     /// Version of this region
-    version: u16,
+    pub version: u16,
     /// Number of DescStateSplit entries
-    desc_num: u16,
+    pub desc_num: u16,
     /// List to track last batch of used descriptors
-    last_batch_head: u16,
+    pub last_batch_head: u16,
     /// Idx value of used ring
-    used_idx: u16,
+    pub used_idx: u16,
     /// Pointer to an array of DescStateSplit entries
-    desc: u64,
+    pub desc: u64,
 }
 
 impl QueueRegionSplit {
@@ -839,25 +859,25 @@ impl QueueRegionSplit {
 #[derive(Clone, Copy, Default)]
 pub struct DescStatePacked {
     /// Indicate whether this descriptor (only head) is inflight or not.
-    inflight: u8,
+    pub inflight: u8,
     /// Padding
     padding: u8,
     /// Link to next free entry
-    next: u16,
+    pub next: u16,
     /// Link to last entry of descriptor list, only for head
-    last: u16,
+    pub last: u16,
     /// Length of descriptor list, only for head
-    num: u16,
+    pub num: u16,
     /// Preserve order of fetching avail descriptors, only for head
-    counter: u64,
+    pub counter: u64,
     /// Buffer ID
-    id: u16,
+    pub id: u16,
     /// Descriptor flags
-    flags: u16,
+    pub flags: u16,
     /// Buffer length
-    len: u32,
+    pub len: u32,
     /// Buffer address
-    addr: u64,
+    pub addr: u64,
 }
 
 impl DescStatePacked {
@@ -868,31 +888,30 @@ impl DescStatePacked {
 }
 
 /// Inflight I/O queue region for packed virtqueues
-#[allow(safe_packed_borrows)]
 #[repr(packed)]
 pub struct QueueRegionPacked {
     /// Features flags of this region
-    features: u64,
+    pub features: u64,
     /// version of this region
-    version: u16,
+    pub version: u16,
     /// size of descriptor state array
-    desc_num: u16,
+    pub desc_num: u16,
     /// head of free DescStatePacked entry list
-    free_head: u16,
+    pub free_head: u16,
     /// old head of free DescStatePacked entry list
-    old_free_head: u16,
+    pub old_free_head: u16,
     /// used idx of descriptor ring
-    used_idx: u16,
+    pub used_idx: u16,
     /// old used idx of descriptor ring
-    old_used_idx: u16,
+    pub old_used_idx: u16,
     /// device ring wrap counter
-    used_wrap_counter: u8,
+    pub used_wrap_counter: u8,
     /// old device ring wrap counter
-    old_used_wrap_counter: u8,
+    pub old_used_wrap_counter: u8,
     /// Padding
     padding: [u8; 7],
     /// Pointer to array tracking state of each descriptor from descriptor ring
-    desc: u64,
+    pub desc: u64,
 }
 
 impl QueueRegionPacked {
@@ -994,7 +1013,10 @@ mod tests {
         hdr.set_version(0x1);
         assert!(hdr.is_valid());
 
+        // Test Debug, Clone, PartiaEq trait
         assert_eq!(hdr, hdr.clone());
+        assert_eq!(hdr.clone().get_code(), hdr.get_code());
+        assert_eq!(format!("{:?}", hdr.clone()), format!("{:?}", hdr));
     }
 
     #[test]
