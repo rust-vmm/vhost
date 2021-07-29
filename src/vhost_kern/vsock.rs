@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn test_vsock_new_device() {
-        let m = GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 0x10_0000)]).unwrap();
+        let m = GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0), 0x10_0000)]).unwrap();
         let vsock = Vsock::new(&m).unwrap();
 
         assert!(vsock.as_raw_fd() >= 0);
@@ -98,7 +98,7 @@ mod tests {
 
     #[test]
     fn test_vsock_is_valid() {
-        let m = GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 0x10_0000)]).unwrap();
+        let m = GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0), 0x10_0000)]).unwrap();
         let vsock = Vsock::new(&m).unwrap();
 
         let mut config = VringConfigData {
@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn test_vsock_ioctls() {
-        let m = GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 0x10_0000)]).unwrap();
+        let m = GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0), 0x10_0000)]).unwrap();
         let vsock = Vsock::new(&m).unwrap();
 
         let features = vsock.get_features().unwrap();
