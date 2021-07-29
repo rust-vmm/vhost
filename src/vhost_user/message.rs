@@ -223,14 +223,35 @@ bitflags! {
 /// Common message header for vhost-user requests and replies.
 /// A vhost-user message consists of 3 header fields and an optional payload. All numbers are in the
 /// machine native byte order.
-#[allow(safe_packed_borrows)]
 #[repr(packed)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Copy)]
 pub(super) struct VhostUserMsgHeader<R: Req> {
     request: u32,
     flags: u32,
     size: u32,
     _r: PhantomData<R>,
+}
+
+impl<R: Req> Debug for VhostUserMsgHeader<R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Point")
+            .field("request", &{ self.request })
+            .field("flags", &{ self.flags })
+            .field("size", &{ self.size })
+            .finish()
+    }
+}
+
+impl<R: Req> Clone for VhostUserMsgHeader<R> {
+    fn clone(&self) -> VhostUserMsgHeader<R> {
+        *self
+    }
+}
+
+impl<R: Req> PartialEq for VhostUserMsgHeader<R> {
+    fn eq(&self, other: &Self) -> bool {
+        self.request == other.request && self.flags == other.flags && self.size == other.size
+    }
 }
 
 impl<R: Req> VhostUserMsgHeader<R> {
@@ -249,7 +270,7 @@ impl<R: Req> VhostUserMsgHeader<R> {
     /// Get message type.
     pub fn get_code(&self) -> R {
         // It's safe because R is marked as repr(u32).
-        unsafe { std::mem::transmute_copy::<u32, R>(&self.request) }
+        unsafe { std::mem::transmute_copy::<u32, R>(&{ self.request }) }
     }
 
     /// Set message type.
@@ -803,7 +824,6 @@ impl DescStateSplit {
 }
 
 /// Inflight I/O queue region for split virtqueues
-#[allow(safe_packed_borrows)]
 #[repr(packed)]
 pub struct QueueRegionSplit {
     /// Features flags of this region
@@ -868,7 +888,6 @@ impl DescStatePacked {
 }
 
 /// Inflight I/O queue region for packed virtqueues
-#[allow(safe_packed_borrows)]
 #[repr(packed)]
 pub struct QueueRegionPacked {
     /// Features flags of this region
@@ -994,7 +1013,10 @@ mod tests {
         hdr.set_version(0x1);
         assert!(hdr.is_valid());
 
+        // Test Debug, Clone, PartiaEq trait
         assert_eq!(hdr, hdr.clone());
+        assert_eq!(hdr.clone().get_code(), hdr.get_code());
+        assert_eq!(format!("{:?}", hdr.clone()), format!("{:?}", hdr));
     }
 
     #[test]
