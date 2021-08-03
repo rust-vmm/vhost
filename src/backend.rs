@@ -74,6 +74,17 @@ pub struct VhostUserMemoryRegionInfo {
     pub mmap_handle: RawFd,
 }
 
+/// Shared memory region data for logging dirty pages
+#[derive(Default, Clone, Copy)]
+pub struct VhostUserDirtyLogRegion {
+    /// Size of the shared memory region for logging dirty pages
+    pub mmap_size: u64,
+    /// Offset where region starts
+    pub mmap_offset: u64,
+    /// File descriptor for mmap
+    pub mmap_handle: RawFd,
+}
+
 /// An interface for setting up vhost-based backend drivers with interior mutability.
 ///
 /// Vhost devices are subset of virtio devices, which improve virtio device's performance by
@@ -108,7 +119,7 @@ pub trait VhostBackend: std::marker::Sized {
     fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()>;
 
     /// Set base address for page modification logging.
-    fn set_log_base(&self, base: u64, fd: Option<RawFd>) -> Result<()>;
+    fn set_log_base(&self, base: u64, region: Option<VhostUserDirtyLogRegion>) -> Result<()>;
 
     /// Specify an eventfd file descriptor to signal on log write.
     fn set_log_fd(&self, fd: RawFd) -> Result<()>;
@@ -194,7 +205,7 @@ pub trait VhostBackendMut: std::marker::Sized {
     fn set_mem_table(&mut self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()>;
 
     /// Set base address for page modification logging.
-    fn set_log_base(&mut self, base: u64, fd: Option<RawFd>) -> Result<()>;
+    fn set_log_base(&mut self, base: u64, region: Option<VhostUserDirtyLogRegion>) -> Result<()>;
 
     /// Specify an eventfd file descriptor to signal on log write.
     fn set_log_fd(&mut self, fd: RawFd) -> Result<()>;
@@ -267,8 +278,8 @@ impl<T: VhostBackendMut> VhostBackend for RwLock<T> {
         self.write().unwrap().set_mem_table(regions)
     }
 
-    fn set_log_base(&self, base: u64, fd: Option<RawFd>) -> Result<()> {
-        self.write().unwrap().set_log_base(base, fd)
+    fn set_log_base(&self, base: u64, region: Option<VhostUserDirtyLogRegion>) -> Result<()> {
+        self.write().unwrap().set_log_base(base, region)
     }
 
     fn set_log_fd(&self, fd: RawFd) -> Result<()> {
@@ -327,8 +338,8 @@ impl<T: VhostBackendMut> VhostBackend for RefCell<T> {
         self.borrow_mut().set_mem_table(regions)
     }
 
-    fn set_log_base(&self, base: u64, fd: Option<RawFd>) -> Result<()> {
-        self.borrow_mut().set_log_base(base, fd)
+    fn set_log_base(&self, base: u64, region: Option<VhostUserDirtyLogRegion>) -> Result<()> {
+        self.borrow_mut().set_log_base(base, region)
     }
 
     fn set_log_fd(&self, fd: RawFd) -> Result<()> {
@@ -391,9 +402,16 @@ mod tests {
             Ok(())
         }
 
-        fn set_log_base(&mut self, base: u64, fd: Option<RawFd>) -> Result<()> {
+        fn set_log_base(
+            &mut self,
+            base: u64,
+            region: Option<VhostUserDirtyLogRegion>,
+        ) -> Result<()> {
             assert_eq!(base, 0x100);
-            assert_eq!(fd, Some(100));
+            let region = region.unwrap();
+            assert_eq!(region.mmap_size, 0x1000);
+            assert_eq!(region.mmap_offset, 0x10);
+            assert_eq!(region.mmap_handle, 100);
             Ok(())
         }
 
@@ -453,7 +471,15 @@ mod tests {
         b.set_owner().unwrap();
         b.reset_owner().unwrap();
         b.set_mem_table(&[]).unwrap();
-        b.set_log_base(0x100, Some(100)).unwrap();
+        b.set_log_base(
+            0x100,
+            Some(VhostUserDirtyLogRegion {
+                mmap_size: 0x1000,
+                mmap_offset: 0x10,
+                mmap_handle: 100,
+            }),
+        )
+        .unwrap();
         b.set_log_fd(100).unwrap();
         b.set_vring_num(1, 256).unwrap();
 

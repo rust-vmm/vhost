@@ -18,8 +18,8 @@ use vmm_sys_util::eventfd::EventFd;
 use vmm_sys_util::ioctl::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
 
 use super::{
-    Error, Result, VhostBackend, VhostUserMemoryRegionInfo, VringConfigData,
-    VHOST_MAX_MEMORY_REGIONS,
+    Error, Result, VhostBackend, VhostUserDirtyLogRegion, VhostUserMemoryRegionInfo,
+    VringConfigData, VHOST_MAX_MEMORY_REGIONS,
 };
 
 pub mod vhost_binding;
@@ -146,8 +146,8 @@ impl<T: VhostKernBackend> VhostBackend for T {
     ///
     /// # Arguments
     /// * `base` - Base address for page modification logging.
-    fn set_log_base(&self, base: u64, fd: Option<RawFd>) -> Result<()> {
-        if fd.is_some() {
+    fn set_log_base(&self, base: u64, region: Option<VhostUserDirtyLogRegion>) -> Result<()> {
+        if region.is_some() {
             return Err(Error::LogAddress);
         }
 

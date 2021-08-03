@@ -203,7 +203,7 @@ mod tests {
     use super::message::*;
     use super::*;
     use crate::backend::VhostBackend;
-    use crate::{VhostUserMemoryRegionInfo, VringConfigData};
+    use crate::{VhostUserDirtyLogRegion, VhostUserMemoryRegionInfo, VringConfigData};
 
     fn temp_path() -> PathBuf {
         PathBuf::from(format!(
@@ -415,8 +415,16 @@ mod tests {
         master.set_slave_request_fd(&eventfd).unwrap();
         master.set_vring_enable(0, true).unwrap();
 
-        // unimplemented yet
-        master.set_log_base(0, Some(eventfd.as_raw_fd())).unwrap();
+        master
+            .set_log_base(
+                0,
+                Some(VhostUserDirtyLogRegion {
+                    mmap_size: 0x1000,
+                    mmap_offset: 0,
+                    mmap_handle: eventfd.as_raw_fd(),
+                }),
+            )
+            .unwrap();
         master.set_log_fd(eventfd.as_raw_fd()).unwrap();
 
         master.set_vring_num(0, 256).unwrap();

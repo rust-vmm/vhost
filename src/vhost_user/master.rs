@@ -15,7 +15,9 @@ use vmm_sys_util::eventfd::EventFd;
 use super::connection::Endpoint;
 use super::message::*;
 use super::{take_single_file, Error as VhostUserError, Result as VhostUserResult};
-use crate::backend::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
+use crate::backend::{
+    VhostBackend, VhostUserDirtyLogRegion, VhostUserMemoryRegionInfo, VringConfigData,
+};
 use crate::{Error, Result};
 
 /// Trait for vhost-user master to provide extra methods not covered by the VhostBackend yet.
@@ -213,19 +215,28 @@ impl VhostBackend for Master {
 
     // Clippy doesn't seem to know that if let with && is still experimental
     #[allow(clippy::unnecessary_unwrap)]
-    fn set_log_base(&self, base: u64, fd: Option<RawFd>) -> Result<()> {
+    fn set_log_base(&self, base: u64, region: Option<VhostUserDirtyLogRegion>) -> Result<()> {
         let mut node = self.node();
         let val = VhostUserU64::new(base);
 
         if node.acked_protocol_features & VhostUserProtocolFeatures::LOG_SHMFD.bits() != 0
-            && fd.is_some()
+            && region.is_some()
         {
-            let fds = [fd.unwrap()];
-            let _ = node.send_request_with_body(MasterReq::SET_LOG_BASE, &val, Some(&fds))?;
+            let region = region.unwrap();
+            let log = VhostUserLog {
+                mmap_size: region.mmap_size,
+                mmap_offset: region.mmap_offset,
+            };
+            let hdr = node.send_request_with_body(
+                MasterReq::SET_LOG_BASE,
+                &log,
+                Some(&[region.mmap_handle]),
+            )?;
+            node.wait_for_ack(&hdr).map_err(|e| e.into())
         } else {
             let _ = node.send_request_with_body(MasterReq::SET_LOG_BASE, &val, None)?;
+            Ok(())
         }
-        Ok(())
     }
 
     fn set_log_fd(&self, fd: RawFd) -> Result<()> {

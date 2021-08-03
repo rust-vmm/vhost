@@ -82,7 +82,9 @@ mod tests {
     use vmm_sys_util::eventfd::EventFd;
 
     use super::*;
-    use crate::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
+    use crate::{
+        VhostBackend, VhostUserDirtyLogRegion, VhostUserMemoryRegionInfo, VringConfigData,
+    };
 
     #[test]
     fn test_vsock_new_device() {
@@ -150,7 +152,16 @@ mod tests {
         };
         vsock.set_mem_table(&[region]).unwrap();
 
-        vsock.set_log_base(0x4000, Some(1)).unwrap_err();
+        vsock
+            .set_log_base(
+                0x4000,
+                Some(VhostUserDirtyLogRegion {
+                    mmap_size: 0x1000,
+                    mmap_offset: 0x10,
+                    mmap_handle: 1,
+                }),
+            )
+            .unwrap_err();
         vsock.set_log_base(0x4000, None).unwrap();
 
         let eventfd = EventFd::new(0).unwrap();
