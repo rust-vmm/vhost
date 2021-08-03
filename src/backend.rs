@@ -21,6 +21,7 @@ use super::Result;
 pub const VHOST_MAX_MEMORY_REGIONS: usize = 255;
 
 /// Vring configuration data.
+#[derive(Default, Clone, Copy)]
 pub struct VringConfigData {
     /// Maximum queue size supported by the driver.
     pub queue_max_size: u16,
