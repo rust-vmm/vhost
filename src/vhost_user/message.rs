@@ -731,6 +731,35 @@ impl VhostUserMsgValidator for VhostUserInflight {
     }
 }
 
+/// Single memory region descriptor as payload for SET_LOG_BASE request.
+#[repr(C)]
+#[derive(Default, Clone)]
+pub struct VhostUserLog {
+    /// Size of the area to log dirty pages.
+    pub mmap_size: u64,
+    /// Offset of this area from the start of the supplied file descriptor.
+    pub mmap_offset: u64,
+}
+
+impl VhostUserLog {
+    /// Create a new instance.
+    pub fn new(mmap_size: u64, mmap_offset: u64) -> Self {
+        VhostUserLog {
+            mmap_size,
+            mmap_offset,
+        }
+    }
+}
+
+impl VhostUserMsgValidator for VhostUserLog {
+    fn is_valid(&self) -> bool {
+        if self.mmap_size == 0 || self.mmap_offset.checked_add(self.mmap_size).is_none() {
+            return false;
+        }
+        true
+    }
+}
+
 /*
  * TODO: support dirty log, live migration and IOTLB operations.
 #[repr(packed)]
