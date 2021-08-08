@@ -10,6 +10,7 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use vm_memory::ByteValued;
 use vmm_sys_util::eventfd::EventFd;
 
 use super::connection::Endpoint;
@@ -675,7 +676,7 @@ impl MasterInternal {
         Ok(hdr)
     }
 
-    fn recv_reply<T: Sized + Default + VhostUserMsgValidator>(
+    fn recv_reply<T: ByteValued + Sized + VhostUserMsgValidator>(
         &mut self,
         hdr: &VhostUserMsgHeader<MasterReq>,
     ) -> VhostUserResult<T> {
@@ -691,7 +692,7 @@ impl MasterInternal {
         Ok(body)
     }
 
-    fn recv_reply_with_files<T: Sized + Default + VhostUserMsgValidator>(
+    fn recv_reply_with_files<T: ByteValued + Sized + VhostUserMsgValidator>(
         &mut self,
         hdr: &VhostUserMsgHeader<MasterReq>,
     ) -> VhostUserResult<(T, Option<Vec<File>>)> {
@@ -707,7 +708,7 @@ impl MasterInternal {
         Ok((body, files))
     }
 
-    fn recv_reply_with_payload<T: Sized + Default + VhostUserMsgValidator>(
+    fn recv_reply_with_payload<T: ByteValued + Sized + VhostUserMsgValidator>(
         &mut self,
         hdr: &VhostUserMsgHeader<MasterReq>,
     ) -> VhostUserResult<(T, Vec<u8>, Option<Vec<File>>)> {

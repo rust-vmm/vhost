@@ -12,6 +12,8 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
+use vm_memory::ByteValued;
+
 use crate::VringConfigData;
 
 /// The vhost-user specification uses a field of u32 to store message length.
@@ -412,7 +414,7 @@ bitflags! {
 
 /// A generic message to encapsulate a 64-bit value.
 #[repr(packed)]
-#[derive(Default)]
+#[derive(Copy, Clone, Default)]
 pub struct VhostUserU64 {
     /// The encapsulated 64-bit common value.
     pub value: u64,
@@ -424,6 +426,8 @@ impl VhostUserU64 {
         VhostUserU64 { value }
     }
 }
+
+unsafe impl ByteValued for VhostUserU64 {}
 
 impl VhostUserMsgValidator for VhostUserU64 {}
 
@@ -546,7 +550,7 @@ impl VhostUserMsgValidator for VhostUserSingleMemoryRegion {
 
 /// Vring state descriptor.
 #[repr(packed)]
-#[derive(Default)]
+#[derive(Copy, Clone, Default)]
 pub struct VhostUserVringState {
     /// Vring index.
     pub index: u32,
@@ -560,6 +564,8 @@ impl VhostUserVringState {
         VhostUserVringState { index, num }
     }
 }
+
+unsafe impl ByteValued for VhostUserVringState {}
 
 impl VhostUserMsgValidator for VhostUserVringState {}
 
@@ -655,7 +661,7 @@ bitflags! {
 
 /// Message to read/write device configuration space.
 #[repr(packed)]
-#[derive(Default)]
+#[derive(Copy, Clone, Default)]
 pub struct VhostUserConfig {
     /// Offset of virtio device's configuration space.
     pub offset: u32,
@@ -675,6 +681,8 @@ impl VhostUserConfig {
         }
     }
 }
+
+unsafe impl ByteValued for VhostUserConfig {}
 
 impl VhostUserMsgValidator for VhostUserConfig {
     #[allow(clippy::if_same_then_else)]
@@ -698,7 +706,7 @@ pub type VhostUserConfigPayload = Vec<u8>;
 /// Single memory region descriptor as payload for ADD_MEM_REG and REM_MEM_REG
 /// requests.
 #[repr(C)]
-#[derive(Default, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct VhostUserInflight {
     /// Size of the area to track inflight I/O.
     pub mmap_size: u64,
@@ -721,6 +729,8 @@ impl VhostUserInflight {
         }
     }
 }
+
+unsafe impl ByteValued for VhostUserInflight {}
 
 impl VhostUserMsgValidator for VhostUserInflight {
     fn is_valid(&self) -> bool {
