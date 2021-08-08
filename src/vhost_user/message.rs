@@ -43,7 +43,7 @@ pub const VHOST_USER_CONFIG_SIZE: u32 = 0x1000;
 pub const VHOST_USER_MAX_VRINGS: u64 = 0x8000u64;
 
 pub(super) trait Req:
-    Clone + Copy + Debug + PartialEq + Eq + PartialOrd + Ord + Into<u32>
+    Clone + Copy + Debug + PartialEq + Eq + PartialOrd + Ord + Send + Sync + Into<u32>
 {
     fn is_valid(&self) -> bool;
 }
@@ -345,6 +345,8 @@ impl<R: Req> Default for VhostUserMsgHeader<R> {
         }
     }
 }
+
+unsafe impl<R: Req> ByteValued for VhostUserMsgHeader<R> {}
 
 impl<T: Req> VhostUserMsgValidator for VhostUserMsgHeader<T> {
     #[allow(clippy::if_same_then_else)]
