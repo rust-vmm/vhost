@@ -15,6 +15,7 @@ use std::os::unix::prelude::IntoRawFd;
 use std::result;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
+
 use vhost::vhost_user::message::{
     VhostUserConfigFlags, VhostUserMemoryRegion, VhostUserProtocolFeatures,
     VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
@@ -25,12 +26,12 @@ use vhost::vhost_user::{
     VhostUserSlaveReqHandlerMut,
 };
 use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
+use virtio_queue::Queue;
 use vm_memory::guest_memory::FileOffset;
 use vm_memory::{
     GuestAddress, GuestAddressSpace, GuestMemoryAtomic, GuestMemoryMmap, GuestRegionMmap,
     MmapRegion,
 };
-use virtio_queue::Queue;
 use vmm_sys_util::eventfd::EventFd;
 
 const MAX_MEM_SLOTS: u64 = 32;
@@ -956,7 +957,11 @@ impl<S: VhostUserBackend> VhostUserSlaveReqHandlerMut for VhostUserHandler<S> {
         Err(VhostUserError::InvalidOperation)
     }
 
-    fn set_inflight_fd(&mut self, _inflight: &vhost::vhost_user::message::VhostUserInflight, _file: File) -> VhostUserResult<()> {
+    fn set_inflight_fd(
+        &mut self,
+        _inflight: &vhost::vhost_user::message::VhostUserInflight,
+        _file: File,
+    ) -> VhostUserResult<()> {
         Err(VhostUserError::InvalidOperation)
     }
 }
