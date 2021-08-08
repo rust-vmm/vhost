@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::{mem, slice};
 
 use libc::{c_void, iovec};
+use vm_memory::ByteValued;
 use vmm_sys_util::sock_ctrl_msg::ScmSocket;
 
 use super::message::*;
@@ -467,7 +468,7 @@ impl<R: Req> Endpoint<R> {
     /// * - SocketError: other socket related errors.
     /// * - PartialMessage: received a partial message.
     /// * - InvalidMessage: received a invalid message.
-    pub fn recv_body<T: Sized + Default + VhostUserMsgValidator>(
+    pub fn recv_body<T: ByteValued + Sized + VhostUserMsgValidator>(
         &mut self,
     ) -> Result<(VhostUserMsgHeader<R>, T, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
@@ -546,7 +547,7 @@ impl<R: Req> Endpoint<R> {
     /// * - PartialMessage: received a partial message.
     /// * - InvalidMessage: received a invalid message.
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::type_complexity))]
-    pub fn recv_payload_into_buf<T: Sized + Default + VhostUserMsgValidator>(
+    pub fn recv_payload_into_buf<T: ByteValued + Sized + VhostUserMsgValidator>(
         &mut self,
         buf: &mut [u8],
     ) -> Result<(VhostUserMsgHeader<R>, T, usize, Option<Vec<File>>)> {
