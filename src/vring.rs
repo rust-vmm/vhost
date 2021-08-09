@@ -8,25 +8,26 @@
 use std::fs::File;
 use std::io;
 use std::os::unix::io::{FromRawFd, IntoRawFd};
+use std::result::Result;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use virtio_queue::Queue;
-use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
+use virtio_queue::{Error as VirtQueError, Queue};
+use vm_memory::{GuestAddress, GuestAddressSpace, GuestMemoryAtomic, GuestMemoryMmap};
 use vmm_sys_util::eventfd::EventFd;
 
 /// Struct to maintain raw state information for a vhost-user queue.
-pub struct VringState {
-    queue: Queue<GuestMemoryAtomic<GuestMemoryMmap>>,
+pub struct VringState<M: GuestAddressSpace> {
+    queue: Queue<M>,
     kick: Option<EventFd>,
     call: Option<EventFd>,
     err: Option<EventFd>,
     enabled: bool,
 }
 
-impl VringState {
-    fn new(atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>, max_queue_size: u16) -> Self {
+impl<M: GuestAddressSpace> VringState<M> {
+    fn new(mem: M, max_queue_size: u16) -> Self {
         VringState {
-            queue: Queue::new(atomic_mem, max_queue_size),
+            queue: Queue::new(mem, max_queue_size),
             kick: None,
             call: None,
             err: None,
@@ -34,12 +35,12 @@ impl VringState {
         }
     }
 
-    /// Get a mutable reference to the underlying `Queue` object.
-    pub fn get_queue_mut(&mut self) -> &mut Queue<GuestMemoryAtomic<GuestMemoryMmap>> {
+    /// Get a mutable reference to the underlying raw `Queue` object.
+    pub fn get_queue_mut(&mut self) -> &mut Queue<M> {
         &mut self.queue
     }
 
-    /// Get a immutable reference to the underlying kick event fd.
+    /// Get a immutable reference to the kick event fd.
     pub fn get_kick(&self) -> &Option<EventFd> {
         &self.kick
     }
@@ -47,22 +48,51 @@ impl VringState {
 
 /// Struct to maintain state information and manipulate a vhost-user queue.
 #[derive(Clone)]
-pub struct Vring {
-    state: Arc<RwLock<VringState>>,
+pub struct Vring<M: GuestAddressSpace = GuestMemoryAtomic<GuestMemoryMmap>> {
+    state: Arc<RwLock<VringState<M>>>,
 }
 
-impl Vring {
+impl<M: GuestAddressSpace> Vring<M> {
     /// Get a immutable guard to the underlying raw `VringState` object.
-    pub fn get_ref(&self) -> RwLockReadGuard<VringState> {
+    pub fn get_ref(&self) -> RwLockReadGuard<VringState<M>> {
         self.state.read().unwrap()
     }
 
     /// Get a mutable guard to the underlying raw `VringState` object.
-    pub fn get_mut(&self) -> RwLockWriteGuard<VringState> {
+    pub fn get_mut(&self) -> RwLockWriteGuard<VringState<M>> {
         self.state.write().unwrap()
     }
 
-    pub(crate) fn new(mem: GuestMemoryAtomic<GuestMemoryMmap>, max_queue_size: u16) -> Self {
+    /// Add an used descriptor into the used queue.
+    pub fn add_used(&self, desc_index: u16, len: u32) -> Result<(), VirtQueError> {
+        self.get_mut().get_queue_mut().add_used(desc_index, len)
+    }
+
+    /// Notify the vhost-user master that used descriptors have been put into the used queue.
+    pub fn signal_used_queue(&self) -> io::Result<()> {
+        if let Some(call) = self.get_ref().call.as_ref() {
+            call.write(1)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Enable event notification for queue.
+    pub fn enable_notification(&self) -> Result<bool, VirtQueError> {
+        self.get_mut().get_queue_mut().enable_notification()
+    }
+
+    /// Disable event notification for queue.
+    pub fn disable_notification(&self) -> Result<(), VirtQueError> {
+        self.get_mut().get_queue_mut().disable_notification()
+    }
+
+    /// Check whether a notification to the guest is needed.
+    pub fn needs_notification(&self) -> Result<bool, VirtQueError> {
+        self.get_mut().get_queue_mut().needs_notification()
+    }
+
+    pub(crate) fn new(mem: M, max_queue_size: u16) -> Self {
         Vring {
             state: Arc::new(RwLock::new(VringState::new(mem, max_queue_size))),
         }
