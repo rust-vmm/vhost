@@ -8,7 +8,6 @@ use std::fs::File;
 use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::result;
-use std::sync::{Arc, RwLock};
 
 use super::{VhostUserBackend, Vring};
 
@@ -57,18 +56,14 @@ pub type VringEpollResult<T> = std::result::Result<T, VringEpollError>;
 pub struct VringEpollHandler<S: VhostUserBackend> {
     epoll_file: File,
     backend: S,
-    vrings: Vec<Arc<RwLock<Vring>>>,
+    vrings: Vec<Vring>,
     thread_id: usize,
     exit_event_id: Option<u16>,
 }
 
 impl<S: VhostUserBackend> VringEpollHandler<S> {
     /// Create a `VringEpollHandler` instance.
-    pub(crate) fn new(
-        backend: S,
-        vrings: Vec<Arc<RwLock<Vring>>>,
-        thread_id: usize,
-    ) -> VringEpollResult<Self> {
+    pub(crate) fn new(backend: S, vrings: Vec<Vring>, thread_id: usize) -> VringEpollResult<Self> {
         let epoll_fd = epoll::create(true).map_err(VringEpollError::EpollCreateFd)?;
         let epoll_file = unsafe { File::from_raw_fd(epoll_fd) };
         let (exit_event_fd, exit_event_id) = match backend.exit_event(thread_id) {
@@ -187,16 +182,14 @@ impl<S: VhostUserBackend> VringEpollHandler<S> {
             return Ok(true);
         }
 
-        let num_queues = self.vrings.len();
-        if (device_event as usize) < num_queues {
-            let vring = &self.vrings[device_event as usize].read().unwrap();
-            if let Some(kick) = &vring.kick {
-                kick.read().map_err(VringEpollError::HandleEventReadKick)?;
-            }
+        if (device_event as usize) < self.vrings.len() {
+            let vring = &self.vrings[device_event as usize];
+            let enabled = vring
+                .read_kick()
+                .map_err(VringEpollError::HandleEventReadKick)?;
 
             // If the vring is not enabled, it should not be processed.
-            // The event is only read to be discarded.
-            if !vring.enabled {
+            if !enabled {
                 return Ok(false);
             }
         }

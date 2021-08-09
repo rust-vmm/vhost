@@ -110,7 +110,7 @@ pub trait VhostUserBackend: Send + Sync + 'static {
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[Arc<RwLock<Vring>>],
+        vrings: &[Vring],
         thread_id: usize,
     ) -> result::Result<bool, io::Error>;
 }
@@ -192,7 +192,7 @@ pub trait VhostUserBackendMut: Send + Sync + 'static {
         &mut self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[Arc<RwLock<Vring>>],
+        vrings: &[Vring],
         thread_id: usize,
     ) -> result::Result<bool, io::Error>;
 }
@@ -253,7 +253,7 @@ impl<T: VhostUserBackend> VhostUserBackend for Arc<T> {
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[Arc<RwLock<Vring>>],
+        vrings: &[Vring],
         thread_id: usize,
     ) -> Result<bool, io::Error> {
         self.deref()
@@ -317,7 +317,7 @@ impl<T: VhostUserBackendMut> VhostUserBackend for Mutex<T> {
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[Arc<RwLock<Vring>>],
+        vrings: &[Vring],
         thread_id: usize,
     ) -> Result<bool, io::Error> {
         self.lock()
@@ -382,7 +382,7 @@ impl<T: VhostUserBackendMut> VhostUserBackend for RwLock<T> {
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[Arc<RwLock<Vring>>],
+        vrings: &[Vring],
         thread_id: usize,
     ) -> Result<bool, io::Error> {
         self.write()
@@ -477,7 +477,7 @@ mod tests {
             &mut self,
             _device_event: u16,
             _evset: Events,
-            _vrings: &[Arc<RwLock<Vring>>],
+            _vrings: &[Vring],
             _thread_id: usize,
         ) -> Result<bool, Error> {
             self.events += 1;

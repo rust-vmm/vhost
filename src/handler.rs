@@ -6,19 +6,20 @@
 use std::error;
 use std::fs::File;
 use std::io;
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
-use std::sync::{Arc, RwLock};
+use std::os::unix::io::AsRawFd;
+use std::sync::Arc;
 use std::thread;
 
 use vhost::vhost_user::message::{
     VhostUserConfigFlags, VhostUserMemoryRegion, VhostUserProtocolFeatures,
-    VhostUserVirtioFeatures, VhostUserVringAddrFlags, VhostUserVringState,
+    VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
+    VhostUserVringState,
 };
 use vhost::vhost_user::{Error as VhostUserError, Result as VhostUserResult, SlaveFsCacheReq};
 use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::{FileOffset, GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
-use vmm_sys_util::eventfd::EventFd;
 
+use super::event_loop::{VringEpollError, VringEpollResult};
 use super::*;
 
 const MAX_MEM_SLOTS: u64 = 32;
@@ -71,7 +72,7 @@ pub struct VhostUserHandler<S: VhostUserBackend> {
     queues_per_thread: Vec<u64>,
     mappings: Vec<AddrMapping>,
     atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>,
-    vrings: Vec<Arc<RwLock<Vring>>>,
+    vrings: Vec<Vring>,
     worker_threads: Vec<thread::JoinHandle<VringEpollResult<()>>>,
 }
 
@@ -80,22 +81,18 @@ impl<S: VhostUserBackend + Clone> VhostUserHandler<S> {
         let num_queues = backend.num_queues();
         let max_queue_size = backend.max_queue_size();
         let queues_per_thread = backend.queues_per_thread();
-
         let atomic_mem = GuestMemoryAtomic::new(GuestMemoryMmap::new());
 
-        let mut vrings: Vec<Arc<RwLock<Vring>>> = Vec::new();
+        let mut vrings: Vec<Vring> = Vec::new();
         for _ in 0..num_queues {
-            let vring = Arc::new(RwLock::new(Vring::new(
-                atomic_mem.clone(),
-                max_queue_size as u16,
-            )));
+            let vring = Vring::new(atomic_mem.clone(), max_queue_size as u16);
             vrings.push(vring);
         }
 
         let mut handlers = Vec::new();
         let mut worker_threads = Vec::new();
         for (thread_id, queues_mask) in queues_per_thread.iter().enumerate() {
-            let mut thread_vrings: Vec<Arc<RwLock<Vring>>> = Vec::new();
+            let mut thread_vrings: Vec<Vring> = Vec::new();
             for (index, vring) in vrings.iter().enumerate() {
                 if (queues_mask >> index) & 1u64 == 1u64 {
                     thread_vrings.push(vring.clone());
@@ -186,8 +183,8 @@ impl<S: VhostUserBackend + Clone> VhostUserSlaveReqHandlerMut for VhostUserHandl
         // been disabled by VHOST_USER_SET_VRING_ENABLE with parameter 0.
         let vring_enabled =
             self.acked_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() == 0;
-        for vring in self.vrings.iter_mut() {
-            vring.write().unwrap().enabled = vring_enabled;
+        for vring in self.vrings.iter() {
+            vring.set_enabled(vring_enabled);
         }
 
         self.backend.acked_features(self.acked_features);
@@ -256,7 +253,7 @@ impl<S: VhostUserBackend + Clone> VhostUserSlaveReqHandlerMut for VhostUserHandl
         if index as usize >= self.num_queues || num == 0 || num as usize > self.max_queue_size {
             return Err(VhostUserError::InvalidParam);
         }
-        self.vrings[index as usize].write().unwrap().queue.size = num as u16;
+        self.vrings[index as usize].set_queue_size(num as u16);
         Ok(())
     }
 
@@ -283,17 +280,7 @@ impl<S: VhostUserBackend + Clone> VhostUserSlaveReqHandlerMut for VhostUserHandl
             let used_ring = self.vmm_va_to_gpa(used).map_err(|e| {
                 VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
             })?;
-            self.vrings[index as usize]
-                .write()
-                .unwrap()
-                .queue
-                .desc_table = GuestAddress(desc_table);
-            self.vrings[index as usize]
-                .write()
-                .unwrap()
-                .queue
-                .avail_ring = GuestAddress(avail_ring);
-            self.vrings[index as usize].write().unwrap().queue.used_ring = GuestAddress(used_ring);
+            self.vrings[index as usize].set_queue_info(desc_table, avail_ring, used_ring);
             Ok(())
         } else {
             Err(VhostUserError::InvalidParam)
@@ -301,19 +288,12 @@ impl<S: VhostUserBackend + Clone> VhostUserSlaveReqHandlerMut for VhostUserHandl
     }
 
     fn set_vring_base(&mut self, index: u32, base: u32) -> VhostUserResult<()> {
-        self.vrings[index as usize]
-            .write()
-            .unwrap()
-            .queue
-            .set_next_avail(base as u16);
-
         let event_idx: bool = (self.acked_features & (1 << VIRTIO_RING_F_EVENT_IDX)) != 0;
-        self.vrings[index as usize]
-            .write()
-            .unwrap()
-            .mut_queue()
-            .set_event_idx(event_idx);
+
+        self.vrings[index as usize].set_queue_next_avail(base as u16);
+        self.vrings[index as usize].set_queue_event_idx(event_idx);
         self.backend.set_event_idx(event_idx);
+
         Ok(())
     }
 
@@ -326,8 +306,8 @@ impl<S: VhostUserBackend + Clone> VhostUserSlaveReqHandlerMut for VhostUserHandl
         // that file descriptor is readable) on the descriptor specified by
         // VHOST_USER_SET_VRING_KICK, and stop ring upon receiving
         // VHOST_USER_GET_VRING_BASE.
-        self.vrings[index as usize].write().unwrap().queue.ready = false;
-        if let Some(fd) = self.vrings[index as usize].read().unwrap().kick.as_ref() {
+        self.vrings[index as usize].set_queue_ready(false);
+        if let Some(fd) = self.vrings[index as usize].get_ref().get_kick() {
             for (thread_index, queues_mask) in self.queues_per_thread.iter().enumerate() {
                 let shifted_queues_mask = queues_mask >> index;
                 if shifted_queues_mask & 1u64 == 1u64 {
@@ -344,11 +324,7 @@ impl<S: VhostUserBackend + Clone> VhostUserSlaveReqHandlerMut for VhostUserHandl
             }
         }
 
-        let next_avail = self.vrings[index as usize]
-            .read()
-            .unwrap()
-            .queue
-            .next_avail();
+        let next_avail = self.vrings[index as usize].queue_next_avail();
 
         Ok(VhostUserVringState::new(index, u32::from(next_avail)))
     }
@@ -362,16 +338,15 @@ impl<S: VhostUserBackend + Clone> VhostUserSlaveReqHandlerMut for VhostUserHandl
         // does File, so this is safe.
         // Ideally, we'd have a generic way to refer to a uniquely-owned fd,
         // such as that proposed by Rust RFC #3128.
-        self.vrings[index as usize].write().unwrap().kick =
-            file.map(|f| unsafe { EventFd::from_raw_fd(f.into_raw_fd()) });
+        self.vrings[index as usize].set_kick(file);
 
         // Quote from vhost-user specification:
         // Client must start ring upon receiving a kick (that is, detecting
         // that file descriptor is readable) on the descriptor specified by
         // VHOST_USER_SET_VRING_KICK, and stop ring upon receiving
         // VHOST_USER_GET_VRING_BASE.
-        self.vrings[index as usize].write().unwrap().queue.ready = true;
-        if let Some(fd) = self.vrings[index as usize].read().unwrap().kick.as_ref() {
+        self.vrings[index as usize].set_queue_ready(true);
+        if let Some(fd) = self.vrings[index as usize].get_ref().get_kick() {
             for (thread_index, queues_mask) in self.queues_per_thread.iter().enumerate() {
                 let shifted_queues_mask = queues_mask >> index;
                 if shifted_queues_mask & 1u64 == 1u64 {
@@ -396,9 +371,7 @@ impl<S: VhostUserBackend + Clone> VhostUserSlaveReqHandlerMut for VhostUserHandl
             return Err(VhostUserError::InvalidParam);
         }
 
-        // SAFETY: see comment in set_vring_kick()
-        self.vrings[index as usize].write().unwrap().call =
-            file.map(|f| unsafe { EventFd::from_raw_fd(f.into_raw_fd()) });
+        self.vrings[index as usize].set_call(file);
 
         Ok(())
     }
@@ -408,9 +381,7 @@ impl<S: VhostUserBackend + Clone> VhostUserSlaveReqHandlerMut for VhostUserHandl
             return Err(VhostUserError::InvalidParam);
         }
 
-        // SAFETY: see comment in set_vring_kick()
-        self.vrings[index as usize].write().unwrap().err =
-            file.map(|f| unsafe { EventFd::from_raw_fd(f.into_raw_fd()) });
+        self.vrings[index as usize].set_err(file);
 
         Ok(())
     }
@@ -428,7 +399,7 @@ impl<S: VhostUserBackend + Clone> VhostUserSlaveReqHandlerMut for VhostUserHandl
         // enabled by VHOST_USER_SET_VRING_ENABLE with parameter 1,
         // or after it has been disabled by VHOST_USER_SET_VRING_ENABLE
         // with parameter 0.
-        self.vrings[index as usize].write().unwrap().enabled = enable;
+        self.vrings[index as usize].set_enabled(enable);
 
         Ok(())
     }

@@ -1,7 +1,6 @@
 // Copyright 2019 Intel Corporation. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-//
 // Copyright 2019 Alibaba Cloud Computing. All rights reserved.
+//
 // SPDX-License-Identifier: Apache-2.0
 
 //! A simple framework to run a vhost-user backend service.
@@ -14,15 +13,10 @@ use std::result;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use vhost::vhost_user::message::VhostUserSingleMemoryRegion;
 use vhost::vhost_user::{
     Error as VhostUserError, Listener, SlaveListener, VhostUserSlaveReqHandlerMut,
 };
-use virtio_queue::Queue;
-use vm_memory::{
-    GuestAddressSpace, GuestMemoryAtomic, GuestMemoryMmap, GuestRegionMmap, MmapRegion,
-};
-use vmm_sys_util::eventfd::EventFd;
+use vm_memory::{GuestAddressSpace, GuestRegionMmap, MmapRegion};
 
 use self::handler::VhostUserHandler;
 
@@ -30,10 +24,13 @@ mod backend;
 pub use self::backend::{VhostUserBackend, VhostUserBackendMut};
 
 mod event_loop;
-pub use self::event_loop::{VringEpollError, VringEpollHandler, VringEpollResult};
+pub use self::event_loop::VringEpollHandler;
 
 mod handler;
 pub use self::handler::VhostUserHandlerError;
+
+mod vring;
+pub use self::vring::{Vring, VringState};
 
 #[derive(Debug)]
 /// Errors related to vhost-user daemon.
@@ -128,37 +125,5 @@ impl<S: VhostUserBackend + Clone> VhostUserDaemon<S> {
     /// event file descriptors.
     pub fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S>>> {
         self.handler.lock().unwrap().get_epoll_handlers()
-    }
-}
-
-pub struct Vring {
-    queue: Queue<GuestMemoryAtomic<GuestMemoryMmap>>,
-    kick: Option<EventFd>,
-    call: Option<EventFd>,
-    err: Option<EventFd>,
-    enabled: bool,
-}
-
-impl Vring {
-    fn new(atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>, max_queue_size: u16) -> Self {
-        Vring {
-            queue: Queue::new(atomic_mem, max_queue_size),
-            kick: None,
-            call: None,
-            err: None,
-            enabled: false,
-        }
-    }
-
-    pub fn mut_queue(&mut self) -> &mut Queue<GuestMemoryAtomic<GuestMemoryMmap>> {
-        &mut self.queue
-    }
-
-    pub fn signal_used_queue(&mut self) -> result::Result<(), io::Error> {
-        if let Some(call) = self.call.as_ref() {
-            call.write(1)
-        } else {
-            Ok(())
-        }
     }
 }
