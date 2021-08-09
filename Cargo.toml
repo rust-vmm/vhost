@@ -2,6 +2,8 @@
 name = "vhost-user-backend"
 version = "0.1.0"
 authors = ["The Cloud Hypervisor Authors"]
+keywords = ["vhost-user", "virtio"]
+description = "A framework to build vhost-user backend service daemon"
 edition = "2018"
 license = "Apache-2.0"
 

@@ -8,6 +8,7 @@
 #[macro_use]
 extern crate log;
 
+use std::fmt::{Display, Formatter};
 use std::io;
 use std::result;
 use std::sync::{Arc, Mutex};
@@ -49,10 +50,23 @@ pub enum Error {
     HandleRequest(VhostUserError),
 }
 
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Error::NewVhostUserHandler(e) => write!(f, "cannot create vhost user handler: {}", e),
+            Error::CreateSlaveListener(e) => write!(f, "cannot create slave listener: {}", e),
+            Error::CreateSlaveReqHandler(e) => write!(f, "cannot create slave req handler: {}", e),
+            Error::StartDaemon(e) => write!(f, "failed to start daemon: {}", e),
+            Error::WaitDaemon(_e) => write!(f, "failed to wait for daemon exit"),
+            Error::HandleRequest(e) => write!(f, "failed to handle request: {}", e),
+        }
+    }
+}
+
 /// Result of vhost-user daemon operations.
 pub type Result<T> = result::Result<T, Error>;
 
-/// Implement a simple framework to run a vhost user service daemon.
+/// Implement a simple framework to run a vhost-user service daemon.
 ///
 /// This structure is the public API the backend is allowed to interact with in order to run
 /// a fully functional vhost-user daemon.
