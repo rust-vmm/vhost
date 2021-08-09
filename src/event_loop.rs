@@ -9,7 +9,9 @@ use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::result;
 
-use super::{VhostUserBackend, Vring};
+use vm_memory::bitmap::Bitmap;
+
+use super::{VhostUserBackend, Vring, GM};
 
 /// Errors related to vring epoll event handling.
 #[derive(Debug)]
@@ -53,17 +55,21 @@ pub type VringEpollResult<T> = std::result::Result<T, VringEpollError>;
 /// - add file descriptors to be monitored by the epoll fd
 /// - remove registered file descriptors from the epoll fd
 /// - run the event loop to handle pending events on the epoll fd
-pub struct VringEpollHandler<S: VhostUserBackend> {
+pub struct VringEpollHandler<S: VhostUserBackend<B>, B: Bitmap + 'static> {
     epoll_file: File,
     backend: S,
-    vrings: Vec<Vring>,
+    vrings: Vec<Vring<GM<B>>>,
     thread_id: usize,
     exit_event_id: Option<u16>,
 }
 
-impl<S: VhostUserBackend> VringEpollHandler<S> {
+impl<S: VhostUserBackend<B>, B: Bitmap + 'static> VringEpollHandler<S, B> {
     /// Create a `VringEpollHandler` instance.
-    pub(crate) fn new(backend: S, vrings: Vec<Vring>, thread_id: usize) -> VringEpollResult<Self> {
+    pub(crate) fn new(
+        backend: S,
+        vrings: Vec<Vring<GM<B>>>,
+        thread_id: usize,
+    ) -> VringEpollResult<Self> {
         let epoll_fd = epoll::create(true).map_err(VringEpollError::EpollCreateFd)?;
         let epoll_file = unsafe { File::from_raw_fd(epoll_fd) };
         let (exit_event_fd, exit_event_id) = match backend.exit_event(thread_id) {

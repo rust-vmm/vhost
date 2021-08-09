@@ -1,5 +1,5 @@
 // Copyright 2019 Intel Corporation. All Rights Reserved.
-// Copyright 2019 Alibaba Cloud Computing. All rights reserved.
+// Copyright 2019-2021 Alibaba Cloud Computing. All rights reserved.
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -17,7 +17,9 @@ use std::thread;
 use vhost::vhost_user::{
     Error as VhostUserError, Listener, SlaveListener, VhostUserSlaveReqHandlerMut,
 };
-use vm_memory::{GuestAddressSpace, GuestRegionMmap, MmapRegion};
+use vm_memory::bitmap::Bitmap;
+use vm_memory::mmap::NewBitmap;
+use vm_memory::{GuestAddressSpace, GuestMemoryAtomic, GuestMemoryMmap, MmapRegion};
 
 use self::handler::VhostUserHandler;
 
@@ -32,6 +34,9 @@ pub use self::handler::VhostUserHandlerError;
 
 mod vring;
 pub use self::vring::{Vring, VringState};
+
+/// An alias for `GuestMemoryAtomic<GuestMemoryMmap<B>>` to simplify code.
+type GM<B> = GuestMemoryAtomic<GuestMemoryMmap<B>>;
 
 #[derive(Debug)]
 /// Errors related to vhost-user daemon.
@@ -70,21 +75,25 @@ pub type Result<T> = result::Result<T, Error>;
 ///
 /// This structure is the public API the backend is allowed to interact with in order to run
 /// a fully functional vhost-user daemon.
-pub struct VhostUserDaemon<S: VhostUserBackend> {
+pub struct VhostUserDaemon<S: VhostUserBackend<B>, B: Bitmap + 'static> {
     name: String,
-    handler: Arc<Mutex<VhostUserHandler<S>>>,
+    handler: Arc<Mutex<VhostUserHandler<S, B>>>,
     main_thread: Option<thread::JoinHandle<Result<()>>>,
 }
 
-impl<S: VhostUserBackend + Clone> VhostUserDaemon<S> {
+impl<S: VhostUserBackend<B> + Clone, B: NewBitmap + Clone + Send + Sync> VhostUserDaemon<S, B> {
     /// Create the daemon instance, providing the backend implementation of `VhostUserBackend`.
     ///
     /// Under the hood, this will start a dedicated thread responsible for listening onto
     /// registered event. Those events can be vring events or custom events from the backend,
     /// but they get to be registered later during the sequence.
-    pub fn new(name: String, backend: S) -> Result<Self> {
+    pub fn new(
+        name: String,
+        backend: S,
+        atomic_mem: GuestMemoryAtomic<GuestMemoryMmap<B>>,
+    ) -> Result<Self> {
         let handler = Arc::new(Mutex::new(
-            VhostUserHandler::new(backend).map_err(Error::NewVhostUserHandler)?,
+            VhostUserHandler::new(backend, atomic_mem).map_err(Error::NewVhostUserHandler)?,
         ));
 
         Ok(VhostUserDaemon {
@@ -137,7 +146,7 @@ impl<S: VhostUserBackend + Clone> VhostUserDaemon<S> {
     ///
     /// This is necessary to perform further actions like registering and unregistering some extra
     /// event file descriptors.
-    pub fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S>>> {
+    pub fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S, B>>> {
         self.handler.lock().unwrap().get_epoll_handlers()
     }
 }

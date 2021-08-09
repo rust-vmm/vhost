@@ -25,16 +25,16 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use vhost::vhost_user::message::VhostUserProtocolFeatures;
 use vhost::vhost_user::SlaveFsCacheReq;
-use vm_memory::{GuestMemoryAtomic, GuestMemoryMmap};
+use vm_memory::bitmap::Bitmap;
 use vmm_sys_util::eventfd::EventFd;
 
-use super::Vring;
+use super::{Vring, GM};
 
 /// Trait with interior mutability for vhost user backend servers to implement concrete services.
 ///
 /// To support multi-threading and asynchronous IO, we enforce `the Send + Sync + 'static`.
 /// So there's no plan for support of "Rc<T>" and "RefCell<T>".
-pub trait VhostUserBackend: Send + Sync + 'static {
+pub trait VhostUserBackend<B: Bitmap + 'static>: Send + Sync + 'static {
     /// Get number of queues supported.
     fn num_queues(&self) -> usize;
 
@@ -70,10 +70,7 @@ pub trait VhostUserBackend: Send + Sync + 'static {
     }
 
     /// Update guest memory regions.
-    fn update_memory(
-        &self,
-        atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>,
-    ) -> result::Result<(), io::Error>;
+    fn update_memory(&self, mem: GM<B>) -> result::Result<(), io::Error>;
 
     /// Set handler for communicating with the master by the slave communication channel.
     ///
@@ -110,13 +107,13 @@ pub trait VhostUserBackend: Send + Sync + 'static {
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[Vring],
+        vrings: &[Vring<GM<B>>],
         thread_id: usize,
     ) -> result::Result<bool, io::Error>;
 }
 
 /// Trait without interior mutability for vhost user backend servers to implement concrete services.
-pub trait VhostUserBackendMut: Send + Sync + 'static {
+pub trait VhostUserBackendMut<B: Bitmap + 'static>: Send + Sync + 'static {
     /// Get number of queues supported.
     fn num_queues(&self) -> usize;
 
@@ -152,10 +149,7 @@ pub trait VhostUserBackendMut: Send + Sync + 'static {
     }
 
     /// Update guest memory regions.
-    fn update_memory(
-        &mut self,
-        atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>,
-    ) -> result::Result<(), io::Error>;
+    fn update_memory(&mut self, mem: GM<B>) -> result::Result<(), io::Error>;
 
     /// Set handler for communicating with the master by the slave communication channel.
     ///
@@ -192,12 +186,12 @@ pub trait VhostUserBackendMut: Send + Sync + 'static {
         &mut self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[Vring],
+        vrings: &[Vring<GM<B>>],
         thread_id: usize,
     ) -> result::Result<bool, io::Error>;
 }
 
-impl<T: VhostUserBackend> VhostUserBackend for Arc<T> {
+impl<T: VhostUserBackend<B>, B: Bitmap + 'static> VhostUserBackend<B> for Arc<T> {
     fn num_queues(&self) -> usize {
         self.deref().num_queues()
     }
@@ -230,11 +224,8 @@ impl<T: VhostUserBackend> VhostUserBackend for Arc<T> {
         self.deref().set_config(offset, buf)
     }
 
-    fn update_memory(
-        &self,
-        atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>,
-    ) -> Result<(), io::Error> {
-        self.deref().update_memory(atomic_mem)
+    fn update_memory(&self, mem: GM<B>) -> Result<(), io::Error> {
+        self.deref().update_memory(mem)
     }
 
     fn set_slave_req_fd(&self, vu_req: SlaveFsCacheReq) {
@@ -253,7 +244,7 @@ impl<T: VhostUserBackend> VhostUserBackend for Arc<T> {
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[Vring],
+        vrings: &[Vring<GM<B>>],
         thread_id: usize,
     ) -> Result<bool, io::Error> {
         self.deref()
@@ -261,7 +252,7 @@ impl<T: VhostUserBackend> VhostUserBackend for Arc<T> {
     }
 }
 
-impl<T: VhostUserBackendMut> VhostUserBackend for Mutex<T> {
+impl<T: VhostUserBackendMut<B>, B: Bitmap + 'static> VhostUserBackend<B> for Mutex<T> {
     fn num_queues(&self) -> usize {
         self.lock().unwrap().num_queues()
     }
@@ -294,11 +285,8 @@ impl<T: VhostUserBackendMut> VhostUserBackend for Mutex<T> {
         self.lock().unwrap().set_config(offset, buf)
     }
 
-    fn update_memory(
-        &self,
-        atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>,
-    ) -> Result<(), io::Error> {
-        self.lock().unwrap().update_memory(atomic_mem)
+    fn update_memory(&self, mem: GM<B>) -> Result<(), io::Error> {
+        self.lock().unwrap().update_memory(mem)
     }
 
     fn set_slave_req_fd(&self, vu_req: SlaveFsCacheReq) {
@@ -317,7 +305,7 @@ impl<T: VhostUserBackendMut> VhostUserBackend for Mutex<T> {
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[Vring],
+        vrings: &[Vring<GM<B>>],
         thread_id: usize,
     ) -> Result<bool, io::Error> {
         self.lock()
@@ -326,7 +314,7 @@ impl<T: VhostUserBackendMut> VhostUserBackend for Mutex<T> {
     }
 }
 
-impl<T: VhostUserBackendMut> VhostUserBackend for RwLock<T> {
+impl<T: VhostUserBackendMut<B>, B: Bitmap + 'static> VhostUserBackend<B> for RwLock<T> {
     fn num_queues(&self) -> usize {
         self.read().unwrap().num_queues()
     }
@@ -359,11 +347,8 @@ impl<T: VhostUserBackendMut> VhostUserBackend for RwLock<T> {
         self.write().unwrap().set_config(offset, buf)
     }
 
-    fn update_memory(
-        &self,
-        atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>,
-    ) -> Result<(), io::Error> {
-        self.write().unwrap().update_memory(atomic_mem)
+    fn update_memory(&self, mem: GM<B>) -> Result<(), io::Error> {
+        self.write().unwrap().update_memory(mem)
     }
 
     fn set_slave_req_fd(&self, vu_req: SlaveFsCacheReq) {
@@ -382,7 +367,7 @@ impl<T: VhostUserBackendMut> VhostUserBackend for RwLock<T> {
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[Vring],
+        vrings: &[Vring<GM<B>>],
         thread_id: usize,
     ) -> Result<bool, io::Error> {
         self.write()
@@ -397,6 +382,7 @@ mod tests {
     use epoll::Events;
     use std::io::Error;
     use std::sync::Mutex;
+    use vm_memory::{GuestMemoryAtomic, GuestMemoryMmap};
 
     struct MockVhostBackend {
         events: u64,
@@ -414,7 +400,7 @@ mod tests {
         }
     }
 
-    impl VhostUserBackendMut for MockVhostBackend {
+    impl VhostUserBackendMut<()> for MockVhostBackend {
         fn num_queues(&self) -> usize {
             2
         }
