@@ -4,6 +4,8 @@
 // Copyright 2019 Alibaba Cloud Computing. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! A simple framework to run a vhost-user backend service.
+
 #[macro_use]
 extern crate log;
 
@@ -48,19 +50,15 @@ pub enum Error {
     WaitDaemon(std::boxed::Box<dyn std::any::Any + std::marker::Send>),
     /// Failed handling a vhost-user request.
     HandleRequest(VhostUserError),
-    /// Failed to process queue.
-    ProcessQueue(VringEpollError),
-    /// Failed to register listener.
-    RegisterListener(io::Error),
-    /// Failed to unregister listener.
-    UnregisterListener(io::Error),
 }
 
 /// Result of vhost-user daemon operations.
 pub type Result<T> = result::Result<T, Error>;
 
-/// This structure is the public API the backend is allowed to interact with
-/// in order to run a fully functional vhost-user daemon.
+/// Implement a simple framework to run a vhost user service daemon.
+///
+/// This structure is the public API the backend is allowed to interact with in order to run
+/// a fully functional vhost-user daemon.
 pub struct VhostUserDaemon<S: VhostUserBackend> {
     name: String,
     handler: Arc<Mutex<VhostUserHandler<S>>>,
@@ -68,12 +66,11 @@ pub struct VhostUserDaemon<S: VhostUserBackend> {
 }
 
 impl<S: VhostUserBackend + Clone> VhostUserDaemon<S> {
-    /// Create the daemon instance, providing the backend implementation of
-    /// VhostUserBackend.
-    /// Under the hood, this will start a dedicated thread responsible for
-    /// listening onto registered event. Those events can be vring events or
-    /// custom events from the backend, but they get to be registered later
-    /// during the sequence.
+    /// Create the daemon instance, providing the backend implementation of `VhostUserBackend`.
+    ///
+    /// Under the hood, this will start a dedicated thread responsible for listening onto
+    /// registered event. Those events can be vring events or custom events from the backend,
+    /// but they get to be registered later during the sequence.
     pub fn new(name: String, backend: S) -> Result<Self> {
         let handler = Arc::new(Mutex::new(
             VhostUserHandler::new(backend).map_err(Error::NewVhostUserHandler)?,
@@ -86,10 +83,11 @@ impl<S: VhostUserBackend + Clone> VhostUserDaemon<S> {
         })
     }
 
-    /// Connect to the vhost-user socket and run a dedicated thread handling
-    /// all requests coming through this socket. This runs in an infinite loop
-    /// that should be terminating once the other end of the socket (the VMM)
-    /// disconnects.
+    /// Connect to the vhost-user socket and run a dedicated thread handling all requests coming
+    /// through this socket.
+    ///
+    /// This runs in an infinite loop that should be terminating once the other end of the socket
+    /// (the VMM) disconnects.
     pub fn start(&mut self, listener: Listener) -> Result<()> {
         let mut slave_listener = SlaveListener::new(listener, self.handler.clone())
             .map_err(Error::CreateSlaveListener)?;
@@ -111,8 +109,7 @@ impl<S: VhostUserBackend + Clone> VhostUserDaemon<S> {
         Ok(())
     }
 
-    /// Wait for the thread handling the vhost-user socket connection to
-    /// terminate.
+    /// Wait for the thread handling the vhost-user socket connection to terminate.
     pub fn wait(&mut self) -> Result<()> {
         if let Some(handle) = self.main_thread.take() {
             match handle.join().map_err(Error::WaitDaemon)? {
@@ -125,9 +122,10 @@ impl<S: VhostUserBackend + Clone> VhostUserDaemon<S> {
         }
     }
 
-    /// Retrieve the vring worker. This is necessary to perform further
-    /// actions like registering and unregistering some extra event file
-    /// descriptors.
+    /// Retrieve the vring epoll handler.
+    ///
+    /// This is necessary to perform further actions like registering and unregistering some extra
+    /// event file descriptors.
     pub fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S>>> {
         self.handler.lock().unwrap().get_epoll_handlers()
     }
