@@ -377,21 +377,21 @@ impl<T: VhostUserBackendMut<B>, B: Bitmap + 'static> VhostUserBackend<B> for RwL
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use epoll::Events;
     use std::io::Error;
     use std::sync::Mutex;
     use vm_memory::{GuestMemoryAtomic, GuestMemoryMmap};
 
-    struct MockVhostBackend {
+    pub struct MockVhostBackend {
         events: u64,
         event_idx: bool,
         acked_features: u64,
     }
 
     impl MockVhostBackend {
-        fn new() -> Self {
+        pub fn new() -> Self {
             MockVhostBackend {
                 events: 0,
                 event_idx: false,

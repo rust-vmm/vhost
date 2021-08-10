@@ -158,3 +158,96 @@ impl<M: GuestAddressSpace> Vring<M> {
         self.get_mut().err = file.map(|f| unsafe { EventFd::from_raw_fd(f.into_raw_fd()) });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::io::AsRawFd;
+    use vm_memory::bitmap::AtomicBitmap;
+    use vmm_sys_util::eventfd::EventFd;
+
+    #[test]
+    fn test_new_vring() {
+        let mem = GuestMemoryAtomic::new(
+            GuestMemoryMmap::<AtomicBitmap>::from_ranges(&[(GuestAddress(0x100000), 0x10000)])
+                .unwrap(),
+        );
+        let vring = Vring::new(mem, 0x1000);
+
+        assert!(vring.get_ref().get_kick().is_none());
+        assert_eq!(vring.get_ref().enabled, false);
+        assert_eq!(vring.get_mut().get_queue_mut().ready, false);
+        assert_eq!(vring.get_mut().get_queue_mut().event_idx_enabled, false);
+
+        vring.set_enabled(true);
+        assert_eq!(vring.get_ref().enabled, true);
+
+        vring.set_queue_info(0x100100, 0x100200, 0x100300);
+        assert_eq!(
+            vring.get_mut().get_queue_mut().desc_table,
+            GuestAddress(0x100100)
+        );
+        assert_eq!(
+            vring.get_mut().get_queue_mut().avail_ring,
+            GuestAddress(0x100200)
+        );
+        assert_eq!(
+            vring.get_mut().get_queue_mut().used_ring,
+            GuestAddress(0x100300)
+        );
+
+        assert_eq!(vring.queue_next_avail(), 0);
+        vring.set_queue_next_avail(0x20);
+        assert_eq!(vring.queue_next_avail(), 0x20);
+
+        vring.set_queue_size(0x200);
+        assert_eq!(vring.get_mut().get_queue_mut().size, 0x200);
+
+        vring.set_queue_event_idx(true);
+        assert_eq!(vring.get_mut().get_queue_mut().event_idx_enabled, true);
+
+        vring.set_queue_ready(true);
+        assert_eq!(vring.get_mut().get_queue_mut().ready, true);
+    }
+
+    #[test]
+    fn test_vring_set_fd() {
+        let mem = GuestMemoryAtomic::new(
+            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+        );
+        let vring = Vring::new(mem, 0x1000);
+
+        vring.set_enabled(true);
+        assert_eq!(vring.get_ref().enabled, true);
+
+        let eventfd = EventFd::new(0).unwrap();
+        let file = unsafe { File::from_raw_fd(eventfd.as_raw_fd()) };
+        assert!(vring.get_ref().kick.is_none());
+        assert_eq!(vring.read_kick().unwrap(), true);
+        vring.set_kick(Some(file));
+        eventfd.write(1).unwrap();
+        assert_eq!(vring.read_kick().unwrap(), true);
+        assert!(vring.get_ref().kick.is_some());
+        vring.set_kick(None);
+        assert!(vring.get_ref().kick.is_none());
+        std::mem::forget(eventfd);
+
+        let eventfd = EventFd::new(0).unwrap();
+        let file = unsafe { File::from_raw_fd(eventfd.as_raw_fd()) };
+        assert!(vring.get_ref().call.is_none());
+        vring.set_call(Some(file));
+        assert!(vring.get_ref().call.is_some());
+        vring.set_call(None);
+        assert!(vring.get_ref().call.is_none());
+        std::mem::forget(eventfd);
+
+        let eventfd = EventFd::new(0).unwrap();
+        let file = unsafe { File::from_raw_fd(eventfd.as_raw_fd()) };
+        assert!(vring.get_ref().err.is_none());
+        vring.set_err(Some(file));
+        assert!(vring.get_ref().err.is_some());
+        vring.set_err(None);
+        assert!(vring.get_ref().err.is_none());
+        std::mem::forget(eventfd);
+    }
+}

@@ -150,3 +150,22 @@ impl<S: VhostUserBackend<B> + Clone, B: NewBitmap + Clone + Send + Sync> VhostUs
         self.handler.lock().unwrap().get_epoll_handlers()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::backend::tests::MockVhostBackend;
+    use super::*;
+    use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
+
+    #[test]
+    fn test_new_daemon() {
+        let mem = GuestMemoryAtomic::new(
+            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+        );
+        let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
+        let daemon = VhostUserDaemon::new("test".to_owned(), backend, mem).unwrap();
+
+        assert_eq!(daemon.get_epoll_handlers().len(), 2);
+        //daemon.start(Listener::new()).unwrap();
+    }
+}

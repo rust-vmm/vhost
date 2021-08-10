@@ -16,3 +16,6 @@ virtio-bindings = "0.1"
 virtio-queue = { git = "https://github.com/rust-vmm/vm-virtio" }
 vm-memory = {version = "0.6", features = ["backend-mmap", "backend-atomic"]}
 vmm-sys-util = "0.8"
+
+[dev-dependencies]
+vm-memory = {version = "0.6", features = ["backend-mmap", "backend-atomic", "backend-bitmap"]}

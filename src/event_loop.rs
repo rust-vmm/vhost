@@ -220,3 +220,41 @@ impl<S: VhostUserBackend<B>, B: Bitmap + 'static> VringEpollHandler<S, B> {
             .map_err(VringEpollError::HandleEventBackendHandling)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::backend::tests::MockVhostBackend;
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
+    use vmm_sys_util::eventfd::EventFd;
+
+    #[test]
+    fn test_vring_epoll_handler() {
+        let mem = GuestMemoryAtomic::new(
+            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+        );
+        let vring = Vring::new(mem, 0x1000);
+        let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
+
+        let handler = VringEpollHandler::new(backend, vec![vring], 0x1).unwrap();
+        assert!(handler.exit_event_id.is_some());
+
+        let eventfd = EventFd::new(0).unwrap();
+        handler
+            .register_listener(eventfd.as_raw_fd(), epoll::Events::EPOLLIN, 1)
+            .unwrap();
+        // Register an already registered fd.
+        handler
+            .register_listener(eventfd.as_raw_fd(), epoll::Events::EPOLLIN, 1)
+            .unwrap_err();
+
+        handler
+            .unregister_listener(eventfd.as_raw_fd(), epoll::Events::EPOLLIN, 1)
+            .unwrap();
+        // unregister an already unregistered fd.
+        handler
+            .unregister_listener(eventfd.as_raw_fd(), epoll::Events::EPOLLIN, 1)
+            .unwrap_err();
+    }
+}
