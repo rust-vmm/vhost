@@ -10,6 +10,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::result;
 
 use vm_memory::bitmap::Bitmap;
+use vmm_sys_util::eventfd::EventFd;
 
 use super::{VhostUserBackend, Vring, GM};
 
@@ -60,6 +61,7 @@ pub struct VringEpollHandler<S: VhostUserBackend<B>, B: Bitmap + 'static> {
     backend: S,
     vrings: Vec<Vring<GM<B>>>,
     thread_id: usize,
+    exit_event_fd: Option<EventFd>,
     exit_event_id: Option<u16>,
 }
 
@@ -72,31 +74,44 @@ impl<S: VhostUserBackend<B>, B: Bitmap + 'static> VringEpollHandler<S, B> {
     ) -> VringEpollResult<Self> {
         let epoll_fd = epoll::create(true).map_err(VringEpollError::EpollCreateFd)?;
         let epoll_file = unsafe { File::from_raw_fd(epoll_fd) };
-        let (exit_event_fd, exit_event_id) = match backend.exit_event(thread_id) {
-            Some((exit_event_fd, exit_event_id)) => {
-                (exit_event_fd.as_raw_fd(), Some(exit_event_id))
-            }
-            None => (-1, None),
-        };
-        let handler = VringEpollHandler {
-            epoll_file,
-            backend,
-            vrings,
-            thread_id,
-            exit_event_id,
-        };
 
-        if let Some(exit_event_id) = exit_event_id {
-            epoll::ctl(
-                handler.epoll_file.as_raw_fd(),
-                epoll::ControlOptions::EPOLL_CTL_ADD,
-                exit_event_fd,
-                epoll::Event::new(epoll::Events::EPOLLIN, u64::from(exit_event_id)),
-            )
-            .map_err(VringEpollError::RegisterExitEvent)?;
-        }
+        let handler = match backend.exit_event(thread_id) {
+            Some((exit_event_fd, exit_event_id)) => {
+                epoll::ctl(
+                    epoll_file.as_raw_fd(),
+                    epoll::ControlOptions::EPOLL_CTL_ADD,
+                    exit_event_fd.as_raw_fd(),
+                    epoll::Event::new(epoll::Events::EPOLLIN, u64::from(exit_event_id)),
+                )
+                .map_err(VringEpollError::RegisterExitEvent)?;
+
+                VringEpollHandler {
+                    epoll_file,
+                    backend,
+                    vrings,
+                    thread_id,
+                    exit_event_fd: Some(exit_event_fd),
+                    exit_event_id: Some(exit_event_id),
+                }
+            }
+            None => VringEpollHandler {
+                epoll_file,
+                backend,
+                vrings,
+                thread_id,
+                exit_event_fd: None,
+                exit_event_id: None,
+            },
+        };
 
         Ok(handler)
+    }
+
+    /// Send `exit event` to break the event loop.
+    pub fn send_exit_event(&self) {
+        if let Some(eventfd) = self.exit_event_fd.as_ref() {
+            let _ = eventfd.write(1);
+        }
     }
 
     /// Register an event into the epoll fd.

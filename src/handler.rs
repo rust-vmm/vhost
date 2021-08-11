@@ -132,9 +132,15 @@ impl<S: VhostUserBackend<B> + Clone, B: Bitmap + Clone + Send + Sync> VhostUserH
     }
 }
 
-impl<S: VhostUserBackend<B> + Clone, B: Bitmap> VhostUserHandler<S, B> {
+impl<S: VhostUserBackend<B>, B: Bitmap> VhostUserHandler<S, B> {
     pub(crate) fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S, B>>> {
         self.handlers.clone()
+    }
+
+    pub(crate) fn send_exit_event(&self) {
+        for handler in self.handlers.iter() {
+            handler.send_exit_event();
+        }
     }
 
     fn vmm_va_to_gpa(&self, vmm_va: u64) -> VhostUserHandlerResult<u64> {
@@ -148,7 +154,7 @@ impl<S: VhostUserBackend<B> + Clone, B: Bitmap> VhostUserHandler<S, B> {
     }
 }
 
-impl<S: VhostUserBackend<B> + Clone, B: NewBitmap + Clone> VhostUserSlaveReqHandlerMut
+impl<S: VhostUserBackend<B>, B: NewBitmap + Clone> VhostUserSlaveReqHandlerMut
     for VhostUserHandler<S, B>
 {
     fn set_owner(&mut self) -> VhostUserResult<()> {
@@ -526,6 +532,9 @@ impl<S: VhostUserBackend<B> + Clone, B: NewBitmap + Clone> VhostUserSlaveReqHand
 
 impl<S: VhostUserBackend<B>, B: Bitmap> Drop for VhostUserHandler<S, B> {
     fn drop(&mut self) {
+        // Signal all working threads to exit.
+        self.send_exit_event();
+
         for thread in self.worker_threads.drain(..) {
             if let Err(e) = thread.join() {
                 error!("Error in vring worker: {:?}", e);
