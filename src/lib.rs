@@ -75,7 +75,7 @@ pub type Result<T> = result::Result<T, Error>;
 ///
 /// This structure is the public API the backend is allowed to interact with in order to run
 /// a fully functional vhost-user daemon.
-pub struct VhostUserDaemon<S: VhostUserBackend<B>, B: Bitmap + 'static> {
+pub struct VhostUserDaemon<S: VhostUserBackend<B>, B: Bitmap + 'static = ()> {
     name: String,
     handler: Arc<Mutex<VhostUserHandler<S, B>>>,
     main_thread: Option<thread::JoinHandle<Result<()>>>,

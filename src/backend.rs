@@ -34,7 +34,7 @@ use super::{Vring, GM};
 ///
 /// To support multi-threading and asynchronous IO, we enforce `the Send + Sync + 'static`.
 /// So there's no plan for support of "Rc<T>" and "RefCell<T>".
-pub trait VhostUserBackend<B: Bitmap + 'static>: Send + Sync + 'static {
+pub trait VhostUserBackend<B: Bitmap + 'static = ()>: Send + Sync + 'static {
     /// Get number of queues supported.
     fn num_queues(&self) -> usize;
 
@@ -113,7 +113,7 @@ pub trait VhostUserBackend<B: Bitmap + 'static>: Send + Sync + 'static {
 }
 
 /// Trait without interior mutability for vhost user backend servers to implement concrete services.
-pub trait VhostUserBackendMut<B: Bitmap + 'static>: Send + Sync + 'static {
+pub trait VhostUserBackendMut<B: Bitmap + 'static = ()>: Send + Sync + 'static {
     /// Get number of queues supported.
     fn num_queues(&self) -> usize;
 
@@ -486,7 +486,7 @@ pub mod tests {
         assert_eq!(backend.queues_per_thread(), [1, 1]);
 
         assert_eq!(backend.get_config(0x200, 8), vec![0xa5; 8]);
-        backend.set_config(0x200, &vec![0xa5; 8]).unwrap();
+        backend.set_config(0x200, &[0xa5; 8]).unwrap();
 
         backend.acked_features(0xffff);
         assert_eq!(backend.lock().unwrap().acked_features, 0xffff);
@@ -509,7 +509,7 @@ pub mod tests {
         assert_eq!(backend.queues_per_thread(), [1, 1]);
 
         assert_eq!(backend.get_config(0x200, 8), vec![0xa5; 8]);
-        backend.set_config(0x200, &vec![0xa5; 8]).unwrap();
+        backend.set_config(0x200, &[0xa5; 8]).unwrap();
 
         backend.acked_features(0xffff);
         assert_eq!(backend.read().unwrap().acked_features, 0xffff);
