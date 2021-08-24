@@ -28,7 +28,7 @@ use vhost::vhost_user::SlaveFsCacheReq;
 use vm_memory::bitmap::Bitmap;
 use vmm_sys_util::eventfd::EventFd;
 
-use super::{Vring, GM};
+use super::{VringRwLock, GM};
 
 /// Trait with interior mutability for vhost user backend servers to implement concrete services.
 ///
@@ -107,7 +107,7 @@ pub trait VhostUserBackend<B: Bitmap + 'static = ()>: Send + Sync + 'static {
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[Vring<GM<B>>],
+        vrings: &[VringRwLock<GM<B>>],
         thread_id: usize,
     ) -> result::Result<bool, io::Error>;
 }
@@ -186,7 +186,7 @@ pub trait VhostUserBackendMut<B: Bitmap + 'static = ()>: Send + Sync + 'static {
         &mut self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[Vring<GM<B>>],
+        vrings: &[VringRwLock<GM<B>>],
         thread_id: usize,
     ) -> result::Result<bool, io::Error>;
 }
@@ -244,7 +244,7 @@ impl<T: VhostUserBackend<B>, B: Bitmap + 'static> VhostUserBackend<B> for Arc<T>
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[Vring<GM<B>>],
+        vrings: &[VringRwLock<GM<B>>],
         thread_id: usize,
     ) -> Result<bool, io::Error> {
         self.deref()
@@ -305,7 +305,7 @@ impl<T: VhostUserBackendMut<B>, B: Bitmap + 'static> VhostUserBackend<B> for Mut
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[Vring<GM<B>>],
+        vrings: &[VringRwLock<GM<B>>],
         thread_id: usize,
     ) -> Result<bool, io::Error> {
         self.lock()
@@ -367,7 +367,7 @@ impl<T: VhostUserBackendMut<B>, B: Bitmap + 'static> VhostUserBackend<B> for RwL
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[Vring<GM<B>>],
+        vrings: &[VringRwLock<GM<B>>],
         thread_id: usize,
     ) -> Result<bool, io::Error> {
         self.write()
@@ -463,7 +463,7 @@ pub mod tests {
             &mut self,
             _device_event: u16,
             _evset: Events,
-            _vrings: &[Vring],
+            _vrings: &[VringRwLock],
             _thread_id: usize,
         ) -> Result<bool, Error> {
             self.events += 1;

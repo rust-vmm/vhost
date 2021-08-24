@@ -12,7 +12,8 @@ use std::result;
 use vm_memory::bitmap::Bitmap;
 use vmm_sys_util::eventfd::EventFd;
 
-use super::{VhostUserBackend, Vring, GM};
+use super::vring::VringT;
+use super::{VhostUserBackend, VringRwLock, GM};
 
 /// Errors related to vring epoll event handling.
 #[derive(Debug)]
@@ -59,7 +60,7 @@ pub type VringEpollResult<T> = std::result::Result<T, VringEpollError>;
 pub struct VringEpollHandler<S: VhostUserBackend<B>, B: Bitmap + 'static> {
     epoll_file: File,
     backend: S,
-    vrings: Vec<Vring<GM<B>>>,
+    vrings: Vec<VringRwLock<GM<B>>>,
     thread_id: usize,
     exit_event_fd: Option<EventFd>,
     exit_event_id: Option<u16>,
@@ -69,7 +70,7 @@ impl<S: VhostUserBackend<B>, B: Bitmap + 'static> VringEpollHandler<S, B> {
     /// Create a `VringEpollHandler` instance.
     pub(crate) fn new(
         backend: S,
-        vrings: Vec<Vring<GM<B>>>,
+        vrings: Vec<VringRwLock<GM<B>>>,
         thread_id: usize,
     ) -> VringEpollResult<Self> {
         let epoll_fd = epoll::create(true).map_err(VringEpollError::EpollCreateFd)?;
@@ -234,7 +235,7 @@ mod tests {
         let mem = GuestMemoryAtomic::new(
             GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
         );
-        let vring = Vring::new(mem, 0x1000);
+        let vring = VringRwLock::new(mem, 0x1000);
         let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
 
         let handler = VringEpollHandler::new(backend, vec![vring], 0x1).unwrap();

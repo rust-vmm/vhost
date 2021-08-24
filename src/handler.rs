@@ -15,14 +15,22 @@ use vhost::vhost_user::message::{
     VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
     VhostUserVringState,
 };
-use vhost::vhost_user::{Error as VhostUserError, Result as VhostUserResult, SlaveFsCacheReq};
+use vhost::vhost_user::{
+    Error as VhostUserError, Result as VhostUserResult, SlaveFsCacheReq,
+    VhostUserSlaveReqHandlerMut,
+};
 use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::bitmap::Bitmap;
 use vm_memory::mmap::NewBitmap;
-use vm_memory::{FileOffset, GuestAddress, GuestMemoryMmap, GuestRegionMmap};
+use vm_memory::{
+    FileOffset, GuestAddress, GuestAddressSpace, GuestMemoryMmap, GuestRegionMmap, MmapRegion,
+};
 
+use super::backend::VhostUserBackend;
+use super::event_loop::VringEpollHandler;
 use super::event_loop::{VringEpollError, VringEpollResult};
-use super::*;
+use super::vring::{VringRwLock, VringT};
+use super::GM;
 
 const MAX_MEM_SLOTS: u64 = 32;
 
@@ -74,7 +82,7 @@ pub struct VhostUserHandler<S: VhostUserBackend<B>, B: Bitmap + 'static> {
     queues_per_thread: Vec<u64>,
     mappings: Vec<AddrMapping>,
     atomic_mem: GM<B>,
-    vrings: Vec<Vring<GM<B>>>,
+    vrings: Vec<VringRwLock<GM<B>>>,
     worker_threads: Vec<thread::JoinHandle<VringEpollResult<()>>>,
 }
 
@@ -86,7 +94,7 @@ impl<S: VhostUserBackend<B> + Clone, B: Bitmap + Clone + Send + Sync> VhostUserH
 
         let mut vrings = Vec::new();
         for _ in 0..num_queues {
-            let vring = Vring::new(atomic_mem.clone(), max_queue_size as u16);
+            let vring = VringRwLock::new(atomic_mem.clone(), max_queue_size as u16);
             vrings.push(vring);
         }
 
@@ -194,7 +202,7 @@ impl<S: VhostUserBackend<B>, B: NewBitmap + Clone> VhostUserSlaveReqHandlerMut
         // been disabled by VHOST_USER_SET_VRING_ENABLE with parameter 0.
         let vring_enabled =
             self.acked_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() == 0;
-        for vring in self.vrings.iter() {
+        for vring in self.vrings.iter_mut() {
             vring.set_enabled(vring_enabled);
         }
 

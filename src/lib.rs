@@ -14,12 +14,10 @@ use std::result;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use vhost::vhost_user::{
-    Error as VhostUserError, Listener, SlaveListener, VhostUserSlaveReqHandlerMut,
-};
+use vhost::vhost_user::{Error as VhostUserError, Listener, SlaveListener};
 use vm_memory::bitmap::Bitmap;
 use vm_memory::mmap::NewBitmap;
-use vm_memory::{GuestAddressSpace, GuestMemoryAtomic, GuestMemoryMmap, MmapRegion};
+use vm_memory::{GuestMemoryAtomic, GuestMemoryMmap};
 
 use self::handler::VhostUserHandler;
 
@@ -33,7 +31,7 @@ mod handler;
 pub use self::handler::VhostUserHandlerError;
 
 mod vring;
-pub use self::vring::{Vring, VringState};
+pub use self::vring::{VringRwLock, VringState};
 
 /// An alias for `GuestMemoryAtomic<GuestMemoryMmap<B>>` to simplify code.
 type GM<B> = GuestMemoryAtomic<GuestMemoryMmap<B>>;
