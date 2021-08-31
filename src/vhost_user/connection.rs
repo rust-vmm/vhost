@@ -23,7 +23,7 @@ use super::{Error, Result};
 /// Unix domain socket listener for accepting incoming connections.
 pub struct Listener {
     fd: UnixListener,
-    path: PathBuf,
+    path: Option<PathBuf>,
 }
 
 impl Listener {
@@ -39,7 +39,7 @@ impl Listener {
         let fd = UnixListener::bind(&path).map_err(Error::SocketError)?;
         Ok(Listener {
             fd,
-            path: path.as_ref().to_owned(),
+            path: Some(path.as_ref().to_owned()),
         })
     }
 
@@ -84,9 +84,20 @@ impl AsRawFd for Listener {
     }
 }
 
+impl FromRawFd for Listener {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        Listener {
+            fd: UnixListener::from_raw_fd(fd),
+            path: None,
+        }
+    }
+}
+
 impl Drop for Listener {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        if let Some(path) = &self.path {
+            let _ = std::fs::remove_file(path);
+        }
     }
 }
 
@@ -624,6 +635,15 @@ mod tests {
     fn create_listener() {
         let path = temp_path();
         let listener = Listener::new(&path, true).unwrap();
+
+        assert!(listener.as_raw_fd() > 0);
+    }
+
+    #[test]
+    fn create_listener_from_raw_fd() {
+        let path = temp_path();
+        let file = File::create(path).unwrap();
+        let listener = unsafe { Listener::from_raw_fd(file.as_raw_fd()) };
 
         assert!(listener.as_raw_fd() > 0);
     }
