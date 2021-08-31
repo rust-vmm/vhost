@@ -1,1 +1,1 @@
-{"coverage_score": 80.9, "exclude_path": "src/vhost_kern/", "crate_features": "vhost-user-master,vhost-user-slave"}
+{"coverage_score": 81.0, "exclude_path": "src/vhost_kern/", "crate_features": "vhost-user-master,vhost-user-slave"}
