@@ -31,7 +31,9 @@ mod handler;
 pub use self::handler::VhostUserHandlerError;
 
 mod vring;
-pub use self::vring::{VringMutex, VringRwLock, VringState, VringT};
+pub use self::vring::{
+    VringMutex, VringRwLock, VringState, VringStateGuard, VringStateMutGuard, VringT,
+};
 
 /// An alias for `GuestMemoryAtomic<GuestMemoryMmap<B>>` to simplify code.
 type GM<B> = GuestMemoryAtomic<GuestMemoryMmap<B>>;

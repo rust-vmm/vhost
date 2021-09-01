@@ -7,7 +7,7 @@
 
 use std::fs::File;
 use std::io;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::result::Result;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -38,16 +38,37 @@ impl<'a, M: GuestAddressSpace> Deref for VringStateGuard<'a, M> {
     }
 }
 
-/*
-impl<'a, M: GuestAddressSpace> DerefMut for VringStateGuard<'a, M> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
+/// Struct to hold an exclusive reference to the underlying `VringState` object.
+pub enum VringStateMutGuard<'a, M: GuestAddressSpace> {
+    /// A reference to a `VringState` object.
+    StateObject(&'a mut VringState<M>),
+    /// A `MutexGuard` for a `VringState` object.
+    MutexGuard(MutexGuard<'a, VringState<M>>),
+    /// A `WriteGuard` for a `VringState` object.
+    RwLockWriteGuard(RwLockWriteGuard<'a, VringState<M>>),
+}
+
+impl<'a, M: GuestAddressSpace> Deref for VringStateMutGuard<'a, M> {
+    type Target = VringState<M>;
+
+    fn deref(&self) -> &Self::Target {
         match self {
-            VringStateGuard::StateObject(v) => v,
-            VringStateGuard::MutexGuard(v) => v.deref_mut(),
+            VringStateMutGuard::StateObject(v) => v,
+            VringStateMutGuard::MutexGuard(v) => v.deref(),
+            VringStateMutGuard::RwLockWriteGuard(v) => v.deref(),
         }
     }
 }
- */
+
+impl<'a, M: GuestAddressSpace> DerefMut for VringStateMutGuard<'a, M> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            VringStateMutGuard::StateObject(v) => v,
+            VringStateMutGuard::MutexGuard(v) => v.deref_mut(),
+            VringStateMutGuard::RwLockWriteGuard(v) => v.deref_mut(),
+        }
+    }
+}
 
 pub trait VringT<M: GuestAddressSpace> {
     /// Create a new instance of Vring.
@@ -55,6 +76,9 @@ pub trait VringT<M: GuestAddressSpace> {
 
     /// Get an immutable reference to the kick event fd.
     fn get_ref(&self) -> VringStateGuard<M>;
+
+    /// Get a mutable reference to the kick event fd.
+    fn get_mut(&mut self) -> VringStateMutGuard<M>;
 
     /// Add an used descriptor into the used queue.
     fn add_used(&mut self, desc_index: u16, len: u32) -> Result<(), VirtQueError>;
@@ -147,6 +171,10 @@ impl<M: GuestAddressSpace> VringT<M> for VringState<M> {
 
     fn get_ref(&self) -> VringStateGuard<M> {
         VringStateGuard::StateObject(self)
+    }
+
+    fn get_mut(&mut self) -> VringStateMutGuard<M> {
+        VringStateMutGuard::StateObject(self)
     }
 
     fn add_used(&mut self, desc_index: u16, len: u32) -> Result<(), VirtQueError> {
@@ -256,6 +284,10 @@ impl<M: GuestAddressSpace> VringT<M> for VringMutex<M> {
         VringStateGuard::MutexGuard(self.state.lock().unwrap())
     }
 
+    fn get_mut(&mut self) -> VringStateMutGuard<M> {
+        VringStateMutGuard::MutexGuard(self.lock())
+    }
+
     fn add_used(&mut self, desc_index: u16, len: u32) -> Result<(), VirtQueError> {
         self.lock().add_used(desc_index, len)
     }
@@ -344,6 +376,10 @@ impl<M: GuestAddressSpace> VringT<M> for VringRwLock<M> {
 
     fn get_ref(&self) -> VringStateGuard<M> {
         VringStateGuard::RwLockReadGuard(self.state.read().unwrap())
+    }
+
+    fn get_mut(&mut self) -> VringStateMutGuard<M> {
+        VringStateMutGuard::RwLockWriteGuard(self.write_lock())
     }
 
     fn add_used(&mut self, desc_index: u16, len: u32) -> Result<(), VirtQueError> {
