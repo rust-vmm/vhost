@@ -99,7 +99,7 @@ where
     /// If an (`EventFd`, `token`) pair is returned, the returned `EventFd` will be monitored for IO
     /// events by using epoll with the specified `token`. When the returned EventFd is written to,
     /// the worker thread will exit.
-    fn exit_event(&self, _thread_index: usize) -> Option<(EventFd, u16)> {
+    fn exit_event(&self, _thread_index: usize) -> Option<EventFd> {
         None
     }
 
@@ -182,7 +182,7 @@ where
     /// If an (`EventFd`, `token`) pair is returned, the returned `EventFd` will be monitored for IO
     /// events by using epoll with the specified `token`. When the returned EventFd is written to,
     /// the worker thread will exit.
-    fn exit_event(&self, _thread_index: usize) -> Option<(EventFd, u16)> {
+    fn exit_event(&self, _thread_index: usize) -> Option<EventFd> {
         None
     }
 
@@ -249,7 +249,7 @@ where
         self.deref().queues_per_thread()
     }
 
-    fn exit_event(&self, thread_index: usize) -> Option<(EventFd, u16)> {
+    fn exit_event(&self, thread_index: usize) -> Option<EventFd> {
         self.deref().exit_event(thread_index)
     }
 
@@ -314,7 +314,7 @@ where
         self.lock().unwrap().queues_per_thread()
     }
 
-    fn exit_event(&self, thread_index: usize) -> Option<(EventFd, u16)> {
+    fn exit_event(&self, thread_index: usize) -> Option<EventFd> {
         self.lock().unwrap().exit_event(thread_index)
     }
 
@@ -380,7 +380,7 @@ where
         self.read().unwrap().queues_per_thread()
     }
 
-    fn exit_event(&self, thread_index: usize) -> Option<(EventFd, u16)> {
+    fn exit_event(&self, thread_index: usize) -> Option<EventFd> {
         self.read().unwrap().exit_event(thread_index)
     }
 
@@ -475,10 +475,10 @@ pub mod tests {
             vec![1, 1]
         }
 
-        fn exit_event(&self, _thread_index: usize) -> Option<(EventFd, u16)> {
+        fn exit_event(&self, _thread_index: usize) -> Option<EventFd> {
             let event_fd = EventFd::new(0).unwrap();
 
-            Some((event_fd, 0x100))
+            Some(event_fd)
         }
 
         fn handle_event(
