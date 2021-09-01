@@ -29,7 +29,7 @@ use vm_memory::{
 use super::backend::VhostUserBackend;
 use super::event_loop::VringEpollHandler;
 use super::event_loop::{VringEpollError, VringEpollResult};
-use super::vring::{VringRwLock, VringT};
+use super::vring::VringT;
 use super::GM;
 
 const MAX_MEM_SLOTS: u64 = 32;
@@ -70,9 +70,14 @@ struct AddrMapping {
     gpa_base: u64,
 }
 
-pub struct VhostUserHandler<S: VhostUserBackend<B>, B: Bitmap + 'static> {
+pub struct VhostUserHandler<S, V, B>
+where
+    S: VhostUserBackend<V, B>,
+    V: VringT<GM<B>>,
+    B: Bitmap + 'static,
+{
     backend: S,
-    handlers: Vec<Arc<VringEpollHandler<S, B>>>,
+    handlers: Vec<Arc<VringEpollHandler<S, V, B>>>,
     owned: bool,
     features_acked: bool,
     acked_features: u64,
@@ -82,11 +87,16 @@ pub struct VhostUserHandler<S: VhostUserBackend<B>, B: Bitmap + 'static> {
     queues_per_thread: Vec<u64>,
     mappings: Vec<AddrMapping>,
     atomic_mem: GM<B>,
-    vrings: Vec<VringRwLock<GM<B>>>,
+    vrings: Vec<V>,
     worker_threads: Vec<thread::JoinHandle<VringEpollResult<()>>>,
 }
 
-impl<S: VhostUserBackend<B> + Clone, B: Bitmap + Clone + Send + Sync> VhostUserHandler<S, B> {
+impl<S, V, B> VhostUserHandler<S, V, B>
+where
+    S: VhostUserBackend<V, B> + Clone,
+    V: VringT<GM<B>> + Clone + Send + Sync + 'static,
+    B: Bitmap + Clone + Send + Sync,
+{
     pub(crate) fn new(backend: S, atomic_mem: GM<B>) -> VhostUserHandlerResult<Self> {
         let num_queues = backend.num_queues();
         let max_queue_size = backend.max_queue_size();
@@ -94,7 +104,7 @@ impl<S: VhostUserBackend<B> + Clone, B: Bitmap + Clone + Send + Sync> VhostUserH
 
         let mut vrings = Vec::new();
         for _ in 0..num_queues {
-            let vring = VringRwLock::new(atomic_mem.clone(), max_queue_size as u16);
+            let vring = V::new(atomic_mem.clone(), max_queue_size as u16);
             vrings.push(vring);
         }
 
@@ -140,8 +150,13 @@ impl<S: VhostUserBackend<B> + Clone, B: Bitmap + Clone + Send + Sync> VhostUserH
     }
 }
 
-impl<S: VhostUserBackend<B>, B: Bitmap> VhostUserHandler<S, B> {
-    pub(crate) fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S, B>>> {
+impl<S, V, B> VhostUserHandler<S, V, B>
+where
+    S: VhostUserBackend<V, B>,
+    V: VringT<GM<B>>,
+    B: Bitmap,
+{
+    pub(crate) fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S, V, B>>> {
         self.handlers.clone()
     }
 
@@ -162,8 +177,11 @@ impl<S: VhostUserBackend<B>, B: Bitmap> VhostUserHandler<S, B> {
     }
 }
 
-impl<S: VhostUserBackend<B>, B: NewBitmap + Clone> VhostUserSlaveReqHandlerMut
-    for VhostUserHandler<S, B>
+impl<S, V, B> VhostUserSlaveReqHandlerMut for VhostUserHandler<S, V, B>
+where
+    S: VhostUserBackend<V, B>,
+    V: VringT<GM<B>>,
+    B: NewBitmap + Clone,
 {
     fn set_owner(&mut self) -> VhostUserResult<()> {
         if self.owned {
@@ -538,7 +556,12 @@ impl<S: VhostUserBackend<B>, B: NewBitmap + Clone> VhostUserSlaveReqHandlerMut
     }
 }
 
-impl<S: VhostUserBackend<B>, B: Bitmap> Drop for VhostUserHandler<S, B> {
+impl<S, V, B> Drop for VhostUserHandler<S, V, B>
+where
+    S: VhostUserBackend<V, B>,
+    V: VringT<GM<B>>,
+    B: Bitmap,
+{
     fn drop(&mut self) {
         // Signal all working threads to exit.
         self.send_exit_event();

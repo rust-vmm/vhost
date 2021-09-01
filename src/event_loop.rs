@@ -6,14 +6,16 @@
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io;
+use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::result;
 
 use vm_memory::bitmap::Bitmap;
 use vmm_sys_util::eventfd::EventFd;
 
+use super::backend::VhostUserBackend;
 use super::vring::VringT;
-use super::{VhostUserBackend, VringRwLock, GM};
+use super::GM;
 
 /// Errors related to vring epoll event handling.
 #[derive(Debug)]
@@ -57,22 +59,29 @@ pub type VringEpollResult<T> = std::result::Result<T, VringEpollError>;
 /// - add file descriptors to be monitored by the epoll fd
 /// - remove registered file descriptors from the epoll fd
 /// - run the event loop to handle pending events on the epoll fd
-pub struct VringEpollHandler<S: VhostUserBackend<B>, B: Bitmap + 'static> {
+pub struct VringEpollHandler<S, V, B>
+where
+    S: VhostUserBackend<V, B>,
+    V: VringT<GM<B>>,
+    B: Bitmap + 'static,
+{
     epoll_file: File,
     backend: S,
-    vrings: Vec<VringRwLock<GM<B>>>,
+    vrings: Vec<V>,
     thread_id: usize,
     exit_event_fd: Option<EventFd>,
     exit_event_id: Option<u16>,
+    phantom: PhantomData<B>,
 }
 
-impl<S: VhostUserBackend<B>, B: Bitmap + 'static> VringEpollHandler<S, B> {
+impl<S, V, B> VringEpollHandler<S, V, B>
+where
+    S: VhostUserBackend<V, B>,
+    V: VringT<GM<B>>,
+    B: Bitmap + 'static,
+{
     /// Create a `VringEpollHandler` instance.
-    pub(crate) fn new(
-        backend: S,
-        vrings: Vec<VringRwLock<GM<B>>>,
-        thread_id: usize,
-    ) -> VringEpollResult<Self> {
+    pub(crate) fn new(backend: S, vrings: Vec<V>, thread_id: usize) -> VringEpollResult<Self> {
         let epoll_fd = epoll::create(true).map_err(VringEpollError::EpollCreateFd)?;
         let epoll_file = unsafe { File::from_raw_fd(epoll_fd) };
 
@@ -93,6 +102,7 @@ impl<S: VhostUserBackend<B>, B: Bitmap + 'static> VringEpollHandler<S, B> {
                     thread_id,
                     exit_event_fd: Some(exit_event_fd),
                     exit_event_id: Some(exit_event_id),
+                    phantom: PhantomData,
                 }
             }
             None => VringEpollHandler {
@@ -102,6 +112,7 @@ impl<S: VhostUserBackend<B>, B: Bitmap + 'static> VringEpollHandler<S, B> {
                 thread_id,
                 exit_event_fd: None,
                 exit_event_id: None,
+                phantom: PhantomData,
             },
         };
 
@@ -225,6 +236,7 @@ impl<S: VhostUserBackend<B>, B: Bitmap + 'static> VringEpollHandler<S, B> {
 #[cfg(test)]
 mod tests {
     use super::super::backend::tests::MockVhostBackend;
+    use super::super::vring::VringRwLock;
     use super::*;
     use std::sync::{Arc, Mutex};
     use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};

@@ -28,13 +28,18 @@ use vhost::vhost_user::SlaveFsCacheReq;
 use vm_memory::bitmap::Bitmap;
 use vmm_sys_util::eventfd::EventFd;
 
-use super::{VringRwLock, GM};
+use super::vring::VringT;
+use super::GM;
 
 /// Trait with interior mutability for vhost user backend servers to implement concrete services.
 ///
 /// To support multi-threading and asynchronous IO, we enforce `the Send + Sync + 'static`.
 /// So there's no plan for support of "Rc<T>" and "RefCell<T>".
-pub trait VhostUserBackend<B: Bitmap + 'static = ()>: Send + Sync + 'static {
+pub trait VhostUserBackend<V, B = ()>: Send + Sync + 'static
+where
+    V: VringT<GM<B>>,
+    B: Bitmap + 'static,
+{
     /// Get number of queues supported.
     fn num_queues(&self) -> usize;
 
@@ -107,13 +112,17 @@ pub trait VhostUserBackend<B: Bitmap + 'static = ()>: Send + Sync + 'static {
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[VringRwLock<GM<B>>],
+        vrings: &[V],
         thread_id: usize,
     ) -> result::Result<bool, io::Error>;
 }
 
 /// Trait without interior mutability for vhost user backend servers to implement concrete services.
-pub trait VhostUserBackendMut<B: Bitmap + 'static = ()>: Send + Sync + 'static {
+pub trait VhostUserBackendMut<V, B = ()>: Send + Sync + 'static
+where
+    V: VringT<GM<B>>,
+    B: Bitmap + 'static,
+{
     /// Get number of queues supported.
     fn num_queues(&self) -> usize;
 
@@ -186,12 +195,16 @@ pub trait VhostUserBackendMut<B: Bitmap + 'static = ()>: Send + Sync + 'static {
         &mut self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[VringRwLock<GM<B>>],
+        vrings: &[V],
         thread_id: usize,
     ) -> result::Result<bool, io::Error>;
 }
 
-impl<T: VhostUserBackend<B>, B: Bitmap + 'static> VhostUserBackend<B> for Arc<T> {
+impl<T: VhostUserBackend<V, B>, V, B> VhostUserBackend<V, B> for Arc<T>
+where
+    V: VringT<GM<B>>,
+    B: Bitmap + 'static,
+{
     fn num_queues(&self) -> usize {
         self.deref().num_queues()
     }
@@ -244,7 +257,7 @@ impl<T: VhostUserBackend<B>, B: Bitmap + 'static> VhostUserBackend<B> for Arc<T>
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[VringRwLock<GM<B>>],
+        vrings: &[V],
         thread_id: usize,
     ) -> Result<bool, io::Error> {
         self.deref()
@@ -252,7 +265,11 @@ impl<T: VhostUserBackend<B>, B: Bitmap + 'static> VhostUserBackend<B> for Arc<T>
     }
 }
 
-impl<T: VhostUserBackendMut<B>, B: Bitmap + 'static> VhostUserBackend<B> for Mutex<T> {
+impl<T: VhostUserBackendMut<V, B>, V, B> VhostUserBackend<V, B> for Mutex<T>
+where
+    V: VringT<GM<B>>,
+    B: Bitmap + 'static,
+{
     fn num_queues(&self) -> usize {
         self.lock().unwrap().num_queues()
     }
@@ -305,7 +322,7 @@ impl<T: VhostUserBackendMut<B>, B: Bitmap + 'static> VhostUserBackend<B> for Mut
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[VringRwLock<GM<B>>],
+        vrings: &[V],
         thread_id: usize,
     ) -> Result<bool, io::Error> {
         self.lock()
@@ -314,7 +331,11 @@ impl<T: VhostUserBackendMut<B>, B: Bitmap + 'static> VhostUserBackend<B> for Mut
     }
 }
 
-impl<T: VhostUserBackendMut<B>, B: Bitmap + 'static> VhostUserBackend<B> for RwLock<T> {
+impl<T: VhostUserBackendMut<V, B>, V, B> VhostUserBackend<V, B> for RwLock<T>
+where
+    V: VringT<GM<B>>,
+    B: Bitmap + 'static,
+{
     fn num_queues(&self) -> usize {
         self.read().unwrap().num_queues()
     }
@@ -367,7 +388,7 @@ impl<T: VhostUserBackendMut<B>, B: Bitmap + 'static> VhostUserBackend<B> for RwL
         &self,
         device_event: u16,
         evset: epoll::Events,
-        vrings: &[VringRwLock<GM<B>>],
+        vrings: &[V],
         thread_id: usize,
     ) -> Result<bool, io::Error> {
         self.write()
@@ -379,6 +400,7 @@ impl<T: VhostUserBackendMut<B>, B: Bitmap + 'static> VhostUserBackend<B> for RwL
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::VringRwLock;
     use epoll::Events;
     use std::io::Error;
     use std::sync::Mutex;
@@ -400,7 +422,7 @@ pub mod tests {
         }
     }
 
-    impl VhostUserBackendMut<()> for MockVhostBackend {
+    impl VhostUserBackendMut<VringRwLock, ()> for MockVhostBackend {
         fn num_queues(&self) -> usize {
             2
         }

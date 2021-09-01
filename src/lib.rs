@@ -31,7 +31,7 @@ mod handler;
 pub use self::handler::VhostUserHandlerError;
 
 mod vring;
-pub use self::vring::{VringRwLock, VringState};
+pub use self::vring::{VringMutex, VringRwLock, VringState, VringT};
 
 /// An alias for `GuestMemoryAtomic<GuestMemoryMmap<B>>` to simplify code.
 type GM<B> = GuestMemoryAtomic<GuestMemoryMmap<B>>;
@@ -73,13 +73,23 @@ pub type Result<T> = result::Result<T, Error>;
 ///
 /// This structure is the public API the backend is allowed to interact with in order to run
 /// a fully functional vhost-user daemon.
-pub struct VhostUserDaemon<S: VhostUserBackend<B>, B: Bitmap + 'static = ()> {
+pub struct VhostUserDaemon<S, V, B = ()>
+where
+    S: VhostUserBackend<V, B>,
+    V: VringT<GM<B>> + Clone + Send + Sync + 'static,
+    B: Bitmap + 'static,
+{
     name: String,
-    handler: Arc<Mutex<VhostUserHandler<S, B>>>,
+    handler: Arc<Mutex<VhostUserHandler<S, V, B>>>,
     main_thread: Option<thread::JoinHandle<Result<()>>>,
 }
 
-impl<S: VhostUserBackend<B> + Clone, B: NewBitmap + Clone + Send + Sync> VhostUserDaemon<S, B> {
+impl<S, V, B> VhostUserDaemon<S, V, B>
+where
+    S: VhostUserBackend<V, B> + Clone,
+    V: VringT<GM<B>> + Clone + Send + Sync + 'static,
+    B: NewBitmap + Clone + Send + Sync,
+{
     /// Create the daemon instance, providing the backend implementation of `VhostUserBackend`.
     ///
     /// Under the hood, this will start a dedicated thread responsible for listening onto
@@ -144,7 +154,7 @@ impl<S: VhostUserBackend<B> + Clone, B: NewBitmap + Clone + Send + Sync> VhostUs
     ///
     /// This is necessary to perform further actions like registering and unregistering some extra
     /// event file descriptors.
-    pub fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S, B>>> {
+    pub fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S, V, B>>> {
         self.handler.lock().unwrap().get_epoll_handlers()
     }
 }
