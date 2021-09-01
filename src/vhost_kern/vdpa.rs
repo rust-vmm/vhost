@@ -238,6 +238,8 @@ mod tests {
         assert!(vdpa.as_raw_fd() >= 0);
         assert!(vdpa.mem().find_region(GuestAddress(0x100)).is_some());
         assert!(vdpa.mem().find_region(GuestAddress(0x10_0000)).is_none());
+
+        assert_eq!(0, 1);
     }
 
     #[test]
