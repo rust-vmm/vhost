@@ -1,0 +1,25 @@
+{
+    "tests": [
+        {
+            "test_name": "build-vhost-kern",
+            "command": "cargo build --features=vhost-kern",
+            "platform": [
+                "x86_64"
+            ]
+        },
+        {
+            "test_name": "build-vhost-user-master",
+            "command": "cargo build --features=vhost-user-master",
+            "platform": [
+                "x86_64"
+            ]
+        },
+        {
+            "test_name": "build-vhost-user-slave",
+            "command": "cargo build --features=vhost-user-slave",
+            "platform": [
+                "x86_64"
+            ]
+        }
+    ]
+}
