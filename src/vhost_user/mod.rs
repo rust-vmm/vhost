@@ -83,6 +83,12 @@ pub enum Error {
     FeatureMismatch,
     /// Error from request handler
     ReqHandlerError(IOError),
+    /// memfd file creation error
+    MemFdCreateError,
+    /// File truncate error
+    FileTrucateError,
+    /// memfd file seal errors
+    MemFdSealError,
 }
 
 impl std::fmt::Display for Error {
@@ -102,6 +108,16 @@ impl std::fmt::Display for Error {
             Error::MasterInternalError => write!(f, "Master internal error"),
             Error::FeatureMismatch => write!(f, "virtio/protocol features mismatch"),
             Error::ReqHandlerError(e) => write!(f, "handler failed to handle request: {}", e),
+            Error::MemFdCreateError => {
+                write!(f, "handler failed to allocate memfd during get_inflight_fd")
+            }
+            Error::FileTrucateError => {
+                write!(f, "handler failed to trucate memfd during get_inflight_fd")
+            }
+            Error::MemFdSealError => write!(
+                f,
+                "handler failed to apply seals to memfd during get_inflight_fd"
+            ),
         }
     }
 }
@@ -127,6 +143,7 @@ impl Error {
             Error::SocketError(_) | Error::SocketConnect(_) => false,
             Error::FeatureMismatch => false,
             Error::ReqHandlerError(_) => false,
+            Error::MemFdCreateError | Error::FileTrucateError | Error::MemFdSealError => false,
         }
     }
 }
