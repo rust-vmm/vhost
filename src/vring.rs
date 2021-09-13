@@ -251,6 +251,11 @@ impl<M: GuestAddressSpace> VringState<M> {
         self.call = file.map(|f| unsafe { EventFd::from_raw_fd(f.into_raw_fd()) });
     }
 
+    /// Get the `EventFd` for call.
+    pub fn get_call(&self) -> &Option<EventFd> {
+        &self.call
+    }
+
     /// Set `EventFd` for err.
     fn set_err(&mut self, file: Option<File>) {
         // SAFETY: see comment in set_kick()
