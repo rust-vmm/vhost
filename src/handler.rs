@@ -175,6 +175,38 @@ where
 
         Err(VhostUserHandlerError::MissingMemoryMapping)
     }
+
+    fn vring_needs_init(&self, vring: &V) -> bool {
+        let vring_state = vring.get_ref();
+
+        // If the vring wasn't initialized and we already have an EventFd for
+        // both VRING_KICK and VRING_CALL, initialize it now.
+        !vring_state.get_queue().ready
+            && vring_state.get_call().is_some()
+            && vring_state.get_kick().is_some()
+    }
+
+    fn initialize_vring(&self, vring: &V, index: u8) -> VhostUserResult<()> {
+        assert!(vring.get_ref().get_call().is_some());
+        assert!(vring.get_ref().get_kick().is_some());
+
+        if let Some(fd) = vring.get_ref().get_kick() {
+            for (thread_index, queues_mask) in self.queues_per_thread.iter().enumerate() {
+                let shifted_queues_mask = queues_mask >> index;
+                if shifted_queues_mask & 1u64 == 1u64 {
+                    let evt_idx = queues_mask.count_ones() - shifted_queues_mask.count_ones();
+                    self.handlers[thread_index]
+                        .register_event(fd.as_raw_fd(), epoll::Events::EPOLLIN, u64::from(evt_idx))
+                        .map_err(VhostUserError::ReqHandlerError)?;
+                    break;
+                }
+            }
+        }
+
+        self.vrings[index as usize].set_queue_ready(true);
+
+        Ok(())
+    }
 }
 
 impl<S, V, B> VhostUserSlaveReqHandlerMut for VhostUserHandler<S, V, B>
@@ -361,6 +393,9 @@ where
             }
         }
 
+        self.vrings[index as usize].set_kick(None);
+        self.vrings[index as usize].set_call(None);
+
         let next_avail = self.vrings[index as usize].queue_next_avail();
 
         Ok(VhostUserVringState::new(index, u32::from(next_avail)))
@@ -377,23 +412,8 @@ where
         // such as that proposed by Rust RFC #3128.
         self.vrings[index as usize].set_kick(file);
 
-        // Quote from vhost-user specification:
-        // Client must start ring upon receiving a kick (that is, detecting
-        // that file descriptor is readable) on the descriptor specified by
-        // VHOST_USER_SET_VRING_KICK, and stop ring upon receiving
-        // VHOST_USER_GET_VRING_BASE.
-        self.vrings[index as usize].set_queue_ready(true);
-        if let Some(fd) = self.vrings[index as usize].get_ref().get_kick() {
-            for (thread_index, queues_mask) in self.queues_per_thread.iter().enumerate() {
-                let shifted_queues_mask = queues_mask >> index;
-                if shifted_queues_mask & 1u64 == 1u64 {
-                    let evt_idx = queues_mask.count_ones() - shifted_queues_mask.count_ones();
-                    self.handlers[thread_index]
-                        .register_event(fd.as_raw_fd(), epoll::Events::EPOLLIN, u64::from(evt_idx))
-                        .map_err(VhostUserError::ReqHandlerError)?;
-                    break;
-                }
-            }
+        if self.vring_needs_init(&self.vrings[index as usize]) {
+            self.initialize_vring(&self.vrings[index as usize], index)?;
         }
 
         Ok(())
@@ -405,6 +425,10 @@ where
         }
 
         self.vrings[index as usize].set_call(file);
+
+        if self.vring_needs_init(&self.vrings[index as usize]) {
+            self.initialize_vring(&self.vrings[index as usize], index)?;
+        }
 
         Ok(())
     }
