@@ -313,7 +313,8 @@ impl<R: Req> Endpoint<R> {
             iov_base: rbuf.as_mut_ptr() as *mut c_void,
             iov_len: len,
         }];
-        let (bytes, _) = self.sock.recv_with_fds(&mut iovs, &mut [])?;
+        // Safe because we own rbuf and it's safe to fill a byte array with arbitrary data.
+        let (bytes, _) = unsafe { self.sock.recv_with_fds(&mut iovs, &mut [])? };
         Ok((bytes, rbuf))
     }
 
@@ -335,7 +336,15 @@ impl<R: Req> Endpoint<R> {
     /// * - SocketRetry: temporary error caused by signals or short of resources.
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
-    pub fn recv_into_iovec(&mut self, iovs: &mut [iovec]) -> Result<(usize, Option<Vec<File>>)> {
+    ///
+    /// # Safety
+    ///
+    /// It is the callers responsibility to ensure it is safe for arbitrary data to be
+    /// written to the iovec pointers.
+    pub unsafe fn recv_into_iovec(
+        &mut self,
+        iovs: &mut [iovec],
+    ) -> Result<(usize, Option<Vec<File>>)> {
         let mut fd_array = vec![0; MAX_ATTACHED_FD_ENTRIES];
         let (bytes, fds) = self.sock.recv_with_fds(iovs, &mut fd_array)?;
 
@@ -374,7 +383,12 @@ impl<R: Req> Endpoint<R> {
     /// * - (number of bytes received, [received fds]) on success
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
-    pub fn recv_into_iovec_all(
+    ///
+    /// # Safety
+    ///
+    /// It is the callers responsibility to ensure it is safe for arbitrary data to be
+    /// written to the iovec pointers.
+    pub unsafe fn recv_into_iovec_all(
         &mut self,
         iovs: &mut [iovec],
     ) -> Result<(usize, Option<Vec<File>>)> {
@@ -435,7 +449,8 @@ impl<R: Req> Endpoint<R> {
                 iov_base: buf.as_mut_ptr() as *mut c_void,
                 iov_len: buf_size,
             }];
-            self.recv_into_iovec(&mut iovs)?
+            // Safe because we own buf and it's safe to fill a byte array with arbitrary data.
+            unsafe { self.recv_into_iovec(&mut iovs)? }
         };
         Ok((bytes, buf, files))
     }
@@ -457,7 +472,8 @@ impl<R: Req> Endpoint<R> {
             iov_base: (&mut hdr as *mut VhostUserMsgHeader<R>) as *mut c_void,
             iov_len: mem::size_of::<VhostUserMsgHeader<R>>(),
         }];
-        let (bytes, files) = self.recv_into_iovec_all(&mut iovs[..])?;
+        // Safe because we own hdr and it's ByteValued.
+        let (bytes, files) = unsafe { self.recv_into_iovec_all(&mut iovs[..])? };
 
         if bytes != mem::size_of::<VhostUserMsgHeader<R>>() {
             return Err(Error::PartialMessage);
@@ -494,7 +510,8 @@ impl<R: Req> Endpoint<R> {
                 iov_len: mem::size_of::<T>(),
             },
         ];
-        let (bytes, files) = self.recv_into_iovec_all(&mut iovs[..])?;
+        // Safe because we own hdr and body and they're ByteValued.
+        let (bytes, files) = unsafe { self.recv_into_iovec_all(&mut iovs[..])? };
 
         let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>();
         if bytes != total {
@@ -535,7 +552,9 @@ impl<R: Req> Endpoint<R> {
                 iov_len: buf.len(),
             },
         ];
-        let (bytes, files) = self.recv_into_iovec_all(&mut iovs[..])?;
+        // Safe because we own hdr and have a mutable borrow of buf, and hdr is ByteValued
+        // and it's safe to fill a byte slice with arbitrary data.
+        let (bytes, files) = unsafe { self.recv_into_iovec_all(&mut iovs[..])? };
 
         if bytes < mem::size_of::<VhostUserMsgHeader<R>>() {
             return Err(Error::PartialMessage);
@@ -578,7 +597,10 @@ impl<R: Req> Endpoint<R> {
                 iov_len: buf.len(),
             },
         ];
-        let (bytes, files) = self.recv_into_iovec_all(&mut iovs[..])?;
+        // Safe because we own hdr and body and have a mutable borrow of buf, and
+        // hdr and body are ByteValued, and it's safe to fill a byte slice with
+        // arbitrary data.
+        let (bytes, files) = unsafe { self.recv_into_iovec_all(&mut iovs[..])? };
 
         let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>();
         if bytes < total {
