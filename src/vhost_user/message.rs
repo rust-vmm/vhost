@@ -877,8 +877,6 @@ pub struct QueueRegionSplit {
     pub last_batch_head: u16,
     /// Idx value of used ring
     pub used_idx: u16,
-    /// Pointer to an array of DescStateSplit entries
-    pub desc: u64,
 }
 
 impl QueueRegionSplit {
@@ -890,7 +888,6 @@ impl QueueRegionSplit {
             desc_num: queue_size,
             last_batch_head: 0,
             used_idx: 0,
-            desc: 0,
         }
     }
 }
@@ -951,8 +948,6 @@ pub struct QueueRegionPacked {
     pub old_used_wrap_counter: u8,
     /// Padding
     padding: [u8; 7],
-    /// Pointer to array tracking state of each descriptor from descriptor ring
-    pub desc: u64,
 }
 
 impl QueueRegionPacked {
@@ -969,7 +964,6 @@ impl QueueRegionPacked {
             used_wrap_counter: 0,
             old_used_wrap_counter: 0,
             padding: [0; 7],
-            desc: 0,
         }
     }
 }
