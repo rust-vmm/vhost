@@ -17,6 +17,17 @@ pub struct VhostVdpaIovaRange {
 }
 
 /// Trait to control vhost-vdpa backend drivers.
+///
+/// vDPA (virtio Data Path Acceleration) devices has datapath compliant with the
+/// virtio specification and the control path is vendor specific.
+/// vDPA devices can be both physically located on the hardware or emulated
+/// by software.
+///
+/// Compared to vhost acceleration, vDPA offers more control over the device
+/// lifecycle.
+/// For this reason, the vhost-vdpa interface extends the vhost API, offering
+/// additional APIs for controlling the device (e.g. changing the state or
+/// accessing the configuration space
 pub trait VhostVdpa: VhostBackend {
     /// Get the device id.
     /// The device ids follow the same definition of the device id defined in virtio-spec.
