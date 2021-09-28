@@ -381,19 +381,6 @@ impl<I: VhostKernBackend + VhostKernFeatures> VhostIotlbBackend for I {
 
         io_result(ret, ())
     }
-
-    /// Parse a buffer received from the in-kernel vhost backend and fill a VhostIotlbMsg.
-    ///
-    /// # Arguments
-    /// * `buffer` - Buffer containing the raw data received from the in-kernel vhost backend.
-    /// * `msg` - IOTLB message parsed.
-    fn parse_iotlb_msg<T: Sized + VhostIotlbMsgParser>(
-        &self,
-        buffer: &T,
-        msg: &mut VhostIotlbMsg,
-    ) -> Result<()> {
-        buffer.parse(msg)
-    }
 }
 
 impl VhostIotlbMsgParser for vhost_msg {

@@ -162,17 +162,6 @@ pub trait VhostIotlbBackend: std::marker::Sized {
     /// # Arguments
     /// * `msg` - IOTLB message to send.
     fn send_iotlb_msg(&self, msg: &VhostIotlbMsg) -> Result<()>;
-
-    /// Parse a buffer received from the vhost-based backend and fill a VhostIotlbMsg.
-    ///
-    /// # Arguments
-    /// * `buffer` - Buffer containing the raw data received from the vhost-based backend.
-    /// * `msg` - IOTLB message parsed.
-    fn parse_iotlb_msg<T: Sized + VhostIotlbMsgParser>(
-        &self,
-        buffer: &T,
-        msg: &mut VhostIotlbMsg,
-    ) -> Result<()>;
 }
 
 /// An interface for setting up vhost-based backend drivers with interior mutability.
