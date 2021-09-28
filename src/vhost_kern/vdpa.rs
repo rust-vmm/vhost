@@ -4,21 +4,32 @@
 //! Kernel-based vhost-vdpa backend.
 
 use std::fs::{File, OpenOptions};
-use std::os::raw::c_int;
+use std::io::Error as IOError;
+use std::os::raw::{c_uchar, c_uint};
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 use vm_memory::GuestAddressSpace;
 use vmm_sys_util::eventfd::EventFd;
+use vmm_sys_util::fam::*;
 use vmm_sys_util::ioctl::{ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
-
-use std::alloc::{alloc, dealloc, Layout};
-use std::mem;
 
 use super::vhost_binding::*;
 use super::{ioctl_result, Error, Result, VhostKernBackend, VhostKernFeatures};
 use crate::vdpa::*;
 use crate::{VhostAccess, VhostIotlbBackend, VhostIotlbMsg, VhostIotlbType};
+
+// Implement the FamStruct trait for vhost_vdpa_config
+generate_fam_struct_impl!(
+    vhost_vdpa_config,
+    c_uchar,
+    buf,
+    c_uint,
+    len,
+    c_uint::MAX as usize
+);
+
+type VhostVdpaConfig = FamStructWrapper<vhost_vdpa_config>;
 
 /// Handle for running VHOST_VDPA ioctls.
 pub struct VhostKernVdpa<AS: GuestAddressSpace> {
@@ -62,48 +73,33 @@ impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
     }
 
     fn get_config(&self, offset: u32, buffer: &mut [u8]) -> Result<()> {
-        let buffer_len = buffer.len();
-        let layout =
-            Layout::from_size_align(mem::size_of::<vhost_vdpa_config>() + buffer_len, 1).unwrap();
-        let ret: c_int;
+        let mut config = VhostVdpaConfig::new(buffer.len())
+            .map_err(|_| Error::IoctlError(IOError::from_raw_os_error(libc::ENOMEM)))?;
 
-        unsafe {
-            let ptr = alloc(layout);
-            let config = ptr as *mut vhost_vdpa_config;
-            (*config).off = offset;
-            (*config).len = buffer_len as u32;
+        config.as_mut_fam_struct().off = offset;
 
-            ret = ioctl_with_ptr(self, VHOST_VDPA_GET_CONFIG(), ptr);
-
-            buffer.copy_from_slice((*config).buf.as_slice(buffer_len));
-
-            dealloc(ptr, layout);
+        let ret = unsafe {
+            ioctl_with_ptr(
+                self,
+                VHOST_VDPA_GET_CONFIG(),
+                config.as_mut_fam_struct_ptr(),
+            )
         };
+
+        buffer.copy_from_slice(config.as_slice());
 
         ioctl_result(ret, ())
     }
 
     fn set_config(&self, offset: u32, buffer: &[u8]) -> Result<()> {
-        let buffer_len = buffer.len();
-        let layout =
-            Layout::from_size_align(mem::size_of::<vhost_vdpa_config>() + buffer_len, 1).unwrap();
-        let ret: c_int;
+        let mut config = VhostVdpaConfig::new(buffer.len())
+            .map_err(|_| Error::IoctlError(IOError::from_raw_os_error(libc::ENOMEM)))?;
 
-        unsafe {
-            let ptr = alloc(layout);
-            let config = ptr as *mut vhost_vdpa_config;
-            (*config).off = offset;
-            (*config).len = buffer_len as u32;
+        config.as_mut_fam_struct().off = offset;
+        config.as_mut_slice().copy_from_slice(buffer);
 
-            (*config)
-                .buf
-                .as_mut_slice(buffer_len)
-                .copy_from_slice(&buffer);
-
-            ret = ioctl_with_ptr(self, VHOST_VDPA_SET_CONFIG(), ptr);
-
-            dealloc(ptr, layout);
-        };
+        let ret =
+            unsafe { ioctl_with_ptr(self, VHOST_VDPA_SET_CONFIG(), config.as_fam_struct_ptr()) };
 
         ioctl_result(ret, ())
     }
@@ -199,6 +195,7 @@ impl<AS: GuestAddressSpace> VhostKernFeatures for VhostKernVdpa<AS> {
 mod tests {
     const VHOST_VDPA_PATH: &str = "/dev/vhost-vdpa-0";
 
+    use std::alloc::{alloc, dealloc, Layout};
     use vm_memory::{GuestAddress, GuestMemory, GuestMemoryMmap};
     use vmm_sys_util::eventfd::EventFd;
 

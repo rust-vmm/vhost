@@ -253,7 +253,7 @@ impl Default for vhost_scsi_target {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct vhost_vdpa_config {
     pub off: raw::c_uint,
     pub len: raw::c_uint,
