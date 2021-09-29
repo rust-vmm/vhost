@@ -40,6 +40,8 @@ extern crate vmm_sys_util;
 mod backend;
 pub use backend::*;
 
+#[cfg(feature = "vhost-net")]
+pub mod net;
 #[cfg(feature = "vhost-vdpa")]
 pub mod vdpa;
 #[cfg(feature = "vhost-kern")]
