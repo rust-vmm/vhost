@@ -4,13 +4,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::fmt::{Display, Formatter};
-use std::fs::File;
 use std::io;
 use std::marker::PhantomData;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::result;
 
 use vm_memory::bitmap::Bitmap;
+use vmm_sys_util::epoll::{ControlOperation, Epoll, EpollEvent, EventSet};
 use vmm_sys_util::eventfd::EventFd;
 
 use super::backend::VhostUserBackend;
@@ -65,7 +65,7 @@ where
     V: VringT<GM<B>>,
     B: Bitmap + 'static,
 {
-    epoll_file: File,
+    epoll: Epoll,
     backend: S,
     vrings: Vec<V>,
     thread_id: usize,
@@ -81,22 +81,21 @@ where
 {
     /// Create a `VringEpollHandler` instance.
     pub(crate) fn new(backend: S, vrings: Vec<V>, thread_id: usize) -> VringEpollResult<Self> {
-        let epoll_fd = epoll::create(true).map_err(VringEpollError::EpollCreateFd)?;
-        let epoll_file = unsafe { File::from_raw_fd(epoll_fd) };
+        let epoll = Epoll::new().map_err(VringEpollError::EpollCreateFd)?;
 
         let handler = match backend.exit_event(thread_id) {
             Some(exit_event_fd) => {
                 let id = backend.num_queues();
-                epoll::ctl(
-                    epoll_file.as_raw_fd(),
-                    epoll::ControlOptions::EPOLL_CTL_ADD,
-                    exit_event_fd.as_raw_fd(),
-                    epoll::Event::new(epoll::Events::EPOLLIN, id as u64),
-                )
-                .map_err(VringEpollError::RegisterExitEvent)?;
+                epoll
+                    .ctl(
+                        ControlOperation::Add,
+                        exit_event_fd.as_raw_fd(),
+                        EpollEvent::new(EventSet::IN, id as u64),
+                    )
+                    .map_err(VringEpollError::RegisterExitEvent)?;
 
                 VringEpollHandler {
-                    epoll_file,
+                    epoll,
                     backend,
                     vrings,
                     thread_id,
@@ -105,7 +104,7 @@ where
                 }
             }
             None => VringEpollHandler {
-                epoll_file,
+                epoll,
                 backend,
                 vrings,
                 thread_id,
@@ -131,7 +130,7 @@ where
     pub fn register_listener(
         &self,
         fd: RawFd,
-        ev_type: epoll::Events,
+        ev_type: EventSet,
         data: u64,
     ) -> result::Result<(), io::Error> {
         // `data` range [0...num_queues] is reserved for queues and exit event.
@@ -149,7 +148,7 @@ where
     pub fn unregister_listener(
         &self,
         fd: RawFd,
-        ev_type: epoll::Events,
+        ev_type: EventSet,
         data: u64,
     ) -> result::Result<(), io::Error> {
         // `data` range [0...num_queues] is reserved for queues and exit event.
@@ -163,29 +162,21 @@ where
     pub(crate) fn register_event(
         &self,
         fd: RawFd,
-        ev_type: epoll::Events,
+        ev_type: EventSet,
         data: u64,
     ) -> result::Result<(), io::Error> {
-        epoll::ctl(
-            self.epoll_file.as_raw_fd(),
-            epoll::ControlOptions::EPOLL_CTL_ADD,
-            fd,
-            epoll::Event::new(ev_type, data),
-        )
+        self.epoll
+            .ctl(ControlOperation::Add, fd, EpollEvent::new(ev_type, data))
     }
 
     pub(crate) fn unregister_event(
         &self,
         fd: RawFd,
-        ev_type: epoll::Events,
+        ev_type: EventSet,
         data: u64,
     ) -> result::Result<(), io::Error> {
-        epoll::ctl(
-            self.epoll_file.as_raw_fd(),
-            epoll::ControlOptions::EPOLL_CTL_DEL,
-            fd,
-            epoll::Event::new(ev_type, data),
-        )
+        self.epoll
+            .ctl(ControlOperation::Delete, fd, EpollEvent::new(ev_type, data))
     }
 
     /// Run the event poll loop to handle all pending events on registered fds.
@@ -194,10 +185,10 @@ where
     /// associated with the backend.
     pub(crate) fn run(&self) -> VringEpollResult<()> {
         const EPOLL_EVENTS_LEN: usize = 100;
-        let mut events = vec![epoll::Event::new(epoll::Events::empty(), 0); EPOLL_EVENTS_LEN];
+        let mut events = vec![EpollEvent::new(EventSet::empty(), 0); EPOLL_EVENTS_LEN];
 
         'epoll: loop {
-            let num_events = match epoll::wait(self.epoll_file.as_raw_fd(), -1, &mut events[..]) {
+            let num_events = match self.epoll.wait(-1, &mut events[..]) {
                 Ok(res) => res,
                 Err(e) => {
                     if e.kind() == io::ErrorKind::Interrupted {
@@ -215,7 +206,7 @@ where
             };
 
             for event in events.iter().take(num_events) {
-                let evset = match epoll::Events::from_bits(event.events) {
+                let evset = match EventSet::from_bits(event.events) {
                     Some(evset) => evset,
                     None => {
                         let evbits = event.events;
@@ -224,7 +215,7 @@ where
                     }
                 };
 
-                let ev_type = event.data as u16;
+                let ev_type = event.data() as u16;
 
                 // handle_event() returns true if an event is received from the exit event fd.
                 if self.handle_event(ev_type, evset)? {
@@ -236,7 +227,7 @@ where
         Ok(())
     }
 
-    fn handle_event(&self, device_event: u16, evset: epoll::Events) -> VringEpollResult<bool> {
+    fn handle_event(&self, device_event: u16, evset: EventSet) -> VringEpollResult<bool> {
         if self.exit_event_fd.is_some() && device_event as usize == self.backend.num_queues() {
             return Ok(true);
         }
@@ -280,27 +271,27 @@ mod tests {
 
         let eventfd = EventFd::new(0).unwrap();
         handler
-            .register_listener(eventfd.as_raw_fd(), epoll::Events::EPOLLIN, 3)
+            .register_listener(eventfd.as_raw_fd(), EventSet::IN, 3)
             .unwrap();
         // Register an already registered fd.
         handler
-            .register_listener(eventfd.as_raw_fd(), epoll::Events::EPOLLIN, 3)
+            .register_listener(eventfd.as_raw_fd(), EventSet::IN, 3)
             .unwrap_err();
         // Register an invalid data.
         handler
-            .register_listener(eventfd.as_raw_fd(), epoll::Events::EPOLLIN, 1)
+            .register_listener(eventfd.as_raw_fd(), EventSet::IN, 1)
             .unwrap_err();
 
         handler
-            .unregister_listener(eventfd.as_raw_fd(), epoll::Events::EPOLLIN, 3)
+            .unregister_listener(eventfd.as_raw_fd(), EventSet::IN, 3)
             .unwrap();
         // unregister an already unregistered fd.
         handler
-            .unregister_listener(eventfd.as_raw_fd(), epoll::Events::EPOLLIN, 3)
+            .unregister_listener(eventfd.as_raw_fd(), EventSet::IN, 3)
             .unwrap_err();
         // unregister an invalid data.
         handler
-            .unregister_listener(eventfd.as_raw_fd(), epoll::Events::EPOLLIN, 1)
+            .unregister_listener(eventfd.as_raw_fd(), EventSet::IN, 1)
             .unwrap_err();
     }
 }

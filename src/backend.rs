@@ -26,6 +26,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use vhost::vhost_user::message::VhostUserProtocolFeatures;
 use vhost::vhost_user::SlaveFsCacheReq;
 use vm_memory::bitmap::Bitmap;
+use vmm_sys_util::epoll::EventSet;
 use vmm_sys_util::eventfd::EventFd;
 
 use super::vring::VringT;
@@ -111,7 +112,7 @@ where
     fn handle_event(
         &self,
         device_event: u16,
-        evset: epoll::Events,
+        evset: EventSet,
         vrings: &[V],
         thread_id: usize,
     ) -> result::Result<bool, io::Error>;
@@ -194,7 +195,7 @@ where
     fn handle_event(
         &mut self,
         device_event: u16,
-        evset: epoll::Events,
+        evset: EventSet,
         vrings: &[V],
         thread_id: usize,
     ) -> result::Result<bool, io::Error>;
@@ -256,7 +257,7 @@ where
     fn handle_event(
         &self,
         device_event: u16,
-        evset: epoll::Events,
+        evset: EventSet,
         vrings: &[V],
         thread_id: usize,
     ) -> Result<bool, io::Error> {
@@ -321,7 +322,7 @@ where
     fn handle_event(
         &self,
         device_event: u16,
-        evset: epoll::Events,
+        evset: EventSet,
         vrings: &[V],
         thread_id: usize,
     ) -> Result<bool, io::Error> {
@@ -387,7 +388,7 @@ where
     fn handle_event(
         &self,
         device_event: u16,
-        evset: epoll::Events,
+        evset: EventSet,
         vrings: &[V],
         thread_id: usize,
     ) -> Result<bool, io::Error> {
@@ -401,7 +402,6 @@ where
 pub mod tests {
     use super::*;
     use crate::VringRwLock;
-    use epoll::Events;
     use std::io::Error;
     use std::sync::Mutex;
     use vm_memory::{GuestMemoryAtomic, GuestMemoryMmap};
@@ -484,7 +484,7 @@ pub mod tests {
         fn handle_event(
             &mut self,
             _device_event: u16,
-            _evset: Events,
+            _evset: EventSet,
             _vrings: &[VringRwLock],
             _thread_id: usize,
         ) -> Result<bool, Error> {

@@ -8,7 +8,6 @@ edition = "2018"
 license = "Apache-2.0"
 
 [dependencies]
-epoll = ">=4.0.1"
 libc = ">=0.2.39"
 log = ">=0.4.6"
 vhost = { version = "0.2", features = ["vhost-user-slave"] }
