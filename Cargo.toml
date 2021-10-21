@@ -24,9 +24,9 @@ bitflags = ">=1.0.1"
 libc = ">=0.2.39"
 
 vmm-sys-util = ">=0.3.1"
-vm-memory = "0.6"
+vm-memory = ">=0.6"
 
 [dev-dependencies]
 tempfile = ">=3.2.0"
-vm-memory = { version = "0.6", features=["backend-mmap"] }
+vm-memory = { version = ">=0.6", features=["backend-mmap"] }
 serial_test = "0.5"
