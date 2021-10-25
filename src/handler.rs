@@ -182,7 +182,7 @@ where
 
         // If the vring wasn't initialized and we already have an EventFd for
         // both VRING_KICK and VRING_CALL, initialize it now.
-        !vring_state.get_queue().ready
+        !vring_state.get_queue().ready()
             && vring_state.get_call().is_some()
             && vring_state.get_kick().is_some()
     }

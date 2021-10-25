@@ -192,9 +192,9 @@ impl<M: GuestAddressSpace> VringState<M> {
 
     /// Set queue addresses for descriptor table, available ring and used ring.
     pub fn set_queue_info(&mut self, desc_table: u64, avail_ring: u64, used_ring: u64) {
-        self.queue.desc_table = GuestAddress(desc_table);
-        self.queue.avail_ring = GuestAddress(avail_ring);
-        self.queue.used_ring = GuestAddress(used_ring);
+        self.queue.state.desc_table = GuestAddress(desc_table);
+        self.queue.state.avail_ring = GuestAddress(avail_ring);
+        self.queue.state.used_ring = GuestAddress(used_ring);
     }
 
     /// Get queue next avail head.
@@ -209,7 +209,7 @@ impl<M: GuestAddressSpace> VringState<M> {
 
     /// Set configured queue size.
     fn set_queue_size(&mut self, num: u16) {
-        self.queue.size = num;
+        self.queue.set_size(num);
     }
 
     /// Enable/disable queue event index feature.
@@ -219,7 +219,7 @@ impl<M: GuestAddressSpace> VringState<M> {
 
     /// Set queue enabled state.
     fn set_queue_ready(&mut self, ready: bool) {
-        self.queue.ready = ready;
+        self.queue.set_ready(ready);
     }
 
     /// Get the `EventFd` for kick.
@@ -468,29 +468,38 @@ mod tests {
 
         assert!(vring.get_ref().get_kick().is_none());
         assert_eq!(vring.get_ref().enabled, false);
-        assert_eq!(vring.lock().queue.ready, false);
-        assert_eq!(vring.lock().queue.event_idx_enabled, false);
+        assert_eq!(vring.lock().queue.ready(), false);
+        assert_eq!(vring.lock().queue.state.event_idx_enabled, false);
 
         vring.set_enabled(true);
         assert_eq!(vring.get_ref().enabled, true);
 
         vring.set_queue_info(0x100100, 0x100200, 0x100300);
-        assert_eq!(vring.lock().get_queue().desc_table, GuestAddress(0x100100));
-        assert_eq!(vring.lock().get_queue().avail_ring, GuestAddress(0x100200));
-        assert_eq!(vring.lock().get_queue().used_ring, GuestAddress(0x100300));
+        assert_eq!(
+            vring.lock().get_queue().state.desc_table,
+            GuestAddress(0x100100)
+        );
+        assert_eq!(
+            vring.lock().get_queue().state.avail_ring,
+            GuestAddress(0x100200)
+        );
+        assert_eq!(
+            vring.lock().get_queue().state.used_ring,
+            GuestAddress(0x100300)
+        );
 
         assert_eq!(vring.queue_next_avail(), 0);
         vring.set_queue_next_avail(0x20);
         assert_eq!(vring.queue_next_avail(), 0x20);
 
         vring.set_queue_size(0x200);
-        assert_eq!(vring.lock().queue.size, 0x200);
+        assert_eq!(vring.lock().queue.actual_size(), 0x200);
 
         vring.set_queue_event_idx(true);
-        assert_eq!(vring.lock().queue.event_idx_enabled, true);
+        assert_eq!(vring.lock().queue.state.event_idx_enabled, true);
 
         vring.set_queue_ready(true);
-        assert_eq!(vring.lock().queue.ready, true);
+        assert_eq!(vring.lock().queue.ready(), true);
     }
 
     #[test]
