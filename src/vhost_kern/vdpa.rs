@@ -52,6 +52,15 @@ impl<AS: GuestAddressSpace> VhostKernVdpa<AS> {
             backend_features_acked: 0,
         })
     }
+
+    /// Create a `VhostKernVdpa` object with given content.
+    pub fn with(fd: File, mem: AS, backend_features_acked: u64) -> Self {
+        VhostKernVdpa {
+            fd,
+            mem,
+            backend_features_acked,
+        }
+    }
 }
 
 impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
