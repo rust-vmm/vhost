@@ -493,7 +493,7 @@ mod tests {
         assert_eq!(vring.queue_next_avail(), 0x20);
 
         vring.set_queue_size(0x200);
-        assert_eq!(vring.lock().queue.actual_size(), 0x200);
+        assert_eq!(vring.lock().queue.state.size, 0x200);
 
         vring.set_queue_event_idx(true);
         assert_eq!(vring.lock().queue.state.event_idx_enabled, true);
