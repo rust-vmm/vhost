@@ -171,6 +171,8 @@ where
 mod tests {
     use super::backend::tests::MockVhostBackend;
     use super::*;
+    use std::os::unix::net::UnixStream;
+    use std::sync::Barrier;
     use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
 
     #[test]
@@ -179,9 +181,32 @@ mod tests {
             GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
         );
         let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
-        let daemon = VhostUserDaemon::new("test".to_owned(), backend, mem).unwrap();
+        let mut daemon = VhostUserDaemon::new("test".to_owned(), backend, mem).unwrap();
 
-        assert_eq!(daemon.get_epoll_handlers().len(), 2);
-        //daemon.start(Listener::new()).unwrap();
+        let handlers = daemon.get_epoll_handlers();
+        assert_eq!(handlers.len(), 2);
+
+        let barrier = Arc::new(Barrier::new(2));
+        let tmpdir = tempfile::tempdir().unwrap();
+        let mut path = tmpdir.path().to_path_buf();
+        path.push("socket");
+
+        let barrier2 = barrier.clone();
+        let path1 = path.clone();
+        let thread = thread::spawn(move || {
+            barrier2.wait();
+            let socket = UnixStream::connect(&path1).unwrap();
+            barrier2.wait();
+            drop(socket)
+        });
+
+        let listener = Listener::new(&path, false).unwrap();
+        barrier.wait();
+        daemon.start(listener).unwrap();
+        barrier.wait();
+        // Above process generates a `HandleRequest(PartialMessage)` error.
+        daemon.wait().unwrap_err();
+        daemon.wait().unwrap();
+        thread.join().unwrap();
     }
 }
