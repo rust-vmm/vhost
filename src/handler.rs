@@ -262,18 +262,6 @@ where
         Ok(())
     }
 
-    fn get_protocol_features(&mut self) -> VhostUserResult<VhostUserProtocolFeatures> {
-        Ok(self.backend.protocol_features())
-    }
-
-    fn set_protocol_features(&mut self, features: u64) -> VhostUserResult<()> {
-        // Note: slave that reported VHOST_USER_F_PROTOCOL_FEATURES must
-        // support this message even before VHOST_USER_SET_FEATURES was
-        // called.
-        self.acked_protocol_features = features;
-        Ok(())
-    }
-
     fn set_mem_table(
         &mut self,
         ctx: &[VhostUserMemoryRegion],
@@ -313,10 +301,6 @@ where
         self.mappings = mappings;
 
         Ok(())
-    }
-
-    fn get_queue_num(&mut self) -> VhostUserResult<u64> {
-        Ok(self.num_queues as u64)
     }
 
     fn set_vring_num(&mut self, index: u32, num: u32) -> VhostUserResult<()> {
@@ -448,6 +432,22 @@ where
         Ok(())
     }
 
+    fn get_protocol_features(&mut self) -> VhostUserResult<VhostUserProtocolFeatures> {
+        Ok(self.backend.protocol_features())
+    }
+
+    fn set_protocol_features(&mut self, features: u64) -> VhostUserResult<()> {
+        // Note: slave that reported VHOST_USER_F_PROTOCOL_FEATURES must
+        // support this message even before VHOST_USER_SET_FEATURES was
+        // called.
+        self.acked_protocol_features = features;
+        Ok(())
+    }
+
+    fn get_queue_num(&mut self) -> VhostUserResult<u64> {
+        Ok(self.num_queues as u64)
+    }
+
     fn set_vring_enable(&mut self, index: u32, enable: bool) -> VhostUserResult<()> {
         // This request should be handled only when VHOST_USER_F_PROTOCOL_FEATURES
         // has been negotiated.
@@ -492,6 +492,24 @@ where
         }
 
         self.backend.set_slave_req_fd(vu_req);
+    }
+
+    fn get_inflight_fd(
+        &mut self,
+        _inflight: &vhost::vhost_user::message::VhostUserInflight,
+    ) -> VhostUserResult<(vhost::vhost_user::message::VhostUserInflight, File)> {
+        // Assume the backend hasn't negotiated the inflight feature; it
+        // wouldn't be correct for the backend to do so, as we don't (yet)
+        // provide a way for it to handle such requests.
+        Err(VhostUserError::InvalidOperation)
+    }
+
+    fn set_inflight_fd(
+        &mut self,
+        _inflight: &vhost::vhost_user::message::VhostUserInflight,
+        _file: File,
+    ) -> VhostUserResult<()> {
+        Err(VhostUserError::InvalidOperation)
     }
 
     fn get_max_mem_slots(&mut self) -> VhostUserResult<u64> {
@@ -560,24 +578,6 @@ where
             .retain(|mapping| mapping.gpa_base != region.guest_phys_addr);
 
         Ok(())
-    }
-
-    fn get_inflight_fd(
-        &mut self,
-        _inflight: &vhost::vhost_user::message::VhostUserInflight,
-    ) -> VhostUserResult<(vhost::vhost_user::message::VhostUserInflight, File)> {
-        // Assume the backend hasn't negotiated the inflight feature; it
-        // wouldn't be correct for the backend to do so, as we don't (yet)
-        // provide a way for it to handle such requests.
-        Err(VhostUserError::InvalidOperation)
-    }
-
-    fn set_inflight_fd(
-        &mut self,
-        _inflight: &vhost::vhost_user::message::VhostUserInflight,
-        _file: File,
-    ) -> VhostUserResult<()> {
-        Err(VhostUserError::InvalidOperation)
     }
 }
 
