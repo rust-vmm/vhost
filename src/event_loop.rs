@@ -58,18 +58,22 @@ pub type VringEpollResult<T> = std::result::Result<T, VringEpollError>;
 /// - add file descriptors to be monitored by the epoll fd
 /// - remove registered file descriptors from the epoll fd
 /// - run the event loop to handle pending events on the epoll fd
-pub struct VringEpollHandler<S, V, B>
-where
-    S: VhostUserBackend<V, B>,
-    V: VringT<GM<B>>,
-    B: Bitmap + 'static,
-{
+pub struct VringEpollHandler<S, V, B> {
     epoll: Epoll,
     backend: S,
     vrings: Vec<V>,
     thread_id: usize,
     exit_event_fd: Option<EventFd>,
     phantom: PhantomData<B>,
+}
+
+impl<S, V, B> VringEpollHandler<S, V, B> {
+    /// Send `exit event` to break the event loop.
+    pub fn send_exit_event(&self) {
+        if let Some(eventfd) = self.exit_event_fd.as_ref() {
+            let _ = eventfd.write(1);
+        }
+    }
 }
 
 impl<S, V, B> VringEpollHandler<S, V, B>
@@ -113,13 +117,6 @@ where
         };
 
         Ok(handler)
-    }
-
-    /// Send `exit event` to break the event loop.
-    pub fn send_exit_event(&self) {
-        if let Some(eventfd) = self.exit_event_fd.as_ref() {
-            let _ = eventfd.write(1);
-        }
     }
 
     /// Register an event into the epoll fd.

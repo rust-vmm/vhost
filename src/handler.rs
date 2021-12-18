@@ -71,12 +71,7 @@ struct AddrMapping {
     gpa_base: u64,
 }
 
-pub struct VhostUserHandler<S, V, B>
-where
-    S: VhostUserBackend<V, B>,
-    V: VringT<GM<B>>,
-    B: Bitmap + 'static,
-{
+pub struct VhostUserHandler<S, V, B: Bitmap + 'static> {
     backend: S,
     handlers: Vec<Arc<VringEpollHandler<S, V, B>>>,
     owned: bool,
@@ -92,11 +87,12 @@ where
     worker_threads: Vec<thread::JoinHandle<VringEpollResult<()>>>,
 }
 
+// Ensure VhostUserHandler: Clone + Send + Sync + 'static.
 impl<S, V, B> VhostUserHandler<S, V, B>
 where
-    S: VhostUserBackend<V, B> + Clone,
+    S: VhostUserBackend<V, B> + Clone + 'static,
     V: VringT<GM<B>> + Clone + Send + Sync + 'static,
-    B: Bitmap + Clone + Send + Sync,
+    B: Bitmap + Clone + Send + Sync + 'static,
 {
     pub(crate) fn new(backend: S, atomic_mem: GM<B>) -> VhostUserHandlerResult<Self> {
         let num_queues = backend.num_queues();
@@ -151,16 +147,7 @@ where
     }
 }
 
-impl<S, V, B> VhostUserHandler<S, V, B>
-where
-    S: VhostUserBackend<V, B>,
-    V: VringT<GM<B>>,
-    B: Bitmap,
-{
-    pub(crate) fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S, V, B>>> {
-        self.handlers.clone()
-    }
-
+impl<S, V, B: Bitmap> VhostUserHandler<S, V, B> {
     pub(crate) fn send_exit_event(&self) {
         for handler in self.handlers.iter() {
             handler.send_exit_event();
@@ -175,6 +162,17 @@ where
         }
 
         Err(VhostUserHandlerError::MissingMemoryMapping)
+    }
+}
+
+impl<S, V, B> VhostUserHandler<S, V, B>
+where
+    S: VhostUserBackend<V, B>,
+    V: VringT<GM<B>>,
+    B: Bitmap,
+{
+    pub(crate) fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S, V, B>>> {
+        self.handlers.clone()
     }
 
     fn vring_needs_init(&self, vring: &V) -> bool {
@@ -581,12 +579,7 @@ where
     }
 }
 
-impl<S, V, B> Drop for VhostUserHandler<S, V, B>
-where
-    S: VhostUserBackend<V, B>,
-    V: VringT<GM<B>>,
-    B: Bitmap,
-{
+impl<S, V, B: Bitmap> Drop for VhostUserHandler<S, V, B> {
     fn drop(&mut self) {
         // Signal all working threads to exit.
         self.send_exit_event();

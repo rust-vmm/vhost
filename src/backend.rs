@@ -33,9 +33,8 @@ use super::GM;
 
 /// Trait with interior mutability for vhost user backend servers to implement concrete services.
 ///
-/// To support multi-threading and asynchronous IO, we enforce `the Send + Sync + 'static`.
-/// So there's no plan for support of "Rc<T>" and "RefCell<T>".
-pub trait VhostUserBackend<V, B = ()>: Send + Sync + 'static
+/// To support multi-threading and asynchronous IO, we enforce `Send + Sync` bound.
+pub trait VhostUserBackend<V, B = ()>: Send + Sync
 where
     V: VringT<GM<B>>,
     B: Bitmap + 'static,
@@ -118,7 +117,7 @@ where
 }
 
 /// Trait without interior mutability for vhost user backend servers to implement concrete services.
-pub trait VhostUserBackendMut<V, B = ()>: Send + Sync + 'static
+pub trait VhostUserBackendMut<V, B = ()>: Send + Sync
 where
     V: VringT<GM<B>>,
     B: Bitmap + 'static,

@@ -73,12 +73,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///
 /// This structure is the public API the backend is allowed to interact with in order to run
 /// a fully functional vhost-user daemon.
-pub struct VhostUserDaemon<S, V, B = ()>
-where
-    S: VhostUserBackend<V, B>,
-    V: VringT<GM<B>> + Clone + Send + Sync + 'static,
-    B: Bitmap + 'static,
-{
+pub struct VhostUserDaemon<S, V, B: Bitmap + 'static = ()> {
     name: String,
     handler: Arc<Mutex<VhostUserHandler<S, V, B>>>,
     main_thread: Option<thread::JoinHandle<Result<()>>>,
@@ -86,7 +81,7 @@ where
 
 impl<S, V, B> VhostUserDaemon<S, V, B>
 where
-    S: VhostUserBackend<V, B> + Clone,
+    S: VhostUserBackend<V, B> + Clone + 'static,
     V: VringT<GM<B>> + Clone + Send + Sync + 'static,
     B: NewBitmap + Clone + Send + Sync,
 {
@@ -167,6 +162,7 @@ where
     /// This is necessary to perform further actions like registering and unregistering some extra
     /// event file descriptors.
     pub fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S, V, B>>> {
+        // Do not expect poisoned lock.
         self.handler.lock().unwrap().get_epoll_handlers()
     }
 }
