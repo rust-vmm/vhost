@@ -18,9 +18,8 @@
 //! [VhostUserBackend]: trait.VhostUserBackend.html
 //! [VhostUserBackendMut]: trait.VhostUserBackendMut.html
 
-use std::io;
+use std::io::Result;
 use std::ops::Deref;
-use std::result;
 use std::sync::{Arc, Mutex, RwLock};
 
 use vhost::vhost_user::message::VhostUserProtocolFeatures;
@@ -71,12 +70,12 @@ where
     ///
     /// A default implementation is provided as we cannot expect all backends to implement this
     /// function.
-    fn set_config(&self, _offset: u32, _buf: &[u8]) -> result::Result<(), io::Error> {
+    fn set_config(&self, _offset: u32, _buf: &[u8]) -> Result<()> {
         Ok(())
     }
 
     /// Update guest memory regions.
-    fn update_memory(&self, mem: GM<B>) -> result::Result<(), io::Error>;
+    fn update_memory(&self, mem: GM<B>) -> Result<()>;
 
     /// Set handler for communicating with the master by the slave communication channel.
     ///
@@ -115,7 +114,7 @@ where
         evset: EventSet,
         vrings: &[V],
         thread_id: usize,
-    ) -> result::Result<bool, io::Error>;
+    ) -> Result<bool>;
 }
 
 /// Trait without interior mutability for vhost user backend servers to implement concrete services.
@@ -154,12 +153,12 @@ where
     ///
     /// A default implementation is provided as we cannot expect all backends to implement this
     /// function.
-    fn set_config(&mut self, _offset: u32, _buf: &[u8]) -> result::Result<(), io::Error> {
+    fn set_config(&mut self, _offset: u32, _buf: &[u8]) -> Result<()> {
         Ok(())
     }
 
     /// Update guest memory regions.
-    fn update_memory(&mut self, mem: GM<B>) -> result::Result<(), io::Error>;
+    fn update_memory(&mut self, mem: GM<B>) -> Result<()>;
 
     /// Set handler for communicating with the master by the slave communication channel.
     ///
@@ -198,7 +197,7 @@ where
         evset: EventSet,
         vrings: &[V],
         thread_id: usize,
-    ) -> result::Result<bool, io::Error>;
+    ) -> Result<bool>;
 }
 
 impl<T: VhostUserBackend<V, B>, V, B> VhostUserBackend<V, B> for Arc<T>
@@ -234,11 +233,11 @@ where
         self.deref().get_config(offset, size)
     }
 
-    fn set_config(&self, offset: u32, buf: &[u8]) -> Result<(), io::Error> {
+    fn set_config(&self, offset: u32, buf: &[u8]) -> Result<()> {
         self.deref().set_config(offset, buf)
     }
 
-    fn update_memory(&self, mem: GM<B>) -> Result<(), io::Error> {
+    fn update_memory(&self, mem: GM<B>) -> Result<()> {
         self.deref().update_memory(mem)
     }
 
@@ -260,7 +259,7 @@ where
         evset: EventSet,
         vrings: &[V],
         thread_id: usize,
-    ) -> Result<bool, io::Error> {
+    ) -> Result<bool> {
         self.deref()
             .handle_event(device_event, evset, vrings, thread_id)
     }
@@ -299,11 +298,11 @@ where
         self.lock().unwrap().get_config(offset, size)
     }
 
-    fn set_config(&self, offset: u32, buf: &[u8]) -> Result<(), io::Error> {
+    fn set_config(&self, offset: u32, buf: &[u8]) -> Result<()> {
         self.lock().unwrap().set_config(offset, buf)
     }
 
-    fn update_memory(&self, mem: GM<B>) -> Result<(), io::Error> {
+    fn update_memory(&self, mem: GM<B>) -> Result<()> {
         self.lock().unwrap().update_memory(mem)
     }
 
@@ -325,7 +324,7 @@ where
         evset: EventSet,
         vrings: &[V],
         thread_id: usize,
-    ) -> Result<bool, io::Error> {
+    ) -> Result<bool> {
         self.lock()
             .unwrap()
             .handle_event(device_event, evset, vrings, thread_id)
@@ -365,11 +364,11 @@ where
         self.read().unwrap().get_config(offset, size)
     }
 
-    fn set_config(&self, offset: u32, buf: &[u8]) -> Result<(), io::Error> {
+    fn set_config(&self, offset: u32, buf: &[u8]) -> Result<()> {
         self.write().unwrap().set_config(offset, buf)
     }
 
-    fn update_memory(&self, mem: GM<B>) -> Result<(), io::Error> {
+    fn update_memory(&self, mem: GM<B>) -> Result<()> {
         self.write().unwrap().update_memory(mem)
     }
 
@@ -391,7 +390,7 @@ where
         evset: EventSet,
         vrings: &[V],
         thread_id: usize,
-    ) -> Result<bool, io::Error> {
+    ) -> Result<bool> {
         self.write()
             .unwrap()
             .handle_event(device_event, evset, vrings, thread_id)
@@ -402,7 +401,6 @@ where
 pub mod tests {
     use super::*;
     use crate::VringRwLock;
-    use std::io::Error;
     use std::sync::Mutex;
     use vm_memory::{GuestMemoryAtomic, GuestMemoryMmap};
 
@@ -454,7 +452,7 @@ pub mod tests {
             vec![0xa5u8; 8]
         }
 
-        fn set_config(&mut self, offset: u32, buf: &[u8]) -> Result<(), Error> {
+        fn set_config(&mut self, offset: u32, buf: &[u8]) -> Result<()> {
             assert_eq!(offset, 0x200);
             assert_eq!(buf.len(), 8);
             assert_eq!(buf, &[0xa5u8; 8]);
@@ -462,10 +460,7 @@ pub mod tests {
             Ok(())
         }
 
-        fn update_memory(
-            &mut self,
-            _atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>,
-        ) -> Result<(), Error> {
+        fn update_memory(&mut self, _atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>) -> Result<()> {
             Ok(())
         }
 
@@ -487,7 +482,7 @@ pub mod tests {
             _evset: EventSet,
             _vrings: &[VringRwLock],
             _thread_id: usize,
-        ) -> Result<bool, Error> {
+        ) -> Result<bool> {
             self.events += 1;
 
             Ok(false)

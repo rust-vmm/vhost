@@ -4,10 +4,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::fmt::{Display, Formatter};
-use std::io;
+use std::io::{self, Result};
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::result;
 
 use vm_memory::bitmap::Bitmap;
 use vmm_sys_util::epoll::{ControlOperation, Epoll, EpollEvent, EventSet};
@@ -127,12 +126,7 @@ where
     ///
     /// When this event is later triggered, the backend implementation of `handle_event` will be
     /// called.
-    pub fn register_listener(
-        &self,
-        fd: RawFd,
-        ev_type: EventSet,
-        data: u64,
-    ) -> result::Result<(), io::Error> {
+    pub fn register_listener(&self, fd: RawFd, ev_type: EventSet, data: u64) -> Result<()> {
         // `data` range [0...num_queues] is reserved for queues and exit event.
         if data <= self.backend.num_queues() as u64 {
             Err(io::Error::from_raw_os_error(libc::EINVAL))
@@ -145,12 +139,7 @@ where
     ///
     /// If the event is triggered after this function has been called, the event will be silently
     /// dropped.
-    pub fn unregister_listener(
-        &self,
-        fd: RawFd,
-        ev_type: EventSet,
-        data: u64,
-    ) -> result::Result<(), io::Error> {
+    pub fn unregister_listener(&self, fd: RawFd, ev_type: EventSet, data: u64) -> Result<()> {
         // `data` range [0...num_queues] is reserved for queues and exit event.
         if data <= self.backend.num_queues() as u64 {
             Err(io::Error::from_raw_os_error(libc::EINVAL))
@@ -159,22 +148,12 @@ where
         }
     }
 
-    pub(crate) fn register_event(
-        &self,
-        fd: RawFd,
-        ev_type: EventSet,
-        data: u64,
-    ) -> result::Result<(), io::Error> {
+    pub(crate) fn register_event(&self, fd: RawFd, ev_type: EventSet, data: u64) -> Result<()> {
         self.epoll
             .ctl(ControlOperation::Add, fd, EpollEvent::new(ev_type, data))
     }
 
-    pub(crate) fn unregister_event(
-        &self,
-        fd: RawFd,
-        ev_type: EventSet,
-        data: u64,
-    ) -> result::Result<(), io::Error> {
+    pub(crate) fn unregister_event(&self, fd: RawFd, ev_type: EventSet, data: u64) -> Result<()> {
         self.epoll
             .ctl(ControlOperation::Delete, fd, EpollEvent::new(ev_type, data))
     }

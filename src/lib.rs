@@ -9,8 +9,6 @@
 extern crate log;
 
 use std::fmt::{Display, Formatter};
-use std::io;
-use std::result;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -48,7 +46,7 @@ pub enum Error {
     /// Failed creating vhost-user slave handler.
     CreateSlaveReqHandler(VhostUserError),
     /// Failed starting daemon thread.
-    StartDaemon(io::Error),
+    StartDaemon(std::io::Error),
     /// Failed waiting for daemon thread.
     WaitDaemon(std::boxed::Box<dyn std::any::Any + std::marker::Send>),
     /// Failed handling a vhost-user request.
@@ -69,7 +67,7 @@ impl Display for Error {
 }
 
 /// Result of vhost-user daemon operations.
-pub type Result<T> = result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Implement a simple framework to run a vhost-user service daemon.
 ///
