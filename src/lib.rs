@@ -12,7 +12,7 @@ use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use vhost::vhost_user::{Error as VhostUserError, Listener, SlaveListener};
+use vhost::vhost_user::{Error as VhostUserError, Listener, SlaveListener, SlaveReqHandler};
 use vm_memory::bitmap::Bitmap;
 use vm_memory::mmap::NewBitmap;
 use vm_memory::{GuestMemoryAtomic, GuestMemoryMmap};
@@ -116,13 +116,12 @@ where
     ///
     /// This runs in an infinite loop that should be terminating once the other end of the socket
     /// (the VMM) disconnects.
+    // TODO: the current implementation has limitations that only one incoming connection will be
+    // handled from the listener. Should it be enhanced to support reconnection?
     pub fn start(&mut self, listener: Listener) -> Result<()> {
         let mut slave_listener = SlaveListener::new(listener, self.handler.clone())
             .map_err(Error::CreateSlaveListener)?;
-        let mut slave_handler = slave_listener
-            .accept()
-            .map_err(Error::CreateSlaveReqHandler)?
-            .unwrap();
+        let mut slave_handler = self.accept(&mut slave_listener)?;
         let handle = thread::Builder::new()
             .name(self.name.clone())
             .spawn(move || loop {
@@ -135,6 +134,19 @@ where
         self.main_thread = Some(handle);
 
         Ok(())
+    }
+
+    fn accept(
+        &self,
+        slave_listener: &mut SlaveListener<Mutex<VhostUserHandler<S, V, B>>>,
+    ) -> Result<SlaveReqHandler<Mutex<VhostUserHandler<S, V, B>>>> {
+        loop {
+            match slave_listener.accept() {
+                Err(e) => return Err(Error::CreateSlaveListener(e)),
+                Ok(Some(v)) => return Ok(v),
+                Ok(None) => continue,
+            }
+        }
     }
 
     /// Wait for the thread handling the vhost-user socket connection to terminate.
