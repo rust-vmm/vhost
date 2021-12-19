@@ -419,7 +419,7 @@ mod tests {
         master.set_mem_table(&mem).unwrap();
 
         master
-            .set_config(0x100, VhostUserConfigFlags::WRITABLE, &[0xa5u8])
+            .set_config(0x100, VhostUserConfigFlags::WRITABLE, &[0xa5u8; 4])
             .unwrap();
         let buf = [0x0u8; 4];
         let (reply_body, reply_payload) = master
@@ -427,7 +427,7 @@ mod tests {
             .unwrap();
         let offset = reply_body.offset;
         assert_eq!(offset, 0x100);
-        assert_eq!(reply_payload[0], 0xa5);
+        assert_eq!(&reply_payload, &[0xa5; 4]);
 
         master.set_slave_request_fd(&eventfd).unwrap();
         master.set_vring_enable(0, true).unwrap();

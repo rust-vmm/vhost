@@ -634,7 +634,8 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
             None => return Err(Error::InvalidMessage),
         }
 
-        self.backend.set_config(msg.offset, buf, flags)
+        self.backend
+            .set_config(msg.offset, &buf[mem::size_of::<VhostUserConfig>()..], flags)
     }
 
     fn set_slave_req_fd(&mut self, files: Option<Vec<File>>) -> Result<()> {

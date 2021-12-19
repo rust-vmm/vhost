@@ -218,6 +218,8 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
         {
             return Err(Error::InvalidParam);
         }
+        assert_eq!(offset, 0x100);
+        assert_eq!(size, 4);
         Ok(vec![0xa5; size as usize])
     }
 
@@ -231,6 +233,9 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
         {
             return Err(Error::InvalidParam);
         }
+        assert_eq!(offset, 0x100);
+        assert_eq!(buf.len(), 4);
+        assert_eq!(buf, &[0xa5; 4]);
         Ok(())
     }
 
