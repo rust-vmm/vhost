@@ -450,12 +450,12 @@ mod tests {
         let vring = VringMutex::new(mem, 0x1000);
 
         assert!(vring.get_ref().get_kick().is_none());
-        assert_eq!(vring.get_mut().enabled, false);
-        assert_eq!(vring.lock().queue.ready(), false);
-        assert_eq!(vring.lock().queue.state.event_idx_enabled, false);
+        assert!(!vring.get_mut().enabled);
+        assert!(!vring.lock().queue.ready());
+        assert!(!vring.lock().queue.state.event_idx_enabled);
 
         vring.set_enabled(true);
-        assert_eq!(vring.get_ref().enabled, true);
+        assert!(vring.get_ref().enabled);
 
         vring.set_queue_info(0x100100, 0x100200, 0x100300);
         assert_eq!(
@@ -479,10 +479,10 @@ mod tests {
         assert_eq!(vring.lock().queue.state.size, 0x200);
 
         vring.set_queue_event_idx(true);
-        assert_eq!(vring.lock().queue.state.event_idx_enabled, true);
+        assert!(vring.lock().queue.state.event_idx_enabled);
 
         vring.set_queue_ready(true);
-        assert_eq!(vring.lock().queue.ready(), true);
+        assert!(vring.lock().queue.ready());
     }
 
     #[test]
@@ -493,15 +493,15 @@ mod tests {
         let vring = VringMutex::new(mem, 0x1000);
 
         vring.set_enabled(true);
-        assert_eq!(vring.get_ref().enabled, true);
+        assert!(vring.get_ref().enabled);
 
         let eventfd = EventFd::new(0).unwrap();
         let file = unsafe { File::from_raw_fd(eventfd.as_raw_fd()) };
         assert!(vring.get_mut().kick.is_none());
-        assert_eq!(vring.read_kick().unwrap(), true);
+        assert!(vring.read_kick().unwrap());
         vring.set_kick(Some(file));
         eventfd.write(1).unwrap();
-        assert_eq!(vring.read_kick().unwrap(), true);
+        assert!(vring.read_kick().unwrap());
         assert!(vring.get_ref().kick.is_some());
         vring.set_kick(None);
         assert!(vring.get_ref().kick.is_none());

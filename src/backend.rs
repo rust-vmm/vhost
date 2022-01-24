@@ -508,7 +508,7 @@ pub mod tests {
         assert_eq!(backend.lock().unwrap().acked_features, 0xffff);
 
         backend.set_event_idx(true);
-        assert_eq!(backend.lock().unwrap().event_idx, true);
+        assert!(backend.lock().unwrap().event_idx);
 
         let _ = backend.exit_event(0).unwrap();
 
@@ -538,7 +538,7 @@ pub mod tests {
         assert_eq!(backend.read().unwrap().acked_features, 0xffff);
 
         backend.set_event_idx(true);
-        assert_eq!(backend.read().unwrap().event_idx, true);
+        assert!(backend.read().unwrap().event_idx);
 
         let _ = backend.exit_event(0).unwrap();
 
