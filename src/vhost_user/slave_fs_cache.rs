@@ -54,7 +54,7 @@ impl SlaveFsCacheReqInternal {
         }
 
         let (reply, body, rfds) = self.sock.recv_body::<VhostUserU64>()?;
-        if !reply.is_reply_for(&hdr) || rfds.is_some() || !body.is_valid() {
+        if !reply.is_reply_for(hdr) || rfds.is_some() || !body.is_valid() {
             return Err(Error::InvalidMessage);
         }
         if body.value != 0 {

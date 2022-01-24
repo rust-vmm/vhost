@@ -643,7 +643,7 @@ impl MasterInternal {
         if len > MAX_MSG_SIZE {
             return Err(VhostUserError::InvalidParam);
         }
-        if let Some(ref fd_arr) = fds {
+        if let Some(fd_arr) = fds {
             if fd_arr.len() > MAX_ATTACHED_FD_ENTRIES {
                 return Err(VhostUserError::InvalidParam);
             }
@@ -686,7 +686,7 @@ impl MasterInternal {
         self.check_state()?;
 
         let (reply, body, rfds) = self.main_sock.recv_body::<T>()?;
-        if !reply.is_reply_for(&hdr) || rfds.is_some() || !body.is_valid() {
+        if !reply.is_reply_for(hdr) || rfds.is_some() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
         Ok(body)
@@ -702,7 +702,7 @@ impl MasterInternal {
         self.check_state()?;
 
         let (reply, body, files) = self.main_sock.recv_body::<T>()?;
-        if !reply.is_reply_for(&hdr) || files.is_none() || !body.is_valid() {
+        if !reply.is_reply_for(hdr) || files.is_none() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
         Ok((body, files))
@@ -744,7 +744,7 @@ impl MasterInternal {
         self.check_state()?;
 
         let (reply, body, rfds) = self.main_sock.recv_body::<VhostUserU64>()?;
-        if !reply.is_reply_for(&hdr) || rfds.is_some() || !body.is_valid() {
+        if !reply.is_reply_for(hdr) || rfds.is_some() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
         if body.value != 0 {
