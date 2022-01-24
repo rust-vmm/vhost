@@ -254,13 +254,13 @@ mod tests {
         let path = temp_path();
         let (master, mut slave) = create_slave(&path, slave_be.clone());
 
-        assert_eq!(slave_be.lock().unwrap().owned, false);
+        assert!(!slave_be.lock().unwrap().owned);
         master.set_owner().unwrap();
         slave.handle_request().unwrap();
-        assert_eq!(slave_be.lock().unwrap().owned, true);
+        assert!(slave_be.lock().unwrap().owned);
         master.set_owner().unwrap();
         assert!(slave.handle_request().is_err());
-        assert_eq!(slave_be.lock().unwrap().owned, true);
+        assert!(slave_be.lock().unwrap().owned);
     }
 
     #[test]
@@ -273,7 +273,7 @@ mod tests {
 
         thread::spawn(move || {
             slave.handle_request().unwrap();
-            assert_eq!(slave_be.lock().unwrap().owned, true);
+            assert!(slave_be.lock().unwrap().owned);
 
             slave.handle_request().unwrap();
             slave.handle_request().unwrap();
@@ -318,7 +318,7 @@ mod tests {
         thread::spawn(move || {
             // set_own()
             slave.handle_request().unwrap();
-            assert_eq!(slave_be.lock().unwrap().owned, true);
+            assert!(slave_be.lock().unwrap().owned);
 
             // get/set_features()
             slave.handle_request().unwrap();
@@ -486,15 +486,15 @@ mod tests {
 
     #[test]
     fn test_should_reconnect() {
-        assert_eq!(Error::PartialMessage.should_reconnect(), true);
-        assert_eq!(Error::SlaveInternalError.should_reconnect(), true);
-        assert_eq!(Error::MasterInternalError.should_reconnect(), true);
-        assert_eq!(Error::InvalidParam.should_reconnect(), false);
-        assert_eq!(Error::InvalidOperation.should_reconnect(), false);
-        assert_eq!(Error::InvalidMessage.should_reconnect(), false);
-        assert_eq!(Error::IncorrectFds.should_reconnect(), false);
-        assert_eq!(Error::OversizedMsg.should_reconnect(), false);
-        assert_eq!(Error::FeatureMismatch.should_reconnect(), false);
+        assert!(Error::PartialMessage.should_reconnect());
+        assert!(Error::SlaveInternalError.should_reconnect());
+        assert!(Error::MasterInternalError.should_reconnect());
+        assert!(!Error::InvalidParam.should_reconnect());
+        assert!(!Error::InvalidOperation.should_reconnect());
+        assert!(!Error::InvalidMessage.should_reconnect());
+        assert!(!Error::IncorrectFds.should_reconnect());
+        assert!(!Error::OversizedMsg.should_reconnect());
+        assert!(!Error::FeatureMismatch.should_reconnect());
     }
 
     #[test]

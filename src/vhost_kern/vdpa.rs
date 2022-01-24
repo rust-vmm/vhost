@@ -261,14 +261,14 @@ mod tests {
             avail_ring_addr: 0x3000,
             log_addr: None,
         };
-        assert_eq!(vdpa.is_valid(&config), true);
+        assert!(vdpa.is_valid(&config));
 
         config.queue_size = 0;
-        assert_eq!(vdpa.is_valid(&config), false);
+        assert!(!vdpa.is_valid(&config));
         config.queue_size = 31;
-        assert_eq!(vdpa.is_valid(&config), false);
+        assert!(!vdpa.is_valid(&config));
         config.queue_size = 33;
-        assert_eq!(vdpa.is_valid(&config), false);
+        assert!(!vdpa.is_valid(&config));
     }
 
     #[test]

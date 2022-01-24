@@ -101,14 +101,14 @@ mod tests {
             avail_ring_addr: 0x3000,
             log_addr: None,
         };
-        assert_eq!(net.is_valid(&config), true);
+        assert!(net.is_valid(&config));
 
         config.queue_size = 0;
-        assert_eq!(net.is_valid(&config), false);
+        assert!(!net.is_valid(&config));
         config.queue_size = 31;
-        assert_eq!(net.is_valid(&config), false);
+        assert!(!net.is_valid(&config));
         config.queue_size = 33;
-        assert_eq!(net.is_valid(&config), false);
+        assert!(!net.is_valid(&config));
     }
 
     #[test]
