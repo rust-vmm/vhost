@@ -226,6 +226,12 @@ where
     }
 }
 
+impl<S, V, B> AsRawFd for VringEpollHandler<S, V, B> {
+    fn as_raw_fd(&self) -> RawFd {
+        self.epoll.as_raw_fd()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::backend::tests::MockVhostBackend;
@@ -269,5 +275,7 @@ mod tests {
         handler
             .unregister_listener(eventfd.as_raw_fd(), EventSet::IN, 1)
             .unwrap_err();
+        // Check we retrieve the correct file descriptor
+        assert_eq!(handler.as_raw_fd(), handler.epoll.as_raw_fd());
     }
 }
