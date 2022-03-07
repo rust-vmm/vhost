@@ -1,6 +1,6 @@
 [package]
 name = "vhost-user-backend"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["The Cloud Hypervisor Authors"]
 keywords = ["vhost-user", "virtio"]
 description = "A framework to build vhost-user backend service daemon"
