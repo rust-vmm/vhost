@@ -17,7 +17,7 @@ use vmm_sys_util::ioctl::{ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
 use super::vhost_binding::*;
 use super::{ioctl_result, Error, Result, VhostKernBackend, VhostKernFeatures};
 use crate::vdpa::*;
-use crate::{VhostAccess, VhostIotlbBackend, VhostIotlbMsg, VhostIotlbType};
+use crate::{VhostAccess, VhostIotlbBackend, VhostIotlbMsg, VhostIotlbType, VringConfigData};
 
 // Implement the FamStruct trait for vhost_vdpa_config
 generate_fam_struct_impl!(
@@ -181,6 +181,24 @@ impl<AS: GuestAddressSpace> VhostKernBackend for VhostKernVdpa<AS> {
 
     fn mem(&self) -> &Self::AS {
         &self.mem
+    }
+
+    /// Check whether the ring configuration is valid.
+    fn is_valid(&self, config_data: &VringConfigData) -> bool {
+        let queue_size = config_data.queue_size;
+        if queue_size > config_data.queue_max_size
+            || queue_size == 0
+            || (queue_size & (queue_size - 1)) != 0
+        {
+            return false;
+        }
+
+        // Since vDPA could be dealing with IOVAs corresponding to GVAs, it
+        // wouldn't make sense to go through the validation of the descriptor
+        // table address, available ring address and used ring address against
+        // the guest memory representation we have access to.
+
+        config_data.is_log_addr_valid()
     }
 }
 
