@@ -139,7 +139,7 @@ impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
         let mut low_iova_range = vhost_vdpa_iova_range { first: 0, last: 0 };
 
         let ret =
-            unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_VRING_NUM(), &mut low_iova_range) };
+            unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_IOVA_RANGE(), &mut low_iova_range) };
 
         let iova_range = VhostVdpaIovaRange {
             first: low_iova_range.first,
@@ -364,6 +364,11 @@ mod tests {
         vdpa.set_backend_features(backend_features).unwrap();
 
         vdpa.set_owner().unwrap();
+
+        let iova_range = vdpa.get_iova_range().unwrap();
+        // vDPA-block simulator returns [0, u64::MAX] range
+        assert_eq!(iova_range.first, 0);
+        assert_eq!(iova_range.last, u64::MAX);
 
         vdpa.dma_map(0xFFFF_0000, 0xFFFF, std::ptr::null::<u8>(), false)
             .unwrap_err();
