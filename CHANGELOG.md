@@ -9,6 +9,16 @@
 
 ### Deprecated
 
+## [v0.4.0]
+
+### Added
+- [[#109]](https://github.com/rust-vmm/vhost/pull/109) vhost_kern: vdpa: Override the implementation of valid()
+
+### Fixed
+- [[#102]](https://github.com/rust-vmm/vhost/pull/102) Fix warnings and update test coverage
+- [[#104]](https://github.com/rust-vmm/vhost/pull/104) fix CODEOWNERS file
+- [[#107]](https://github.com/rust-vmm/vhost/pull/107) vhost_kern/vdpa: fix get_iova_range()
+
 ## [v0.3.0]
 
 ### Added
