@@ -10,7 +10,7 @@ license = "Apache-2.0"
 [dependencies]
 libc = ">=0.2.39"
 log = ">=0.4.6"
-vhost = { version = "0.3", features = ["vhost-user-slave"] }
+vhost = { version = "0.4", features = ["vhost-user-slave"] }
 virtio-bindings = "0.1"
 virtio-queue = "0.2"
 vm-memory = {version = "0.7", features = ["backend-mmap", "backend-atomic"]}
@@ -18,6 +18,6 @@ vmm-sys-util = "0.9"
 
 [dev-dependencies]
 nix = "0.23"
-vhost = { version = "0.3", features = ["vhost-user-master", "vhost-user-slave"] }
+vhost = { version = "0.4", features = ["vhost-user-master", "vhost-user-slave"] }
 vm-memory = {version = "0.7", features = ["backend-mmap", "backend-atomic", "backend-bitmap"]}
 tempfile = "3.2.0"
