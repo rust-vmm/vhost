@@ -3,9 +3,17 @@
 
 ### Added
 
+### Changed
+
 ### Fixed
 
 ### Deprecated
+
+## v0.3.0
+
+### Changed
+
+- Moved to rust-vmm/vhost v0.4.0
 
 ## v0.2.0
 
