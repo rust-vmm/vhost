@@ -9,6 +9,13 @@
 
 ### Deprecated
 
+## v0.4.0
+
+### Changed
+
+- Moved to rust-vmm/virtio-queue v0.3.0
+- Relaxed rust-vmm/vm-memory dependency to require ">=0.7"
+
 ## v0.3.0
 
 ### Changed
