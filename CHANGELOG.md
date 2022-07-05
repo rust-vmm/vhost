@@ -9,6 +9,12 @@
 
 ### Deprecated
 
+## v0.5.0
+
+### Changed
+
+- Moved to rust-vmm/virtio-queue v0.4.0
+
 ## v0.4.0
 
 ### Changed
