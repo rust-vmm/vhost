@@ -55,7 +55,7 @@ pub mod vsock;
 #[derive(Debug)]
 pub enum Error {
     /// Invalid operations.
-    InvalidOperation,
+    InvalidOperation(&'static str),
     /// Invalid guest memory.
     InvalidGuestMemory,
     /// Invalid guest memory region.
@@ -88,7 +88,7 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Error::InvalidOperation => write!(f, "invalid vhost operations"),
+            Error::InvalidOperation(s) => write!(f, "invalid vhost operations: {}", s),
             Error::InvalidGuestMemory => write!(f, "invalid guest memory object"),
             Error::InvalidGuestMemoryRegion => write!(f, "invalid guest memory region"),
             Error::InvalidIotlbMsg => write!(f, "invalid IOTLB message"),
@@ -133,8 +133,8 @@ mod tests {
             "invalid virtqueue available table address"
         );
         assert_eq!(
-            format!("{}", Error::InvalidOperation),
-            "invalid vhost operations"
+            format!("{}", Error::InvalidOperation("reason")),
+            "invalid vhost operations: reason"
         );
         assert_eq!(
             format!("{}", Error::InvalidGuestMemory),
