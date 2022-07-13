@@ -3,7 +3,7 @@
 
 //! Define communication messages for the vhost-user protocol.
 //!
-//! For message definition, please refer to the [vhost-user spec](https://github.com/qemu/qemu/blob/f7526eece29cd2e36a63b6703508b24453095eb8/docs/interop/vhost-user.txt).
+//! For message definition, please refer to the [vhost-user spec](https://qemu.readthedocs.io/en/latest/interop/vhost-user.html).
 
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
