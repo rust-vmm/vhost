@@ -380,7 +380,9 @@ impl VhostUserMaster for Master {
         let mut node = self.node();
         // set_vring_enable() is supported only when PROTOCOL_FEATURES has been enabled.
         if node.acked_virtio_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() == 0 {
-            return error_code(VhostUserError::InvalidOperation);
+            return error_code(VhostUserError::InactiveFeature(
+                VhostUserVirtioFeatures::PROTOCOL_FEATURES,
+            ));
         } else if queue_index as u64 >= node.max_queue_num {
             return error_code(VhostUserError::InvalidParam);
         }
@@ -730,7 +732,7 @@ impl MasterInternal {
         if self.virtio_features & feat.bits() != 0 {
             Ok(())
         } else {
-            Err(VhostUserError::InvalidOperation)
+            Err(VhostUserError::InactiveFeature(feat))
         }
     }
 
@@ -738,7 +740,7 @@ impl MasterInternal {
         if self.acked_protocol_features & feat.bits() != 0 {
             Ok(())
         } else {
-            Err(VhostUserError::InvalidOperation)
+            Err(VhostUserError::InactiveOperation(feat))
         }
     }
 

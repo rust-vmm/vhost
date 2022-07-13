@@ -41,7 +41,7 @@ impl DummySlaveReqHandler {
         if self.acked_features & feat.bits() != 0 {
             Ok(())
         } else {
-            Err(Error::InvalidOperation)
+            Err(Error::InactiveFeature(feat))
         }
     }
 
@@ -50,7 +50,7 @@ impl DummySlaveReqHandler {
         if self.acked_protocol_features & feat.bits() != 0 {
             Ok(())
         } else {
-            Err(Error::InvalidOperation)
+            Err(Error::InactiveOperation(feat))
         }
     }
 }
@@ -58,7 +58,7 @@ impl DummySlaveReqHandler {
 impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     fn set_owner(&mut self) -> Result<()> {
         if self.owned {
-            return Err(Error::InvalidOperation);
+            return Err(Error::InvalidOperation("already claimed"));
         }
         self.owned = true;
         Ok(())
@@ -77,8 +77,10 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     }
 
     fn set_features(&mut self, features: u64) -> Result<()> {
-        if !self.owned || self.features_acked {
-            return Err(Error::InvalidOperation);
+        if !self.owned {
+            return Err(Error::InvalidOperation("not owned"));
+        } else if self.features_acked {
+            return Err(Error::InvalidOperation("features already set"));
         } else if (features & !VIRTIO_FEATURES) != 0 {
             return Err(Error::InvalidParam);
         }
