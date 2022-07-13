@@ -22,6 +22,7 @@ use std::fs::File;
 use std::io::Error as IOError;
 
 pub mod message;
+pub use self::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 mod connection;
 pub use self::connection::Listener;
@@ -57,8 +58,12 @@ pub use self::slave_fs_cache::SlaveFsCacheReq;
 pub enum Error {
     /// Invalid parameters.
     InvalidParam,
+    /// Invalid operation due to some reason
+    InvalidOperation(&'static str),
+    /// Unsupported operation due to missing feature
+    InactiveFeature(VhostUserVirtioFeatures),
     /// Unsupported operations due to that the protocol feature hasn't been negotiated.
-    InvalidOperation,
+    InactiveOperation(VhostUserProtocolFeatures),
     /// Invalid message format, flag or content.
     InvalidMessage,
     /// Only part of a message have been sent or received successfully
@@ -95,7 +100,11 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Error::InvalidParam => write!(f, "invalid parameters"),
-            Error::InvalidOperation => write!(f, "invalid operation"),
+            Error::InvalidOperation(reason) => write!(f, "invalid operation: {}", reason),
+            Error::InactiveFeature(bits) => write!(f, "inactive feature: {}", bits.bits()),
+            Error::InactiveOperation(bits) => {
+                write!(f, "inactive protocol operation: {}", bits.bits())
+            }
             Error::InvalidMessage => write!(f, "invalid message"),
             Error::PartialMessage => write!(f, "partial message"),
             Error::OversizedMsg => write!(f, "oversized message"),
@@ -138,7 +147,8 @@ impl Error {
             Error::MasterInternalError => true,
             // Should just retry the IO operation instead of rebuilding the underline connection.
             Error::SocketRetry(_) => false,
-            Error::InvalidParam | Error::InvalidOperation => false,
+            Error::InvalidParam | Error::InvalidOperation(_) => false,
+            Error::InactiveFeature(_) | Error::InactiveOperation(_) => false,
             Error::InvalidMessage | Error::IncorrectFds | Error::OversizedMsg => false,
             Error::SocketError(_) | Error::SocketConnect(_) => false,
             Error::FeatureMismatch => false,
@@ -481,7 +491,10 @@ mod tests {
     #[test]
     fn test_error_display() {
         assert_eq!(format!("{}", Error::InvalidParam), "invalid parameters");
-        assert_eq!(format!("{}", Error::InvalidOperation), "invalid operation");
+        assert_eq!(
+            format!("{}", Error::InvalidOperation("reason")),
+            "invalid operation: reason"
+        );
     }
 
     #[test]
@@ -490,7 +503,11 @@ mod tests {
         assert!(Error::SlaveInternalError.should_reconnect());
         assert!(Error::MasterInternalError.should_reconnect());
         assert!(!Error::InvalidParam.should_reconnect());
-        assert!(!Error::InvalidOperation.should_reconnect());
+        assert!(!Error::InvalidOperation("reason").should_reconnect());
+        assert!(
+            !Error::InactiveFeature(VhostUserVirtioFeatures::PROTOCOL_FEATURES).should_reconnect()
+        );
+        assert!(!Error::InactiveOperation(VhostUserProtocolFeatures::all()).should_reconnect());
         assert!(!Error::InvalidMessage.should_reconnect());
         assert!(!Error::IncorrectFds.should_reconnect());
         assert!(!Error::OversizedMsg.should_reconnect());

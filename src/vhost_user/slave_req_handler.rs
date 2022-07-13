@@ -273,7 +273,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         if self.acked_virtio_features & feat.bits() != 0 {
             Ok(())
         } else {
-            Err(Error::InvalidOperation)
+            Err(Error::InactiveFeature(feat))
         }
     }
 
@@ -281,7 +281,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         if self.acked_protocol_features & feat.bits() != 0 {
             Ok(())
         } else {
-            Err(Error::InvalidOperation)
+            Err(Error::InactiveOperation(feat))
         }
     }
 
