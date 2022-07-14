@@ -269,6 +269,22 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         }
     }
 
+    fn check_feature(&self, feat: VhostUserVirtioFeatures) -> Result<()> {
+        if self.acked_virtio_features & feat.bits() != 0 {
+            Ok(())
+        } else {
+            Err(Error::InvalidOperation)
+        }
+    }
+
+    fn check_proto_feature(&self, feat: VhostUserProtocolFeatures) -> Result<()> {
+        if self.acked_protocol_features & feat.bits() != 0 {
+            Ok(())
+        } else {
+            Err(Error::InvalidOperation)
+        }
+    }
+
     /// Create a vhost-user slave endpoint from a connected socket.
     pub fn from_stream(socket: UnixStream, backend: Arc<S>) -> Self {
         Self::new(Endpoint::from_stream(socket), backend)
@@ -416,9 +432,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 self.send_ack_message(&hdr, res)?;
             }
             MasterReq::GET_QUEUE_NUM => {
-                if self.acked_protocol_features & VhostUserProtocolFeatures::MQ.bits() == 0 {
-                    return Err(Error::InvalidOperation);
-                }
+                self.check_proto_feature(VhostUserProtocolFeatures::MQ)?;
                 self.check_request_size(&hdr, size, 0)?;
                 let num = self.backend.get_queue_num()?;
                 let msg = VhostUserU64::new(num);
@@ -426,11 +440,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
             }
             MasterReq::SET_VRING_ENABLE => {
                 let msg = self.extract_request_body::<VhostUserVringState>(&hdr, size, &buf)?;
-                if self.acked_virtio_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits()
-                    == 0
-                {
-                    return Err(Error::InvalidOperation);
-                }
+                self.check_feature(VhostUserVirtioFeatures::PROTOCOL_FEATURES)?;
                 let enable = match msg.num {
                     1 => true,
                     0 => false,
@@ -441,34 +451,24 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 self.send_ack_message(&hdr, res)?;
             }
             MasterReq::GET_CONFIG => {
-                if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
-                    return Err(Error::InvalidOperation);
-                }
+                self.check_proto_feature(VhostUserProtocolFeatures::CONFIG)?;
                 self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
                 self.get_config(&hdr, &buf)?;
             }
             MasterReq::SET_CONFIG => {
-                if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
-                    return Err(Error::InvalidOperation);
-                }
+                self.check_proto_feature(VhostUserProtocolFeatures::CONFIG)?;
                 self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
                 let res = self.set_config(size, &buf);
                 self.send_ack_message(&hdr, res)?;
             }
             MasterReq::SET_SLAVE_REQ_FD => {
-                if self.acked_protocol_features & VhostUserProtocolFeatures::SLAVE_REQ.bits() == 0 {
-                    return Err(Error::InvalidOperation);
-                }
+                self.check_proto_feature(VhostUserProtocolFeatures::SLAVE_REQ)?;
                 self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
                 let res = self.set_slave_req_fd(files);
                 self.send_ack_message(&hdr, res)?;
             }
             MasterReq::GET_INFLIGHT_FD => {
-                if self.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits()
-                    == 0
-                {
-                    return Err(Error::InvalidOperation);
-                }
+                self.check_proto_feature(VhostUserProtocolFeatures::INFLIGHT_SHMFD)?;
 
                 let msg = self.extract_request_body::<VhostUserInflight>(&hdr, size, &buf)?;
                 let (inflight, file) = self.backend.get_inflight_fd(&msg)?;
@@ -477,35 +477,21 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                     .send_message(&reply_hdr, &inflight, Some(&[file.as_raw_fd()]))?;
             }
             MasterReq::SET_INFLIGHT_FD => {
-                if self.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits()
-                    == 0
-                {
-                    return Err(Error::InvalidOperation);
-                }
+                self.check_proto_feature(VhostUserProtocolFeatures::INFLIGHT_SHMFD)?;
                 let file = take_single_file(files).ok_or(Error::IncorrectFds)?;
                 let msg = self.extract_request_body::<VhostUserInflight>(&hdr, size, &buf)?;
                 let res = self.backend.set_inflight_fd(&msg, file);
                 self.send_ack_message(&hdr, res)?;
             }
             MasterReq::GET_MAX_MEM_SLOTS => {
-                if self.acked_protocol_features
-                    & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits()
-                    == 0
-                {
-                    return Err(Error::InvalidOperation);
-                }
+                self.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
                 self.check_request_size(&hdr, size, 0)?;
                 let num = self.backend.get_max_mem_slots()?;
                 let msg = VhostUserU64::new(num);
                 self.send_reply_message(&hdr, &msg)?;
             }
             MasterReq::ADD_MEM_REG => {
-                if self.acked_protocol_features
-                    & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits()
-                    == 0
-                {
-                    return Err(Error::InvalidOperation);
-                }
+                self.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
                 let mut files = files.ok_or(Error::InvalidParam)?;
                 if files.len() != 1 {
                     return Err(Error::InvalidParam);
@@ -516,12 +502,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 self.send_ack_message(&hdr, res)?;
             }
             MasterReq::REM_MEM_REG => {
-                if self.acked_protocol_features
-                    & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits()
-                    == 0
-                {
-                    return Err(Error::InvalidOperation);
-                }
+                self.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
 
                 let msg =
                     self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;

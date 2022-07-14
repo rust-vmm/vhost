@@ -35,6 +35,24 @@ impl DummySlaveReqHandler {
             ..Default::default()
         }
     }
+
+    /// Helper to check if VirtioFeature enabled
+    fn check_feature(&self, feat: VhostUserVirtioFeatures) -> Result<()> {
+        if self.acked_features & feat.bits() != 0 {
+            Ok(())
+        } else {
+            Err(Error::InvalidOperation)
+        }
+    }
+
+    /// Helper to check is VhostUserProtocolFeatures enabled
+    fn check_proto_feature(&self, feat: VhostUserProtocolFeatures) -> Result<()> {
+        if self.acked_protocol_features & feat.bits() != 0 {
+            Ok(())
+        } else {
+            Err(Error::InvalidOperation)
+        }
+    }
 }
 
 impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
@@ -190,9 +208,9 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     fn set_vring_enable(&mut self, index: u32, enable: bool) -> Result<()> {
         // This request should be handled only when VHOST_USER_F_PROTOCOL_FEATURES
         // has been negotiated.
-        if self.acked_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() == 0 {
-            return Err(Error::InvalidOperation);
-        } else if index as usize >= self.queue_num || index as usize > self.queue_num {
+        self.check_feature(VhostUserVirtioFeatures::PROTOCOL_FEATURES)?;
+
+        if index as usize >= self.queue_num || index as usize > self.queue_num {
             return Err(Error::InvalidParam);
         }
 
@@ -210,9 +228,9 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
         size: u32,
         _flags: VhostUserConfigFlags,
     ) -> Result<Vec<u8>> {
-        if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
-            return Err(Error::InvalidOperation);
-        } else if !(VHOST_USER_CONFIG_OFFSET..VHOST_USER_CONFIG_SIZE).contains(&offset)
+        self.check_proto_feature(VhostUserProtocolFeatures::CONFIG)?;
+
+        if !(VHOST_USER_CONFIG_OFFSET..VHOST_USER_CONFIG_SIZE).contains(&offset)
             || size > VHOST_USER_CONFIG_SIZE - VHOST_USER_CONFIG_OFFSET
             || size + offset > VHOST_USER_CONFIG_SIZE
         {
@@ -225,9 +243,9 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
 
     fn set_config(&mut self, offset: u32, buf: &[u8], _flags: VhostUserConfigFlags) -> Result<()> {
         let size = buf.len() as u32;
-        if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
-            return Err(Error::InvalidOperation);
-        } else if !(VHOST_USER_CONFIG_OFFSET..VHOST_USER_CONFIG_SIZE).contains(&offset)
+        self.check_proto_feature(VhostUserProtocolFeatures::CONFIG)?;
+
+        if !(VHOST_USER_CONFIG_OFFSET..VHOST_USER_CONFIG_SIZE).contains(&offset)
             || size > VHOST_USER_CONFIG_SIZE - VHOST_USER_CONFIG_OFFSET
             || size + offset > VHOST_USER_CONFIG_SIZE
         {

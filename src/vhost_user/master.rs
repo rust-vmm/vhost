@@ -339,10 +339,7 @@ impl VhostBackend for Master {
 impl VhostUserMaster for Master {
     fn get_protocol_features(&mut self) -> Result<VhostUserProtocolFeatures> {
         let mut node = self.node();
-        let flag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-        if node.virtio_features & flag == 0 {
-            return error_code(VhostUserError::InvalidOperation);
-        }
+        node.check_feature(VhostUserVirtioFeatures::PROTOCOL_FEATURES)?;
         let hdr = node.send_request_header(MasterReq::GET_PROTOCOL_FEATURES, None)?;
         let val = node.recv_reply::<VhostUserU64>(&hdr)?;
         node.protocol_features = val.value;
@@ -356,10 +353,7 @@ impl VhostUserMaster for Master {
 
     fn set_protocol_features(&mut self, features: VhostUserProtocolFeatures) -> Result<()> {
         let mut node = self.node();
-        let flag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-        if node.virtio_features & flag == 0 {
-            return error_code(VhostUserError::InvalidOperation);
-        }
+        node.check_feature(VhostUserVirtioFeatures::PROTOCOL_FEATURES)?;
         let val = VhostUserU64::new(features.bits());
         let hdr = node.send_request_with_body(MasterReq::SET_PROTOCOL_FEATURES, &val, None)?;
         // Don't wait for ACK here because the protocol feature negotiation process hasn't been
@@ -371,9 +365,7 @@ impl VhostUserMaster for Master {
 
     fn get_queue_num(&mut self) -> Result<u64> {
         let mut node = self.node();
-        if !node.is_feature_mq_available() {
-            return error_code(VhostUserError::InvalidOperation);
-        }
+        node.check_proto_feature(VhostUserProtocolFeatures::MQ)?;
 
         let hdr = node.send_request_header(MasterReq::GET_QUEUE_NUM, None)?;
         let val = node.recv_reply::<VhostUserU64>(&hdr)?;
@@ -413,9 +405,7 @@ impl VhostUserMaster for Master {
 
         let mut node = self.node();
         // depends on VhostUserProtocolFeatures::CONFIG
-        if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
-            return error_code(VhostUserError::InvalidOperation);
-        }
+        node.check_proto_feature(VhostUserProtocolFeatures::CONFIG)?;
 
         // vhost-user spec states that:
         // "Master payload: virtio device config space"
@@ -448,9 +438,7 @@ impl VhostUserMaster for Master {
 
         let mut node = self.node();
         // depends on VhostUserProtocolFeatures::CONFIG
-        if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
-            return error_code(VhostUserError::InvalidOperation);
-        }
+        node.check_proto_feature(VhostUserProtocolFeatures::CONFIG)?;
 
         let hdr = node.send_request_with_payload(MasterReq::SET_CONFIG, &body, buf, None)?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
@@ -458,9 +446,7 @@ impl VhostUserMaster for Master {
 
     fn set_slave_request_fd(&mut self, fd: &dyn AsRawFd) -> Result<()> {
         let mut node = self.node();
-        if node.acked_protocol_features & VhostUserProtocolFeatures::SLAVE_REQ.bits() == 0 {
-            return error_code(VhostUserError::InvalidOperation);
-        }
+        node.check_proto_feature(VhostUserProtocolFeatures::SLAVE_REQ)?;
         let fds = [fd.as_raw_fd()];
         let hdr = node.send_request_header(MasterReq::SET_SLAVE_REQ_FD, Some(&fds))?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
@@ -471,9 +457,7 @@ impl VhostUserMaster for Master {
         inflight: &VhostUserInflight,
     ) -> Result<(VhostUserInflight, File)> {
         let mut node = self.node();
-        if node.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits() == 0 {
-            return error_code(VhostUserError::InvalidOperation);
-        }
+        node.check_proto_feature(VhostUserProtocolFeatures::INFLIGHT_SHMFD)?;
 
         let hdr = node.send_request_with_body(MasterReq::GET_INFLIGHT_FD, inflight, None)?;
         let (inflight, files) = node.recv_reply_with_files::<VhostUserInflight>(&hdr)?;
@@ -486,9 +470,7 @@ impl VhostUserMaster for Master {
 
     fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, fd: RawFd) -> Result<()> {
         let mut node = self.node();
-        if node.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits() == 0 {
-            return error_code(VhostUserError::InvalidOperation);
-        }
+        node.check_proto_feature(VhostUserProtocolFeatures::INFLIGHT_SHMFD)?;
 
         if inflight.mmap_size == 0 || inflight.num_queues == 0 || inflight.queue_size == 0 || fd < 0
         {
@@ -501,10 +483,7 @@ impl VhostUserMaster for Master {
 
     fn get_max_mem_slots(&mut self) -> Result<u64> {
         let mut node = self.node();
-        if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
-        {
-            return error_code(VhostUserError::InvalidOperation);
-        }
+        node.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
 
         let hdr = node.send_request_header(MasterReq::GET_MAX_MEM_SLOTS, None)?;
         let val = node.recv_reply::<VhostUserU64>(&hdr)?;
@@ -514,10 +493,7 @@ impl VhostUserMaster for Master {
 
     fn add_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()> {
         let mut node = self.node();
-        if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
-        {
-            return error_code(VhostUserError::InvalidOperation);
-        }
+        node.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
         if region.memory_size == 0 || region.mmap_handle < 0 {
             return error_code(VhostUserError::InvalidParam);
         }
@@ -535,10 +511,7 @@ impl VhostUserMaster for Master {
 
     fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()> {
         let mut node = self.node();
-        if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
-        {
-            return error_code(VhostUserError::InvalidOperation);
-        }
+        node.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
         if region.memory_size == 0 {
             return error_code(VhostUserError::InvalidParam);
         }
@@ -753,8 +726,20 @@ impl MasterInternal {
         Ok(())
     }
 
-    fn is_feature_mq_available(&self) -> bool {
-        self.acked_protocol_features & VhostUserProtocolFeatures::MQ.bits() != 0
+    fn check_feature(&self, feat: VhostUserVirtioFeatures) -> VhostUserResult<()> {
+        if self.virtio_features & feat.bits() != 0 {
+            Ok(())
+        } else {
+            Err(VhostUserError::InvalidOperation)
+        }
+    }
+
+    fn check_proto_feature(&self, feat: VhostUserProtocolFeatures) -> VhostUserResult<()> {
+        if self.acked_protocol_features & feat.bits() != 0 {
+            Ok(())
+        } else {
+            Err(VhostUserError::InvalidOperation)
+        }
     }
 
     fn check_state(&self) -> VhostUserResult<()> {
