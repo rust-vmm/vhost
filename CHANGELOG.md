@@ -9,6 +9,11 @@
 
 ### Deprecated
 
+## v0.5.1
+
+### Changed
+- Moved to rust-vmm/vmm-sys-util 0.10.0
+
 ## v0.5.0
 
 ### Changed
