@@ -179,14 +179,11 @@ where
         let vring_state = vring.get_ref();
 
         // If the vring wasn't initialized and we already have an EventFd for
-        // both VRING_KICK and VRING_CALL, initialize it now.
-        !vring_state.get_queue().ready()
-            && vring_state.get_call().is_some()
-            && vring_state.get_kick().is_some()
+        // VRING_KICK, initialize it now.
+        !vring_state.get_queue().ready() && vring_state.get_kick().is_some()
     }
 
     fn initialize_vring(&self, vring: &V, index: u8) -> VhostUserResult<()> {
-        assert!(vring.get_ref().get_call().is_some());
         assert!(vring.get_ref().get_kick().is_some());
 
         if let Some(fd) = vring.get_ref().get_kick() {
