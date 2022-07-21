@@ -12,7 +12,7 @@ use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::result::Result;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use virtio_queue::{Error as VirtQueError, Queue};
+use virtio_queue::{Error as VirtQueError, Queue, QueueT};
 use vm_memory::{GuestAddress, GuestAddressSpace, GuestMemoryAtomic, GuestMemoryMmap};
 use vmm_sys_util::eventfd::EventFd;
 
@@ -32,7 +32,9 @@ pub trait VringT<M: GuestAddressSpace>:
     for<'a> VringStateGuard<'a, M> + for<'a> VringStateMutGuard<'a, M>
 {
     /// Create a new instance of Vring.
-    fn new(mem: M, max_queue_size: u16) -> Self;
+    fn new(mem: M, max_queue_size: u16) -> Result<Self, VirtQueError>
+    where
+        Self: Sized;
 
     /// Get an immutable reference to the kick event fd.
     fn get_ref(&self) -> <Self as VringStateGuard<M>>::G;
@@ -59,7 +61,12 @@ pub trait VringT<M: GuestAddressSpace>:
     fn set_enabled(&self, enabled: bool);
 
     /// Set queue addresses for descriptor table, available ring and used ring.
-    fn set_queue_info(&self, desc_table: u64, avail_ring: u64, used_ring: u64);
+    fn set_queue_info(
+        &self,
+        desc_table: u64,
+        avail_ring: u64,
+        used_ring: u64,
+    ) -> Result<(), VirtQueError>;
 
     /// Get queue next avail head.
     fn queue_next_avail(&self) -> u16;
@@ -94,38 +101,41 @@ pub trait VringT<M: GuestAddressSpace>:
 /// This struct maintains all information of a virito queue, and could be used as an `VringT`
 /// object for single-threaded context.
 pub struct VringState<M: GuestAddressSpace = GuestMemoryAtomic<GuestMemoryMmap>> {
-    queue: Queue<M>,
+    queue: Queue,
     kick: Option<EventFd>,
     call: Option<EventFd>,
     err: Option<EventFd>,
     enabled: bool,
+    mem: M,
 }
 
 impl<M: GuestAddressSpace> VringState<M> {
     /// Create a new instance of Vring.
-    fn new(mem: M, max_queue_size: u16) -> Self {
-        VringState {
-            queue: Queue::new(mem, max_queue_size),
+    fn new(mem: M, max_queue_size: u16) -> Result<Self, VirtQueError> {
+        Ok(VringState {
+            queue: Queue::new(max_queue_size)?,
             kick: None,
             call: None,
             err: None,
             enabled: false,
-        }
+            mem,
+        })
     }
 
     /// Get an immutable reference to the underlying raw `Queue` object.
-    pub fn get_queue(&self) -> &Queue<M> {
+    pub fn get_queue(&self) -> &Queue {
         &self.queue
     }
 
     /// Get a mutable reference to the underlying raw `Queue` object.
-    pub fn get_queue_mut(&mut self) -> &mut Queue<M> {
+    pub fn get_queue_mut(&mut self) -> &mut Queue {
         &mut self.queue
     }
 
     /// Add an used descriptor into the used queue.
     pub fn add_used(&mut self, desc_index: u16, len: u32) -> Result<(), VirtQueError> {
-        self.queue.add_used(desc_index, len)
+        self.queue
+            .add_used(self.mem.memory().deref(), desc_index, len)
     }
 
     /// Notify the vhost-user master that used descriptors have been put into the used queue.
@@ -139,17 +149,17 @@ impl<M: GuestAddressSpace> VringState<M> {
 
     /// Enable event notification for queue.
     pub fn enable_notification(&mut self) -> Result<bool, VirtQueError> {
-        self.queue.enable_notification()
+        self.queue.enable_notification(self.mem.memory().deref())
     }
 
     /// Disable event notification for queue.
     pub fn disable_notification(&mut self) -> Result<(), VirtQueError> {
-        self.queue.disable_notification()
+        self.queue.disable_notification(self.mem.memory().deref())
     }
 
     /// Check whether a notification to the guest is needed.
     pub fn needs_notification(&mut self) -> Result<bool, VirtQueError> {
-        self.queue.needs_notification()
+        self.queue.needs_notification(self.mem.memory().deref())
     }
 
     /// Set vring enabled state.
@@ -158,10 +168,18 @@ impl<M: GuestAddressSpace> VringState<M> {
     }
 
     /// Set queue addresses for descriptor table, available ring and used ring.
-    pub fn set_queue_info(&mut self, desc_table: u64, avail_ring: u64, used_ring: u64) {
-        self.queue.state.desc_table = GuestAddress(desc_table);
-        self.queue.state.avail_ring = GuestAddress(avail_ring);
-        self.queue.state.used_ring = GuestAddress(used_ring);
+    pub fn set_queue_info(
+        &mut self,
+        desc_table: u64,
+        avail_ring: u64,
+        used_ring: u64,
+    ) -> Result<(), VirtQueError> {
+        self.queue
+            .try_set_desc_table_address(GuestAddress(desc_table))?;
+        self.queue
+            .try_set_avail_ring_address(GuestAddress(avail_ring))?;
+        self.queue
+            .try_set_used_ring_address(GuestAddress(used_ring))
     }
 
     /// Get queue next avail head.
@@ -252,10 +270,10 @@ impl<'a, M: 'a + GuestAddressSpace> VringStateMutGuard<'a, M> for VringMutex<M> 
 }
 
 impl<M: 'static + GuestAddressSpace> VringT<M> for VringMutex<M> {
-    fn new(mem: M, max_queue_size: u16) -> Self {
-        VringMutex {
-            state: Arc::new(Mutex::new(VringState::new(mem, max_queue_size))),
-        }
+    fn new(mem: M, max_queue_size: u16) -> Result<Self, VirtQueError> {
+        Ok(VringMutex {
+            state: Arc::new(Mutex::new(VringState::new(mem, max_queue_size)?)),
+        })
     }
 
     fn get_ref(&self) -> <Self as VringStateGuard<M>>::G {
@@ -290,7 +308,12 @@ impl<M: 'static + GuestAddressSpace> VringT<M> for VringMutex<M> {
         self.lock().set_enabled(enabled)
     }
 
-    fn set_queue_info(&self, desc_table: u64, avail_ring: u64, used_ring: u64) {
+    fn set_queue_info(
+        &self,
+        desc_table: u64,
+        avail_ring: u64,
+        used_ring: u64,
+    ) -> Result<(), VirtQueError> {
         self.lock()
             .set_queue_info(desc_table, avail_ring, used_ring)
     }
@@ -354,10 +377,10 @@ impl<'a, M: 'a + GuestAddressSpace> VringStateMutGuard<'a, M> for VringRwLock<M>
 }
 
 impl<M: 'static + GuestAddressSpace> VringT<M> for VringRwLock<M> {
-    fn new(mem: M, max_queue_size: u16) -> Self {
-        VringRwLock {
-            state: Arc::new(RwLock::new(VringState::new(mem, max_queue_size))),
-        }
+    fn new(mem: M, max_queue_size: u16) -> Result<Self, VirtQueError> {
+        Ok(VringRwLock {
+            state: Arc::new(RwLock::new(VringState::new(mem, max_queue_size)?)),
+        })
     }
 
     fn get_ref(&self) -> <Self as VringStateGuard<M>>::G {
@@ -392,7 +415,12 @@ impl<M: 'static + GuestAddressSpace> VringT<M> for VringRwLock<M> {
         self.write_lock().set_enabled(enabled)
     }
 
-    fn set_queue_info(&self, desc_table: u64, avail_ring: u64, used_ring: u64) {
+    fn set_queue_info(
+        &self,
+        desc_table: u64,
+        avail_ring: u64,
+        used_ring: u64,
+    ) -> Result<(), VirtQueError> {
         self.write_lock()
             .set_queue_info(desc_table, avail_ring, used_ring)
     }
@@ -447,39 +475,30 @@ mod tests {
             GuestMemoryMmap::<AtomicBitmap>::from_ranges(&[(GuestAddress(0x100000), 0x10000)])
                 .unwrap(),
         );
-        let vring = VringMutex::new(mem, 0x1000);
+        let vring = VringMutex::new(mem, 0x1000).unwrap();
 
         assert!(vring.get_ref().get_kick().is_none());
         assert!(!vring.get_mut().enabled);
         assert!(!vring.lock().queue.ready());
-        assert!(!vring.lock().queue.state.event_idx_enabled);
+        assert!(!vring.lock().queue.event_idx_enabled());
 
         vring.set_enabled(true);
         assert!(vring.get_ref().enabled);
 
-        vring.set_queue_info(0x100100, 0x100200, 0x100300);
-        assert_eq!(
-            vring.lock().get_queue().state.desc_table,
-            GuestAddress(0x100100)
-        );
-        assert_eq!(
-            vring.lock().get_queue().state.avail_ring,
-            GuestAddress(0x100200)
-        );
-        assert_eq!(
-            vring.lock().get_queue().state.used_ring,
-            GuestAddress(0x100300)
-        );
+        vring.set_queue_info(0x100100, 0x100200, 0x100300).unwrap();
+        assert_eq!(vring.lock().get_queue().desc_table(), 0x100100);
+        assert_eq!(vring.lock().get_queue().avail_ring(), 0x100200);
+        assert_eq!(vring.lock().get_queue().used_ring(), 0x100300);
 
         assert_eq!(vring.queue_next_avail(), 0);
         vring.set_queue_next_avail(0x20);
         assert_eq!(vring.queue_next_avail(), 0x20);
 
         vring.set_queue_size(0x200);
-        assert_eq!(vring.lock().queue.state.size, 0x200);
+        assert_eq!(vring.lock().queue.size(), 0x200);
 
         vring.set_queue_event_idx(true);
-        assert!(vring.lock().queue.state.event_idx_enabled);
+        assert!(vring.lock().queue.event_idx_enabled());
 
         vring.set_queue_ready(true);
         assert!(vring.lock().queue.ready());
@@ -490,7 +509,7 @@ mod tests {
         let mem = GuestMemoryAtomic::new(
             GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
         );
-        let vring = VringMutex::new(mem, 0x1000);
+        let vring = VringMutex::new(mem, 0x1000).unwrap();
 
         vring.set_enabled(true);
         assert!(vring.get_ref().enabled);

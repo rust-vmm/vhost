@@ -246,7 +246,7 @@ mod tests {
         let mem = GuestMemoryAtomic::new(
             GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
         );
-        let vring = VringRwLock::new(mem, 0x1000);
+        let vring = VringRwLock::new(mem, 0x1000).unwrap();
         let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
 
         let handler = VringEpollHandler::new(backend, vec![vring], 0x1).unwrap();

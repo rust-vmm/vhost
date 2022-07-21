@@ -20,6 +20,7 @@ use vhost::vhost_user::{
     VhostUserSlaveReqHandlerMut,
 };
 use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
+use virtio_queue::{Error as VirtQueError, QueueT};
 use vm_memory::bitmap::Bitmap;
 use vm_memory::mmap::NewBitmap;
 use vm_memory::{
@@ -38,6 +39,8 @@ const MAX_MEM_SLOTS: u64 = 32;
 #[derive(Debug)]
 /// Errors related to vhost-user handler.
 pub enum VhostUserHandlerError {
+    /// Failed to create a `Vring`.
+    CreateVring(VirtQueError),
     /// Failed to create vring worker.
     CreateEpollHandler(VringEpollError),
     /// Failed to spawn vring worker.
@@ -49,6 +52,9 @@ pub enum VhostUserHandlerError {
 impl std::fmt::Display for VhostUserHandlerError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
+            VhostUserHandlerError::CreateVring(e) => {
+                write!(f, "failed to create vring: {}", e)
+            }
             VhostUserHandlerError::CreateEpollHandler(e) => {
                 write!(f, "failed to create vring epoll handler: {}", e)
             }
@@ -101,7 +107,8 @@ where
 
         let mut vrings = Vec::new();
         for _ in 0..num_queues {
-            let vring = V::new(atomic_mem.clone(), max_queue_size as u16);
+            let vring = V::new(atomic_mem.clone(), max_queue_size as u16)
+                .map_err(VhostUserHandlerError::CreateVring)?;
             vrings.push(vring);
         }
 
@@ -329,7 +336,9 @@ where
             let used_ring = self.vmm_va_to_gpa(used).map_err(|e| {
                 VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
             })?;
-            self.vrings[index as usize].set_queue_info(desc_table, avail_ring, used_ring);
+            self.vrings[index as usize]
+                .set_queue_info(desc_table, avail_ring, used_ring)
+                .map_err(|_| VhostUserError::InvalidParam)?;
             Ok(())
         } else {
             Err(VhostUserError::InvalidParam)

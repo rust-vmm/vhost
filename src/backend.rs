@@ -547,7 +547,7 @@ pub mod tests {
         );
         backend.update_memory(mem.clone()).unwrap();
 
-        let vring = VringRwLock::new(mem, 0x1000);
+        let vring = VringRwLock::new(mem, 0x1000).unwrap();
         backend
             .handle_event(0x1, EventSet::IN, &[vring], 0)
             .unwrap();
