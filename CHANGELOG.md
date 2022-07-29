@@ -9,6 +9,16 @@
 
 ### Deprecated
 
+## v0.6.0
+
+### Changed
+
+- Moved to rust-vmm/virtio-queue v0.5.0
+
+### Fixed
+
+- Fixed vring initialization logic
+
 ## v0.5.1
 
 ### Changed
