@@ -233,17 +233,7 @@ impl<R: Req> Endpoint<R> {
         if mem::size_of::<T>() > MAX_MSG_SIZE {
             return Err(Error::OversizedMsg);
         }
-        // Safe because there can't be other mutable referance to hdr and body.
-        let iovs = unsafe {
-            [
-                slice::from_raw_parts(
-                    hdr as *const VhostUserMsgHeader<R> as *const u8,
-                    mem::size_of::<VhostUserMsgHeader<R>>(),
-                ),
-                slice::from_raw_parts(body as *const T as *const u8, mem::size_of::<T>()),
-            ]
-        };
-        let bytes = self.send_iovec_all(&iovs[..], fds)?;
+        let bytes = self.send_iovec_all(&[hdr.as_slice(), body.as_slice()], fds)?;
         if bytes != mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() {
             return Err(Error::PartialMessage);
         }
@@ -281,19 +271,8 @@ impl<R: Req> Endpoint<R> {
             }
         }
 
-        // Safe because there can't be other mutable reference to hdr, body and payload.
-        let iovs = unsafe {
-            [
-                slice::from_raw_parts(
-                    hdr as *const VhostUserMsgHeader<R> as *const u8,
-                    mem::size_of::<VhostUserMsgHeader<R>>(),
-                ),
-                slice::from_raw_parts(body as *const T as *const u8, mem::size_of::<T>()),
-                slice::from_raw_parts(payload.as_ptr() as *const u8, len),
-            ]
-        };
         let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() + len;
-        let len = self.send_iovec_all(&iovs, fds)?;
+        let len = self.send_iovec_all(&[hdr.as_slice(), body.as_slice(), payload], fds)?;
         if len != total {
             return Err(Error::PartialMessage);
         }
