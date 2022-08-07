@@ -435,7 +435,7 @@ impl VhostUserMsgValidator for VhostUserU64 {}
 
 /// Memory region descriptor for the SET_MEM_TABLE request.
 #[repr(packed)]
-#[derive(Default)]
+#[derive(Copy, Clone, Default)]
 pub struct VhostUserMemory {
     /// Number of memory regions in the payload.
     pub num_regions: u32,
@@ -452,6 +452,8 @@ impl VhostUserMemory {
         }
     }
 }
+
+unsafe impl ByteValued for VhostUserMemory {}
 
 impl VhostUserMsgValidator for VhostUserMemory {
     #[allow(clippy::if_same_then_else)]
@@ -537,6 +539,8 @@ impl VhostUserSingleMemoryRegion {
     }
 }
 
+unsafe impl ByteValued for VhostUserSingleMemoryRegion {}
+
 impl VhostUserMsgValidator for VhostUserSingleMemoryRegion {
     fn is_valid(&self) -> bool {
         if self.memory_size == 0
@@ -583,7 +587,7 @@ bitflags! {
 
 /// Vring address descriptor.
 #[repr(packed)]
-#[derive(Default)]
+#[derive(Copy, Clone, Default)]
 pub struct VhostUserVringAddr {
     /// Vring index.
     pub index: u32,
@@ -633,6 +637,8 @@ impl VhostUserVringAddr {
         }
     }
 }
+
+unsafe impl ByteValued for VhostUserVringAddr {}
 
 impl VhostUserMsgValidator for VhostUserVringAddr {
     #[allow(clippy::if_same_then_else)]
@@ -745,7 +751,7 @@ impl VhostUserMsgValidator for VhostUserInflight {
 
 /// Single memory region descriptor as payload for SET_LOG_BASE request.
 #[repr(C)]
-#[derive(Default, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct VhostUserLog {
     /// Size of the area to log dirty pages.
     pub mmap_size: u64,
@@ -762,6 +768,8 @@ impl VhostUserLog {
         }
     }
 }
+
+unsafe impl ByteValued for VhostUserLog {}
 
 impl VhostUserMsgValidator for VhostUserLog {
     fn is_valid(&self) -> bool {
@@ -817,7 +825,7 @@ pub const VHOST_USER_FS_SLAVE_ENTRIES: usize = 8;
 
 /// Slave request message to update the MMIO window.
 #[repr(packed)]
-#[derive(Default)]
+#[derive(Copy, Clone, Default)]
 pub struct VhostUserFSSlaveMsg {
     /// File offset.
     pub fd_offset: [u64; VHOST_USER_FS_SLAVE_ENTRIES],
@@ -828,6 +836,8 @@ pub struct VhostUserFSSlaveMsg {
     /// Flags for the mmap operation
     pub flags: [VhostUserFSSlaveMsgFlags; VHOST_USER_FS_SLAVE_ENTRIES],
 }
+
+unsafe impl ByteValued for VhostUserFSSlaveMsg {}
 
 impl VhostUserMsgValidator for VhostUserFSSlaveMsg {
     fn is_valid(&self) -> bool {

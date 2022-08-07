@@ -591,7 +591,7 @@ impl MasterInternal {
         Ok(hdr)
     }
 
-    fn send_request_with_body<T: Sized>(
+    fn send_request_with_body<T: ByteValued>(
         &mut self,
         code: MasterReq,
         msg: &T,
@@ -607,7 +607,7 @@ impl MasterInternal {
         Ok(hdr)
     }
 
-    fn send_request_with_payload<T: Sized>(
+    fn send_request_with_payload<T: ByteValued>(
         &mut self,
         code: MasterReq,
         msg: &T,

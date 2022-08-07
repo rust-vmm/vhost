@@ -224,7 +224,7 @@ impl<R: Req> Endpoint<R> {
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
     /// * - PartialMessage: received a partial message.
-    pub fn send_message<T: Sized>(
+    pub fn send_message<T: ByteValued>(
         &mut self,
         hdr: &VhostUserMsgHeader<R>,
         body: &T,
@@ -261,7 +261,7 @@ impl<R: Req> Endpoint<R> {
     /// * - OversizedMsg: message size is too big.
     /// * - PartialMessage: received a partial message.
     /// * - IncorrectFds: wrong number of attached fds.
-    pub fn send_message_with_payload<T: Sized>(
+    pub fn send_message_with_payload<T: ByteValued>(
         &mut self,
         hdr: &VhostUserMsgHeader<R>,
         body: &T,
