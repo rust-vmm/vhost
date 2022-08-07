@@ -216,32 +216,32 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         };
 
         let res = match hdr.get_code() {
-            SlaveReq::CONFIG_CHANGE_MSG => {
+            Ok(SlaveReq::CONFIG_CHANGE_MSG) => {
                 self.check_msg_size(&hdr, size, 0)?;
                 self.backend
                     .handle_config_change()
                     .map_err(Error::ReqHandlerError)
             }
-            SlaveReq::FS_MAP => {
+            Ok(SlaveReq::FS_MAP) => {
                 let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
                 self.backend
                     .fs_slave_map(&msg, &files.unwrap()[0])
                     .map_err(Error::ReqHandlerError)
             }
-            SlaveReq::FS_UNMAP => {
+            Ok(SlaveReq::FS_UNMAP) => {
                 let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
                 self.backend
                     .fs_slave_unmap(&msg)
                     .map_err(Error::ReqHandlerError)
             }
-            SlaveReq::FS_SYNC => {
+            Ok(SlaveReq::FS_SYNC) => {
                 let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
                 self.backend
                     .fs_slave_sync(&msg)
                     .map_err(Error::ReqHandlerError)
             }
-            SlaveReq::FS_IO => {
+            Ok(SlaveReq::FS_IO) => {
                 let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
                 self.backend
@@ -285,7 +285,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         files: &Option<Vec<File>>,
     ) -> Result<()> {
         match hdr.get_code() {
-            SlaveReq::FS_MAP | SlaveReq::FS_IO => {
+            Ok(SlaveReq::FS_MAP | SlaveReq::FS_IO) => {
                 // Expect a single file is passed.
                 match files {
                     Some(files) if files.len() == 1 => Ok(()),
@@ -320,7 +320,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         }
         self.check_state()?;
         Ok(VhostUserMsgHeader::new(
-            req.get_code(),
+            req.get_code()?,
             VhostUserHeaderFlag::REPLY.bits(),
             mem::size_of::<T>() as u32,
         ))

@@ -6,6 +6,7 @@
 ### Changed
 
 ### Fixed
+- [[#135]](https://github.com/rust-vmm/vhost/pull/135) vhost_user: fix UB on invalid master request
 
 ### Deprecated
 
