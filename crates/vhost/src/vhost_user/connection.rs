@@ -475,7 +475,9 @@ impl<R: Req> Endpoint<R> {
         // Safe because we own hdr and it's ByteValued.
         let (bytes, files) = unsafe { self.recv_into_iovec_all(&mut iovs[..])? };
 
-        if bytes != mem::size_of::<VhostUserMsgHeader<R>>() {
+        if bytes == 0 {
+            return Err(Error::Disconnected);
+        } else if bytes != mem::size_of::<VhostUserMsgHeader<R>>() {
             return Err(Error::PartialMessage);
         } else if !hdr.is_valid() {
             return Err(Error::InvalidMessage);
@@ -890,5 +892,29 @@ mod tests {
         let (hdr2, files) = slave.recv_header().unwrap();
         assert_eq!(hdr1, hdr2);
         assert!(files.is_none());
+    }
+
+    #[test]
+    fn partial_message() {
+        let path = temp_path();
+        let listener = Listener::new(&path, true).unwrap();
+        let mut master = UnixStream::connect(&path).unwrap();
+        let sock = listener.accept().unwrap().unwrap();
+        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
+
+        write!(master, "a").unwrap();
+        drop(master);
+        assert!(matches!(slave.recv_header(), Err(Error::PartialMessage)));
+    }
+
+    #[test]
+    fn disconnected() {
+        let path = temp_path();
+        let listener = Listener::new(&path, true).unwrap();
+        let _ = UnixStream::connect(&path).unwrap();
+        let sock = listener.accept().unwrap().unwrap();
+        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
+
+        assert!(matches!(slave.recv_header(), Err(Error::Disconnected)));
     }
 }
