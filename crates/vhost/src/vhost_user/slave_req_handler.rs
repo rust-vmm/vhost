@@ -8,6 +8,8 @@ use std::os::unix::net::UnixStream;
 use std::slice;
 use std::sync::{Arc, Mutex};
 
+use vm_memory::ByteValued;
+
 use super::connection::Endpoint;
 use super::message::*;
 use super::slave_fs_cache::SlaveFsCacheReq;
@@ -762,7 +764,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         res
     }
 
-    fn send_reply_message<T>(
+    fn send_reply_message<T: ByteValued>(
         &mut self,
         req: &VhostUserMsgHeader<MasterReq>,
         msg: &T,
@@ -772,7 +774,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         Ok(())
     }
 
-    fn send_reply_with_payload<T: Sized>(
+    fn send_reply_with_payload<T: ByteValued>(
         &mut self,
         req: &VhostUserMsgHeader<MasterReq>,
         msg: &T,
