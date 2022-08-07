@@ -68,6 +68,8 @@ pub enum Error {
     InvalidMessage,
     /// Only part of a message have been sent or received successfully
     PartialMessage,
+    /// The peer disconnected from the socket.
+    Disconnected,
     /// Message is too large
     OversizedMsg,
     /// Fd array in question is too big or too small
@@ -107,6 +109,7 @@ impl std::fmt::Display for Error {
             }
             Error::InvalidMessage => write!(f, "invalid message"),
             Error::PartialMessage => write!(f, "partial message"),
+            Error::Disconnected => write!(f, "peer disconnected"),
             Error::OversizedMsg => write!(f, "oversized message"),
             Error::IncorrectFds => write!(f, "wrong number of attached fds"),
             Error::SocketError(e) => write!(f, "socket error: {}", e),
@@ -147,6 +150,8 @@ impl Error {
             Error::MasterInternalError => true,
             // Should just retry the IO operation instead of rebuilding the underline connection.
             Error::SocketRetry(_) => false,
+            // Looks like the peer deliberately disconnected the socket.
+            Error::Disconnected => false,
             Error::InvalidParam | Error::InvalidOperation(_) => false,
             Error::InactiveFeature(_) | Error::InactiveOperation(_) => false,
             Error::InvalidMessage | Error::IncorrectFds | Error::OversizedMsg => false,
