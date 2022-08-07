@@ -14,6 +14,7 @@ use std::marker::PhantomData;
 
 use vm_memory::ByteValued;
 
+use super::{Error, Result};
 use crate::VringConfigData;
 
 /// The vhost-user specification uses a field of u32 to store message length.
@@ -45,7 +46,7 @@ pub const VHOST_USER_MAX_VRINGS: u64 = 0x8000u64;
 pub(super) trait Req:
     Clone + Copy + Debug + PartialEq + Eq + PartialOrd + Ord + Send + Sync + Into<u32>
 {
-    fn is_valid(&self) -> bool;
+    fn is_valid(value: u32) -> bool;
 }
 
 /// Type of requests sending from masters to slaves.
@@ -150,8 +151,8 @@ impl From<MasterReq> for u32 {
 }
 
 impl Req for MasterReq {
-    fn is_valid(&self) -> bool {
-        (*self > MasterReq::NOOP) && (*self < MasterReq::MAX_CMD)
+    fn is_valid(value: u32) -> bool {
+        (value > MasterReq::NOOP as u32) && (value < MasterReq::MAX_CMD as u32)
     }
 }
 
@@ -190,8 +191,8 @@ impl From<SlaveReq> for u32 {
 }
 
 impl Req for SlaveReq {
-    fn is_valid(&self) -> bool {
-        (*self > SlaveReq::NOOP) && (*self < SlaveReq::MAX_CMD)
+    fn is_valid(value: u32) -> bool {
+        (value > SlaveReq::NOOP as u32) && (value < SlaveReq::MAX_CMD as u32)
     }
 }
 
@@ -270,9 +271,13 @@ impl<R: Req> VhostUserMsgHeader<R> {
     }
 
     /// Get message type.
-    pub fn get_code(&self) -> R {
-        // It's safe because R is marked as repr(u32).
-        unsafe { std::mem::transmute_copy::<u32, R>(&{ self.request }) }
+    pub fn get_code(&self) -> Result<R> {
+        if R::is_valid(self.request) {
+            // It's safe because R is marked as repr(u32), and the value is valid.
+            Ok(unsafe { std::mem::transmute_copy::<u32, R>(&{ self.request }) })
+        } else {
+            Err(Error::InvalidMessage)
+        }
     }
 
     /// Set message type.
@@ -321,7 +326,11 @@ impl<R: Req> VhostUserMsgHeader<R> {
 
     /// Check whether it's the reply message for the request `req`.
     pub fn is_reply_for(&self, req: &VhostUserMsgHeader<R>) -> bool {
-        self.is_reply() && !req.is_reply() && self.get_code() == req.get_code()
+        if let (Ok(code1), Ok(code2)) = (self.get_code(), req.get_code()) {
+            self.is_reply() && !req.is_reply() && code1 == code2
+        } else {
+            false
+        }
     }
 
     /// Get message size.
@@ -351,7 +360,7 @@ unsafe impl<R: Req> ByteValued for VhostUserMsgHeader<R> {}
 impl<T: Req> VhostUserMsgValidator for VhostUserMsgHeader<T> {
     #[allow(clippy::if_same_then_else)]
     fn is_valid(&self) -> bool {
-        if !self.get_code().is_valid() {
+        if self.get_code().is_err() {
             return false;
         } else if self.size as usize > MAX_MSG_SIZE {
             return false;
@@ -991,38 +1000,32 @@ mod tests {
 
     #[test]
     fn check_master_request_code() {
-        let code = MasterReq::NOOP;
-        assert!(!code.is_valid());
-        let code = MasterReq::MAX_CMD;
-        assert!(!code.is_valid());
-        assert!(code > MasterReq::NOOP);
+        assert!(!MasterReq::is_valid(MasterReq::NOOP as _));
+        assert!(!MasterReq::is_valid(MasterReq::MAX_CMD as _));
+        assert!(MasterReq::MAX_CMD > MasterReq::NOOP);
         let code = MasterReq::GET_FEATURES;
-        assert!(code.is_valid());
+        assert!(MasterReq::is_valid(code as _));
         assert_eq!(code, code.clone());
-        let code: MasterReq = unsafe { std::mem::transmute::<u32, MasterReq>(10000u32) };
-        assert!(!code.is_valid());
+        assert!(!MasterReq::is_valid(10000));
     }
 
     #[test]
     fn check_slave_request_code() {
-        let code = SlaveReq::NOOP;
-        assert!(!code.is_valid());
-        let code = SlaveReq::MAX_CMD;
-        assert!(!code.is_valid());
-        assert!(code > SlaveReq::NOOP);
+        assert!(!SlaveReq::is_valid(SlaveReq::NOOP as _));
+        assert!(!SlaveReq::is_valid(SlaveReq::MAX_CMD as _));
+        assert!(SlaveReq::MAX_CMD > SlaveReq::NOOP);
         let code = SlaveReq::CONFIG_CHANGE_MSG;
-        assert!(code.is_valid());
+        assert!(SlaveReq::is_valid(code as _));
         assert_eq!(code, code.clone());
-        let code: SlaveReq = unsafe { std::mem::transmute::<u32, SlaveReq>(10000u32) };
-        assert!(!code.is_valid());
+        assert!(!SlaveReq::is_valid(10000));
     }
 
     #[test]
     fn msg_header_ops() {
         let mut hdr = VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0, 0x100);
-        assert_eq!(hdr.get_code(), MasterReq::GET_FEATURES);
+        assert_eq!(hdr.get_code().unwrap(), MasterReq::GET_FEATURES);
         hdr.set_code(MasterReq::SET_FEATURES);
-        assert_eq!(hdr.get_code(), MasterReq::SET_FEATURES);
+        assert_eq!(hdr.get_code().unwrap(), MasterReq::SET_FEATURES);
 
         assert_eq!(hdr.get_version(), 0x1);
 
@@ -1066,7 +1069,7 @@ mod tests {
 
         // Test Debug, Clone, PartiaEq trait
         assert_eq!(hdr, hdr.clone());
-        assert_eq!(hdr.clone().get_code(), hdr.get_code());
+        assert_eq!(hdr.clone().get_code().unwrap(), hdr.get_code().unwrap());
         assert_eq!(format!("{:?}", hdr.clone()), format!("{:?}", hdr));
     }
 

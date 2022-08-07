@@ -797,13 +797,13 @@ mod tests {
         master.reset_owner().unwrap();
 
         let (hdr, rfds) = slave.recv_header().unwrap();
-        assert_eq!(hdr.get_code(), MasterReq::SET_OWNER);
+        assert_eq!(hdr.get_code().unwrap(), MasterReq::SET_OWNER);
         assert_eq!(hdr.get_size(), 0);
         assert_eq!(hdr.get_version(), 0x1);
         assert!(rfds.is_none());
 
         let (hdr, rfds) = slave.recv_header().unwrap();
-        assert_eq!(hdr.get_code(), MasterReq::RESET_OWNER);
+        assert_eq!(hdr.get_code().unwrap(), MasterReq::RESET_OWNER);
         assert_eq!(hdr.get_size(), 0);
         assert_eq!(hdr.get_version(), 0x1);
         assert!(rfds.is_none());
@@ -831,7 +831,7 @@ mod tests {
 
         master.set_owner().unwrap();
         let (hdr, rfds) = peer.recv_header().unwrap();
-        assert_eq!(hdr.get_code(), MasterReq::SET_OWNER);
+        assert_eq!(hdr.get_code().unwrap(), MasterReq::SET_OWNER);
         assert_eq!(hdr.get_size(), 0);
         assert_eq!(hdr.get_version(), 0x1);
         assert!(rfds.is_none());
@@ -866,7 +866,7 @@ mod tests {
 
         master.set_owner().unwrap();
         let (hdr, rfds) = peer.recv_header().unwrap();
-        assert_eq!(hdr.get_code(), MasterReq::SET_OWNER);
+        assert_eq!(hdr.get_code().unwrap(), MasterReq::SET_OWNER);
         assert!(rfds.is_none());
 
         assert!(master.get_protocol_features().is_err());
