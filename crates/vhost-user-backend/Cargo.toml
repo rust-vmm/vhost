@@ -5,7 +5,7 @@ authors = ["The Cloud Hypervisor Authors"]
 keywords = ["vhost-user", "virtio"]
 description = "A framework to build vhost-user backend service daemon"
 repository = "https://github.com/rust-vmm/vhost"
-edition = "2018"
+edition = "2021"
 license = "Apache-2.0"
 
 [features]
