@@ -9,6 +9,13 @@
 
 ### Deprecated
 
+
+## [0.5.0]
+
+### Changed
+- [[#113]](https://github.com/rust-vmm/vhost/pull/113) Improved error messages.
+- [[#115]](https://github.com/rust-vmm/vhost/pull/115) Use caret requirements for dependencies.
+
 ## [v0.4.0]
 
 ### Added
