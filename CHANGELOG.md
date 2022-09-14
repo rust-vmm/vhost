@@ -9,6 +9,17 @@
 
 ### Deprecated
 
+## v0.7.0
+
+### Changed
+
+- Started using caret dependencies
+- Updated dependency nix 0.24 -> 0.25
+- Updated depepdency log 0.4.6 -> 0.4.17
+- Updated dependency vhost 0.4 -> 0.5
+- Updated dependency virtio-queue 0.5.0 -> 0.6
+- Updated dependency vm-memory 0.7 -> 0.9
+
 ## v0.6.0
 
 ### Changed
