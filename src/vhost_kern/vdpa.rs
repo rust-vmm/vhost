@@ -12,7 +12,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use vm_memory::GuestAddressSpace;
 use vmm_sys_util::eventfd::EventFd;
 use vmm_sys_util::fam::*;
-use vmm_sys_util::ioctl::{ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
+use vmm_sys_util::ioctl::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
 
 use super::vhost_binding::*;
 use super::{ioctl_result, Error, Result, VhostKernBackend, VhostKernFeatures};
@@ -149,6 +149,57 @@ impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
         ioctl_result(ret, iova_range)
     }
 
+    fn get_config_size(&self) -> Result<u32> {
+        let mut config_size: u32 = 0;
+        let ret =
+            unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_CONFIG_SIZE(), &mut config_size) };
+        ioctl_result(ret, config_size)
+    }
+
+    fn get_vqs_count(&self) -> Result<u32> {
+        let mut vqs_count: u32 = 0;
+        let ret = unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_VQS_COUNT(), &mut vqs_count) };
+        ioctl_result(ret, vqs_count)
+    }
+
+    fn get_group_num(&self) -> Result<u32> {
+        let mut group_num: u32 = 0;
+        let ret = unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_GROUP_NUM(), &mut group_num) };
+        ioctl_result(ret, group_num)
+    }
+
+    fn get_as_num(&self) -> Result<u32> {
+        let mut as_num: u32 = 0;
+        let ret = unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_AS_NUM(), &mut as_num) };
+        ioctl_result(ret, as_num)
+    }
+
+    fn get_vring_group(&self, queue_index: u32) -> Result<u32> {
+        let mut vring_state = vhost_vring_state {
+            index: queue_index,
+            ..Default::default()
+        };
+
+        let ret =
+            unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_VRING_GROUP(), &mut vring_state) };
+        ioctl_result(ret, vring_state.num)
+    }
+
+    fn set_group_asid(&self, group_index: u32, asid: u32) -> Result<()> {
+        let vring_state = vhost_vring_state {
+            index: group_index,
+            num: asid,
+        };
+
+        let ret = unsafe { ioctl_with_ref(self, VHOST_VDPA_GET_VRING_GROUP(), &vring_state) };
+        ioctl_result(ret, ())
+    }
+
+    fn suspend(&self) -> Result<()> {
+        let ret = unsafe { ioctl(self, VHOST_VDPA_SUSPEND()) };
+        ioctl_result(ret, ())
+    }
+
     fn dma_map(&self, iova: u64, size: u64, vaddr: *const u8, readonly: bool) -> Result<()> {
         let iotlb = VhostIotlbMsg {
             iova,
@@ -253,6 +304,20 @@ mod tests {
         };
     }
 
+    macro_rules! validate_ioctl {
+        ( $e:expr, $ref_value:expr ) => {
+            match $e {
+                Ok(v) => assert_eq!(v, $ref_value),
+                Err(error) => match error {
+                    Error::IoctlError(e) if e.raw_os_error().unwrap() == libc::ENOTTY => {
+                        println!("Err: {:?} SKIPPED", e);
+                    }
+                    e => panic!("Err: {:?}", e),
+                },
+            }
+        };
+    }
+
     #[test]
     #[serial]
     fn test_vdpa_kern_new_device() {
@@ -313,7 +378,8 @@ mod tests {
         };
         vdpa.set_mem_table(&[region]).unwrap();
 
-        assert!(vdpa.get_device_id().unwrap() > 0);
+        let device_id = vdpa.get_device_id().unwrap();
+        assert!(device_id > 0);
 
         assert_eq!(vdpa.get_status().unwrap(), 0x0);
         vdpa.set_status(0x1).unwrap();
@@ -360,6 +426,32 @@ mod tests {
 
         vdpa.set_config_call(&eventfd).unwrap();
 
+        let iova_range = vdpa.get_iova_range().unwrap();
+        // vDPA-block simulator returns [0, u64::MAX] range
+        assert_eq!(iova_range.first, 0);
+        assert_eq!(iova_range.last, u64::MAX);
+
+        let (config_size, vqs_count, group_num, as_num, vring_group) = if device_id == 1 {
+            (24, 3, 2, 2, 0)
+        } else if device_id == 2 {
+            (60, 1, 1, 1, 0)
+        } else {
+            panic!("Unexpected device id {}", device_id)
+        };
+
+        validate_ioctl!(vdpa.get_config_size(), config_size);
+        validate_ioctl!(vdpa.get_vqs_count(), vqs_count);
+        validate_ioctl!(vdpa.get_group_num(), group_num);
+        validate_ioctl!(vdpa.get_as_num(), as_num);
+        validate_ioctl!(vdpa.get_vring_group(0), vring_group);
+        validate_ioctl!(vdpa.set_group_asid(0, 12345), ());
+
+        if vdpa.get_backend_features().unwrap() & (1 << VHOST_BACKEND_F_SUSPEND)
+            == (1 << VHOST_BACKEND_F_SUSPEND)
+        {
+            validate_ioctl!(vdpa.suspend(), ());
+        }
+
         assert_eq!(vdpa.get_vring_base(0).unwrap(), 1);
 
         vdpa.set_vring_enable(0, true).unwrap();
@@ -382,11 +474,6 @@ mod tests {
         vdpa.set_backend_features(backend_features).unwrap();
 
         vdpa.set_owner().unwrap();
-
-        let iova_range = vdpa.get_iova_range().unwrap();
-        // vDPA-block simulator returns [0, u64::MAX] range
-        assert_eq!(iova_range.first, 0);
-        assert_eq!(iova_range.last, u64::MAX);
 
         vdpa.dma_map(0xFFFF_0000, 0xFFFF, std::ptr::null::<u8>(), false)
             .unwrap_err();
