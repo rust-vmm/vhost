@@ -77,6 +77,37 @@ pub trait VhostVdpa: VhostBackend {
     /// Get the valid I/O virtual addresses range supported by the device.
     fn get_iova_range(&self) -> Result<VhostVdpaIovaRange>;
 
+    /// Get the config size
+    fn get_config_size(&self) -> Result<u32>;
+
+    /// Get the count of all virtqueues
+    fn get_vqs_count(&self) -> Result<u32>;
+
+    /// Get the number of virtqueue groups
+    fn get_group_num(&self) -> Result<u32>;
+
+    /// Get the number of address spaces
+    fn get_as_num(&self) -> Result<u32>;
+
+    /// Get the group for a virtqueue.
+    /// The virtqueue index is stored in the index field of
+    /// vhost_vring_state. The group for this specific virtqueue is
+    /// returned via num field of vhost_vring_state.
+    fn get_vring_group(&self, queue_index: u32) -> Result<u32>;
+
+    /// Set the ASID for a virtqueue group. The group index is stored in
+    /// the index field of vhost_vring_state, the ASID associated with this
+    /// group is stored at num field of vhost_vring_state.
+    fn set_group_asid(&self, group_index: u32, asid: u32) -> Result<()>;
+
+    /// Suspend a device so it does not process virtqueue requests anymore
+    ///
+    /// After the return of ioctl the device must preserve all the necessary state
+    /// (the virtqueue vring base plus the possible device specific states) that is
+    /// required for restoring in the future. The device must not change its
+    /// configuration after that point.
+    fn suspend(&self) -> Result<()>;
+
     /// Map DMA region.
     ///
     /// # Arguments

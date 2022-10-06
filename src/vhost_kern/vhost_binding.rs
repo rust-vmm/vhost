@@ -40,6 +40,8 @@ pub const VHOST_NET_F_VIRTIO_NET_HDR: raw::c_uint = 27;
 pub const VHOST_SCSI_ABI_VERSION: raw::c_uint = 1;
 pub const VHOST_BACKEND_F_IOTLB_MSG_V2: raw::c_ulonglong = 0x1;
 pub const VHOST_BACKEND_F_IOTLB_BATCH: raw::c_ulonglong = 0x2;
+pub const VHOST_BACKEND_F_IOTLB_ASID: raw::c_ulonglong = 0x3;
+pub const VHOST_BACKEND_F_SUSPEND: raw::c_ulonglong = 0x4;
 
 ioctl_ior_nr!(VHOST_GET_FEATURES, VHOST, 0x00, raw::c_ulonglong);
 ioctl_iow_nr!(VHOST_SET_FEATURES, VHOST, 0x00, raw::c_ulonglong);
@@ -79,6 +81,13 @@ ioctl_ior_nr!(
     0x78,
     vhost_vdpa_iova_range
 );
+ioctl_ior_nr!(VHOST_VDPA_GET_CONFIG_SIZE, VHOST, 0x79, raw::c_uint);
+ioctl_ior_nr!(VHOST_VDPA_GET_VQS_COUNT, VHOST, 0x80, raw::c_uint);
+ioctl_ior_nr!(VHOST_VDPA_GET_GROUP_NUM, VHOST, 0x81, raw::c_uint);
+ioctl_ior_nr!(VHOST_VDPA_GET_AS_NUM, VHOST, 0x7a, raw::c_uint);
+ioctl_iowr_nr!(VHOST_VDPA_GET_VRING_GROUP, VHOST, 0x7b, vhost_vring_state);
+ioctl_iow_nr!(VHOST_VDPA_SET_GROUP_ASID, VHOST, 0x7c, vhost_vring_state);
+ioctl_io_nr!(VHOST_VDPA_SUSPEND, VHOST, 0x7d);
 
 #[repr(C)]
 #[derive(Default)]
