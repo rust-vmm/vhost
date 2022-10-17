@@ -1,0 +1,23 @@
+[package]
+name = "vhost-user-backend"
+version = "0.7.0"
+authors = ["The Cloud Hypervisor Authors"]
+keywords = ["vhost-user", "virtio"]
+description = "A framework to build vhost-user backend service daemon"
+edition = "2018"
+license = "Apache-2.0"
+
+[dependencies]
+libc = "0.2.39"
+log = "0.4.17"
+vhost = { path = "../vhost", version = "0.5", features = ["vhost-user-slave"] }
+virtio-bindings = "0.1"
+virtio-queue = "0.6"
+vm-memory = { version = "0.9", features = ["backend-mmap", "backend-atomic"] }
+vmm-sys-util = "0.10"
+
+[dev-dependencies]
+nix = "0.25"
+vhost = { path = "../vhost", version = "0.5", features = ["vhost-user-master", "vhost-user-slave"] }
+vm-memory = { version = "0.9", features = ["backend-mmap", "backend-atomic", "backend-bitmap"] }
+tempfile = "3.2.0"
