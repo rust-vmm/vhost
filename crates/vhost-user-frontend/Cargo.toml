@@ -1,8 +1,22 @@
 [package]
 name = "vhost-user-frontend"
 version = "0.1.0"
+authors = ["Viresh Kumar <viresh.kumar@linaro.org>"]
+keywords = ["vhost-user", "virtio", "frontend"]
+description = "vhost user frontend"
+license = "Apache-2.0 OR BSD-3-Clause"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+epoll = "4.3.1"
+libc = "0.2.118"
+log = "0.4.14"
+seccompiler = "0.2.0"
+thiserror = "1.0"
+vhost = { path = "../vhost/", version = "0.5", features = ["vhost-user-master", "vhost-kern", "vhost-user-slave"] }
+virtio-bindings = { version = ">=0.1.0", features = ["virtio-v5_0_0"] }
+virtio-queue = "0.6"
+vm-memory = { version = "0.9", features = ["backend-mmap", "backend-atomic", "backend-bitmap"] }
+vmm-sys-util = "0.10.0"
