@@ -11,12 +11,14 @@ extern crate log;
 
 mod device;
 mod epoll_helper;
+mod generic;
 mod seccomp_filters;
 mod thread_helper;
 mod vhost_user;
 
 pub use crate::device::*;
 pub use crate::epoll_helper::*;
+pub use crate::generic::*;
 pub use crate::seccomp_filters::*;
 pub(crate) use crate::thread_helper::*;
 pub use crate::vhost_user::*;

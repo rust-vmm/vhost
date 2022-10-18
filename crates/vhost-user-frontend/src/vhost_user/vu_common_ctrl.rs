@@ -147,6 +147,10 @@ impl VhostUserHandle {
         Ok((acked_features, acked_protocol_features.bits()))
     }
 
+    pub fn device_features(&self) -> Result<u64> {
+        self.vu.get_features().map_err(Error::VhostUserGetFeatures)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn setup_vhost_user<S: VhostUserMasterReqHandler>(
         &mut self,
