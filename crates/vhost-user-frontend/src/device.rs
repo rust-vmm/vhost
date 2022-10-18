@@ -7,23 +7,17 @@
 // SPDX-License-Identifier: Apache-2.0 AND BSD-3-Clause
 
 use crate::{
-    ActivateError, ActivateResult, Error, GuestMemoryMmap, GuestRegionMmap,
-    VIRTIO_F_RING_INDIRECT_DESC,
+    AccessPlatform, ActivateError, ActivateResult, Error, GuestMemoryMmap, GuestRegionMmap,
+    VirtioDeviceType, VIRTIO_F_RING_INDIRECT_DESC,
 };
 use libc::EFD_NONBLOCK;
 use std::collections::HashMap;
 use std::io::Write;
 use std::num::Wrapping;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Barrier,
-};
+use std::sync::{atomic::AtomicBool, Arc, Barrier};
 use std::thread;
 use virtio_queue::Queue;
 use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestUsize};
-use vm_migration::{MigratableError, Pausable};
-use vm_virtio::AccessPlatform;
-use vm_virtio::VirtioDeviceType;
 use vmm_sys_util::eventfd::EventFd;
 
 pub enum VirtioInterruptType {
@@ -281,11 +275,6 @@ impl VirtioCommon {
     }
 
     pub fn reset(&mut self) -> Option<Arc<dyn VirtioInterrupt>> {
-        // We first must resume the virtio thread if it was paused.
-        if self.pause_evt.take().is_some() {
-            self.resume().ok()?;
-        }
-
         if let Some(kill_evt) = self.kill_evt.take() {
             // Ignore the result because there is nothing we can do about it.
             let _ = kill_evt.write(1);
@@ -315,44 +304,5 @@ impl VirtioCommon {
         // Indirect descriptors feature is not supported when the device
         // requires the addresses held by the descriptors to be translated.
         self.avail_features &= !(1 << VIRTIO_F_RING_INDIRECT_DESC);
-    }
-}
-
-impl Pausable for VirtioCommon {
-    fn pause(&mut self) -> std::result::Result<(), MigratableError> {
-        info!(
-            "Pausing virtio-{}",
-            VirtioDeviceType::from(self.device_type)
-        );
-        self.paused.store(true, Ordering::SeqCst);
-        if let Some(pause_evt) = &self.pause_evt {
-            pause_evt
-                .write(1)
-                .map_err(|e| MigratableError::Pause(e.into()))?;
-
-            // Wait for all threads to acknowledge the pause before going
-            // any further. This is exclusively performed when pause_evt
-            // eventfd is Some(), as this means the virtio device has been
-            // activated. One specific case where the device can be paused
-            // while it hasn't been yet activated is snapshot/restore.
-            self.paused_sync.as_ref().unwrap().wait();
-        }
-
-        Ok(())
-    }
-
-    fn resume(&mut self) -> std::result::Result<(), MigratableError> {
-        info!(
-            "Resuming virtio-{}",
-            VirtioDeviceType::from(self.device_type)
-        );
-        self.paused.store(false, Ordering::SeqCst);
-        if let Some(epoll_threads) = &self.epoll_threads {
-            for t in epoll_threads.iter() {
-                t.thread().unpark();
-            }
-        }
-
-        Ok(())
     }
 }

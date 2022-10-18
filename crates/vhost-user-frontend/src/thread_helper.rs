@@ -3,10 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-use crate::{
-    seccomp_filters::{get_seccomp_filter, Thread},
-    ActivateError,
-};
+use crate::{get_seccomp_filter, ActivateError, Thread};
 use seccompiler::{apply_filter, SeccompAction};
 use std::{
     panic::AssertUnwindSafe,

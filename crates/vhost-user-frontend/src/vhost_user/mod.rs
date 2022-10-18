@@ -2,17 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    ActivateError, EpollHelper, EpollHelperError, EpollHelperHandler, GuestMemoryMmap,
+    clone_queue, ActivateError, EpollHelper, EpollHelperError, EpollHelperHandler, GuestMemoryMmap,
     GuestRegionMmap, VirtioInterrupt, EPOLL_HELPER_EVENT_LAST, VIRTIO_F_IN_ORDER,
     VIRTIO_F_NOTIFICATION_DATA, VIRTIO_F_ORDER_PLATFORM, VIRTIO_F_RING_EVENT_IDX,
     VIRTIO_F_RING_INDIRECT_DESC, VIRTIO_F_VERSION_1,
 };
-use anyhow::anyhow;
+use std::fmt::Debug;
 use std::io;
 use std::ops::Deref;
 use std::os::unix::io::AsRawFd;
 use std::sync::{atomic::AtomicBool, Arc, Barrier, Mutex};
-use versionize::Versionize;
 use vhost::vhost_user::message::{
     VhostUserInflight, VhostUserProtocolFeatures, VhostUserVirtioFeatures,
 };
@@ -20,22 +19,11 @@ use vhost::vhost_user::{MasterReqHandler, VhostUserMasterReqHandler};
 use vhost::Error as VhostError;
 use virtio_queue::Error as QueueError;
 use virtio_queue::Queue;
-use vm_memory::{
-    mmap::MmapRegionError, Address, Error as MmapError, GuestAddressSpace, GuestMemory,
-    GuestMemoryAtomic,
-};
-use vm_migration::{protocol::MemoryRangeTable, MigratableError, Snapshot, VersionMapped};
+use vm_memory::{mmap::MmapRegionError, Error as MmapError, GuestAddressSpace, GuestMemoryAtomic};
 use vmm_sys_util::eventfd::EventFd;
-use vu_common_ctrl::VhostUserHandle;
+pub(crate) use vu_common_ctrl::VhostUserHandle;
 
-pub mod blk;
-pub mod fs;
-pub mod net;
 pub mod vu_common_ctrl;
-
-pub use self::blk::Blk;
-pub use self::fs::*;
-pub use self::net::Net;
 pub use self::vu_common_ctrl::VhostUserConfig;
 
 #[derive(Debug)]
@@ -143,7 +131,7 @@ pub enum Error {
     /// Could not find the shm log region
     MissingShmLogRegion,
 }
-type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 pub const DEFAULT_VIRTIO_FEATURES: u64 = 1 << VIRTIO_F_RING_INDIRECT_DESC
     | 1 << VIRTIO_F_RING_EVENT_IDX
@@ -225,7 +213,7 @@ impl<S: VhostUserMasterReqHandler> VhostUserEpollHandler<S> {
                 self.mem.memory().deref(),
                 self.queues
                     .iter()
-                    .map(|(i, q, e)| (*i, vm_virtio::clone_queue(q), e.try_clone().unwrap()))
+                    .map(|(i, q, e)| (*i, clone_queue(q), e.try_clone().unwrap()))
                     .collect(),
                 &self.virtio_interrupt,
                 self.acked_features,
@@ -323,7 +311,7 @@ impl VhostUserCommon {
                 &mem.memory(),
                 queues
                     .iter()
-                    .map(|(i, q, e)| (*i, vm_virtio::clone_queue(q), e.try_clone().unwrap()))
+                    .map(|(i, q, e)| (*i, clone_queue(q), e.try_clone().unwrap()))
                     .collect(),
                 &interrupt_cb,
                 acked_features,
@@ -378,150 +366,19 @@ impl VhostUserCommon {
         &mut self,
         guest_memory: &Option<GuestMemoryAtomic<GuestMemoryMmap>>,
         region: &Arc<GuestRegionMmap>,
-    ) -> std::result::Result<(), crate::Error> {
+    ) -> std::result::Result<(), Error> {
         if let Some(vu) = &self.vu {
             if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits()
                 != 0
             {
-                return vu
-                    .lock()
-                    .unwrap()
-                    .add_memory_region(region)
-                    .map_err(crate::Error::VhostUserAddMemoryRegion);
+                return vu.lock().unwrap().add_memory_region(region);
             } else if let Some(guest_memory) = guest_memory {
                 return vu
                     .lock()
                     .unwrap()
-                    .update_mem_table(guest_memory.memory().deref())
-                    .map_err(crate::Error::VhostUserUpdateMemory);
+                    .update_mem_table(guest_memory.memory().deref());
             }
         }
-        Ok(())
-    }
-
-    pub fn pause(&mut self) -> std::result::Result<(), MigratableError> {
-        if let Some(vu) = &self.vu {
-            vu.lock().unwrap().pause_vhost_user().map_err(|e| {
-                MigratableError::Pause(anyhow!("Error pausing vhost-user-blk backend: {:?}", e))
-            })
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn resume(&mut self) -> std::result::Result<(), MigratableError> {
-        if let Some(vu) = &self.vu {
-            vu.lock().unwrap().resume_vhost_user().map_err(|e| {
-                MigratableError::Resume(anyhow!("Error resuming vhost-user-blk backend: {:?}", e))
-            })
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn snapshot<T>(
-        &mut self,
-        id: &str,
-        state: &T,
-    ) -> std::result::Result<Snapshot, MigratableError>
-    where
-        T: Versionize + VersionMapped,
-    {
-        let snapshot = Snapshot::new_from_versioned_state(id, state)?;
-
-        if self.migration_started {
-            self.shutdown();
-        }
-
-        Ok(snapshot)
-    }
-
-    pub fn start_dirty_log(
-        &mut self,
-        guest_memory: &Option<GuestMemoryAtomic<GuestMemoryMmap>>,
-    ) -> std::result::Result<(), MigratableError> {
-        if let Some(vu) = &self.vu {
-            if let Some(guest_memory) = guest_memory {
-                let last_ram_addr = guest_memory.memory().last_addr().raw_value();
-                vu.lock()
-                    .unwrap()
-                    .start_dirty_log(last_ram_addr)
-                    .map_err(|e| {
-                        MigratableError::StartDirtyLog(anyhow!(
-                            "Error starting migration for vhost-user backend: {:?}",
-                            e
-                        ))
-                    })
-            } else {
-                Err(MigratableError::StartDirtyLog(anyhow!(
-                    "Missing guest memory"
-                )))
-            }
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn stop_dirty_log(&mut self) -> std::result::Result<(), MigratableError> {
-        if let Some(vu) = &self.vu {
-            vu.lock().unwrap().stop_dirty_log().map_err(|e| {
-                MigratableError::StopDirtyLog(anyhow!(
-                    "Error stopping migration for vhost-user backend: {:?}",
-                    e
-                ))
-            })
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn dirty_log(
-        &mut self,
-        guest_memory: &Option<GuestMemoryAtomic<GuestMemoryMmap>>,
-    ) -> std::result::Result<MemoryRangeTable, MigratableError> {
-        if let Some(vu) = &self.vu {
-            if let Some(guest_memory) = guest_memory {
-                let last_ram_addr = guest_memory.memory().last_addr().raw_value();
-                vu.lock().unwrap().dirty_log(last_ram_addr).map_err(|e| {
-                    MigratableError::DirtyLog(anyhow!(
-                        "Error retrieving dirty ranges from vhost-user backend: {:?}",
-                        e
-                    ))
-                })
-            } else {
-                Err(MigratableError::DirtyLog(anyhow!("Missing guest memory")))
-            }
-        } else {
-            Ok(MemoryRangeTable::default())
-        }
-    }
-
-    pub fn start_migration(&mut self) -> std::result::Result<(), MigratableError> {
-        self.migration_started = true;
-        Ok(())
-    }
-
-    pub fn complete_migration(
-        &mut self,
-        kill_evt: Option<EventFd>,
-    ) -> std::result::Result<(), MigratableError> {
-        self.migration_started = false;
-
-        // Make sure the device thread is killed in order to prevent from
-        // reconnections to the socket.
-        if let Some(kill_evt) = kill_evt {
-            kill_evt.write(1).map_err(|e| {
-                MigratableError::CompleteMigration(anyhow!(
-                    "Error killing vhost-user thread: {:?}",
-                    e
-                ))
-            })?;
-        }
-
-        // Drop the vhost-user handler to avoid further calls to fail because
-        // the connection with the backend has been closed.
-        self.vu = None;
-
         Ok(())
     }
 }

@@ -27,7 +27,6 @@ use virtio_queue::{Descriptor, Queue, QueueT};
 use vm_memory::{
     Address, Error as MmapError, FileOffset, GuestAddress, GuestMemory, GuestMemoryRegion,
 };
-use vm_migration::protocol::MemoryRangeTable;
 use vmm_sys_util::eventfd::EventFd;
 
 // Size of a dirty page for vhost-user.
@@ -558,26 +557,6 @@ impl VhostUserHandle {
         self.shm_log = None;
 
         Ok(())
-    }
-
-    pub fn dirty_log(&mut self, last_ram_addr: u64) -> Result<MemoryRangeTable> {
-        // The log region is updated by creating a new region that is sent to
-        // the backend. This ensures the backend stops logging to the previous
-        // region. The previous region is returned and processed to create the
-        // bitmap representing the dirty pages.
-        if let Some(region) = self.update_log_base(last_ram_addr)? {
-            // Be careful with the size, as it was based on u8, meaning we must
-            // divide it by 8.
-            let len = region.size() / 8;
-            let bitmap = unsafe {
-                // Cast the pointer to u64
-                let ptr = region.as_ptr() as *const u64;
-                std::slice::from_raw_parts(ptr, len).to_vec()
-            };
-            Ok(MemoryRangeTable::from_bitmap(bitmap, 0, 4096))
-        } else {
-            Err(Error::MissingShmLogRegion)
-        }
     }
 }
 

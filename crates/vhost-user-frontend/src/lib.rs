@@ -24,17 +24,16 @@ pub use crate::vhost_user::*;
 use std::fmt::{self, Debug};
 
 use virtio_queue::{Queue, QueueT};
-use vm_memory::{
-    bitmap::AtomicBitmap, GuestAddress, GuestMemory,
-};
+use vm_memory::{bitmap::AtomicBitmap, GuestAddress, GuestMemory};
 
-type GuestMemoryMmap = vm_memory::GuestMemoryMmap<AtomicBitmap>;
-type GuestRegionMmap = vm_memory::GuestRegionMmap<AtomicBitmap>;
-type MmapRegion = vm_memory::MmapRegion<AtomicBitmap>;
+pub type GuestMemoryMmap = vm_memory::GuestMemoryMmap<AtomicBitmap>;
+pub type GuestRegionMmap = vm_memory::GuestRegionMmap<AtomicBitmap>;
+pub type MmapRegion = vm_memory::MmapRegion<AtomicBitmap>;
 
 const VIRTIO_F_RING_INDIRECT_DESC: u32 = 28;
 const VIRTIO_F_RING_EVENT_IDX: u32 = 29;
 const VIRTIO_F_VERSION_1: u32 = 32;
+#[allow(dead_code)]
 const VIRTIO_F_IOMMU_PLATFORM: u32 = 33;
 const VIRTIO_F_IN_ORDER: u32 = 35;
 const VIRTIO_F_ORDER_PLATFORM: u32 = 36;
