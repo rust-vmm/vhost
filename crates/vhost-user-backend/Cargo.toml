@@ -14,7 +14,7 @@ vhost = { path = "../vhost", version = "0.5", features = ["vhost-user-slave"] }
 virtio-bindings = "0.1"
 virtio-queue = "0.6"
 vm-memory = { version = "0.9", features = ["backend-mmap", "backend-atomic"] }
-vmm-sys-util = "0.10"
+vmm-sys-util = "0.11"
 
 [dev-dependencies]
 nix = "0.25"
