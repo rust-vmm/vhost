@@ -210,6 +210,15 @@ where
 
         Ok(())
     }
+
+    /// Helper to check if VirtioFeature enabled
+    fn check_feature(&self, feat: VhostUserVirtioFeatures) -> VhostUserResult<()> {
+        if self.acked_features & feat.bits() != 0 {
+            Ok(())
+        } else {
+            Err(VhostUserError::InactiveFeature(feat))
+        }
+    }
 }
 
 impl<S, V, B> VhostUserSlaveReqHandlerMut for VhostUserHandler<S, V, B>
@@ -455,11 +464,9 @@ where
     fn set_vring_enable(&mut self, index: u32, enable: bool) -> VhostUserResult<()> {
         // This request should be handled only when VHOST_USER_F_PROTOCOL_FEATURES
         // has been negotiated.
-        if self.acked_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() == 0 {
-            return Err(VhostUserError::InvalidOperation(
-                "protocol features not set",
-            ));
-        } else if index as usize >= self.num_queues {
+        self.check_feature(VhostUserVirtioFeatures::PROTOCOL_FEATURES)?;
+
+        if index as usize >= self.num_queues {
             return Err(VhostUserError::InvalidParam);
         }
 
