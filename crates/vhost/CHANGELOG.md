@@ -9,6 +9,11 @@
 
 ### Deprecated
 
+## [0.6.0]
+
+### Upgraded
+- vm-memory from 0.9 to 0.10
+- vmm-sys-util from 0.10 to 0.11
 
 ## [0.5.0]
 
