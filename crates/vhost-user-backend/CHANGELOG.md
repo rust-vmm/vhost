@@ -9,6 +9,17 @@
 
 ### Deprecated
 
+## v0.8.0
+
+### Added
+- [#120](https://github.com/rust-vmm/vhost/pull/120): vhost_kern: vdpa: Add missing ioctls
+
+### Changed
+- Updated dependency vhost 0.5 -> 0.6
+- Updated dependency virtio-queue 0.6 -> 0.7.0
+- Updated depepdency vm-memory 0.9 to 0.10.0
+- Updated depepdency vmm-sys-util 0.10 to 0.11.0
+
 ## v0.7.0
 
 ### Changed
