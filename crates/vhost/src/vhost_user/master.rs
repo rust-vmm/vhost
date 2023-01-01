@@ -827,7 +827,7 @@ mod tests {
     #[test]
     fn test_features() {
         let path = temp_path();
-        let (master, mut peer) = create_pair(&path);
+        let (master, mut peer) = create_pair(path);
 
         master.set_owner().unwrap();
         let (hdr, rfds) = peer.recv_header().unwrap();
@@ -862,7 +862,7 @@ mod tests {
     #[test]
     fn test_protocol_features() {
         let path = temp_path();
-        let (mut master, mut peer) = create_pair(&path);
+        let (mut master, mut peer) = create_pair(path);
 
         master.set_owner().unwrap();
         let (hdr, rfds) = peer.recv_header().unwrap();
@@ -913,7 +913,7 @@ mod tests {
     #[test]
     fn test_master_set_config_negative() {
         let path = temp_path();
-        let (mut master, _peer) = create_pair(&path);
+        let (mut master, _peer) = create_pair(path);
         let buf = vec![0x0; MAX_MSG_SIZE + 1];
 
         master
@@ -958,7 +958,7 @@ mod tests {
 
     fn create_pair2() -> (Master, Endpoint<MasterReq>) {
         let path = temp_path();
-        let (master, peer) = create_pair(&path);
+        let (master, peer) = create_pair(path);
 
         {
             let mut node = master.node();
