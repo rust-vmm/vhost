@@ -267,7 +267,7 @@ mod tests {
     fn test_set_owner() {
         let slave_be = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
         let path = temp_path();
-        let (master, mut slave) = create_slave(&path, slave_be.clone());
+        let (master, mut slave) = create_slave(path, slave_be.clone());
 
         assert!(!slave_be.lock().unwrap().owned);
         master.set_owner().unwrap();
@@ -284,7 +284,7 @@ mod tests {
         let sbar = mbar.clone();
         let path = temp_path();
         let slave_be = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
-        let (mut master, mut slave) = create_slave(&path, slave_be.clone());
+        let (mut master, mut slave) = create_slave(path, slave_be.clone());
 
         thread::spawn(move || {
             slave.handle_request().unwrap();
@@ -328,7 +328,7 @@ mod tests {
         let sbar = mbar.clone();
         let path = temp_path();
         let slave_be = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
-        let (mut master, mut slave) = create_slave(&path, slave_be.clone());
+        let (mut master, mut slave) = create_slave(path, slave_be.clone());
 
         thread::spawn(move || {
             // set_own()

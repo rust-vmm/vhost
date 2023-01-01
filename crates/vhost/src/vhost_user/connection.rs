@@ -637,7 +637,7 @@ mod tests {
     #[test]
     fn create_listener() {
         let path = temp_path();
-        let listener = Listener::new(&path, true).unwrap();
+        let listener = Listener::new(path, true).unwrap();
 
         assert!(listener.as_raw_fd() > 0);
     }
@@ -654,7 +654,7 @@ mod tests {
     #[test]
     fn accept_connection() {
         let path = temp_path();
-        let listener = Listener::new(&path, true).unwrap();
+        let listener = Listener::new(path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
 
         // accept on a fd without incoming connection
