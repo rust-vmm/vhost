@@ -18,7 +18,7 @@ vm-memory = { version = "0.10.0", features = ["backend-mmap", "backend-atomic"] 
 vmm-sys-util = "0.11.0"
 
 [dev-dependencies]
-nix = "0.25"
+nix = "0.26"
 vhost = { path = "../vhost", version = "0.6", features = ["vhost-user-master", "vhost-user-slave"] }
 vm-memory = { version = "0.10.0", features = ["backend-mmap", "backend-atomic", "backend-bitmap"] }
 tempfile = "3.2.0"
