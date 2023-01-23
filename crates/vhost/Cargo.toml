@@ -33,4 +33,4 @@ vm-memory = "0.10.0"
 [dev-dependencies]
 tempfile = "3.2.0"
 vm-memory = { version = "0.10.0", features=["backend-mmap"] }
-serial_test = "0.5"
+serial_test = "1.0"
