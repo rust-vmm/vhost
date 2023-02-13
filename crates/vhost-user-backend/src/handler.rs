@@ -16,8 +16,7 @@ use vhost::vhost_user::message::{
     VhostUserVringState,
 };
 use vhost::vhost_user::{
-    Error as VhostUserError, Result as VhostUserResult, SlaveFsCacheReq,
-    VhostUserSlaveReqHandlerMut,
+    Error as VhostUserError, Result as VhostUserResult, Slave, VhostUserSlaveReqHandlerMut,
 };
 use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use virtio_queue::{Error as VirtQueError, QueueT};
@@ -499,12 +498,12 @@ where
             .map_err(VhostUserError::ReqHandlerError)
     }
 
-    fn set_slave_req_fd(&mut self, vu_req: SlaveFsCacheReq) {
+    fn set_slave_req_fd(&mut self, slave: Slave) {
         if self.acked_protocol_features & VhostUserProtocolFeatures::REPLY_ACK.bits() != 0 {
-            vu_req.set_reply_ack_flag(true);
+            slave.set_reply_ack_flag(true);
         }
 
-        self.backend.set_slave_req_fd(vu_req);
+        self.backend.set_slave_req_fd(slave);
     }
 
     fn get_inflight_fd(

@@ -11,7 +11,9 @@ use super::connection::Endpoint;
 use super::message::*;
 use super::{Error, HandlerResult, Result, VhostUserMasterReqHandler};
 
-struct SlaveFsCacheReqInternal {
+use vm_memory::ByteValued;
+
+struct SlaveInternal {
     sock: Endpoint<SlaveReq>,
 
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
@@ -21,7 +23,7 @@ struct SlaveFsCacheReqInternal {
     error: Option<i32>,
 }
 
-impl SlaveFsCacheReqInternal {
+impl SlaveInternal {
     fn check_state(&self) -> Result<u64> {
         match self.error {
             Some(e) => Err(Error::SocketBroken(std::io::Error::from_raw_os_error(e))),
@@ -29,20 +31,20 @@ impl SlaveFsCacheReqInternal {
         }
     }
 
-    fn send_message(
+    fn send_message<T: ByteValued>(
         &mut self,
         request: SlaveReq,
-        fs: &VhostUserFSSlaveMsg,
+        body: &T,
         fds: Option<&[RawFd]>,
     ) -> Result<u64> {
         self.check_state()?;
 
-        let len = mem::size_of::<VhostUserFSSlaveMsg>();
+        let len = mem::size_of::<T>();
         let mut hdr = VhostUserMsgHeader::new(request, 0, len as u32);
         if self.reply_ack_negotiated {
             hdr.set_need_reply(true);
         }
-        self.sock.send_message(&hdr, fs, fds)?;
+        self.sock.send_message(&hdr, body, fds)?;
 
         self.wait_for_ack(&hdr)
     }
@@ -65,25 +67,25 @@ impl SlaveFsCacheReqInternal {
     }
 }
 
-/// Request proxy to send vhost-user-fs slave requests to the master through the slave
+/// Request proxy to send vhost-user slave requests to the master through the slave
 /// communication channel.
 ///
-/// The [SlaveFsCacheReq] acts as a message proxy to forward vhost-user-fs slave requests to the
+/// The [Slave] acts as a message proxy to forward vhost-user slave requests to the
 /// master through the vhost-user slave communication channel. The forwarded messages will be
 /// handled by the [MasterReqHandler] server.
 ///
-/// [SlaveFsCacheReq]: struct.SlaveFsCacheReq.html
+/// [Slave]: struct.Slave.html
 /// [MasterReqHandler]: struct.MasterReqHandler.html
 #[derive(Clone)]
-pub struct SlaveFsCacheReq {
+pub struct Slave {
     // underlying Unix domain socket for communication
-    node: Arc<Mutex<SlaveFsCacheReqInternal>>,
+    node: Arc<Mutex<SlaveInternal>>,
 }
 
-impl SlaveFsCacheReq {
+impl Slave {
     fn new(ep: Endpoint<SlaveReq>) -> Self {
-        SlaveFsCacheReq {
-            node: Arc::new(Mutex::new(SlaveFsCacheReqInternal {
+        Slave {
+            node: Arc::new(Mutex::new(SlaveInternal {
                 sock: ep,
                 reply_ack_negotiated: false,
                 error: None,
@@ -91,18 +93,18 @@ impl SlaveFsCacheReq {
         }
     }
 
-    fn node(&self) -> MutexGuard<SlaveFsCacheReqInternal> {
+    fn node(&self) -> MutexGuard<SlaveInternal> {
         self.node.lock().unwrap()
     }
 
-    fn send_message(
+    fn send_message<T: ByteValued>(
         &self,
         request: SlaveReq,
-        fs: &VhostUserFSSlaveMsg,
+        body: &T,
         fds: Option<&[RawFd]>,
     ) -> io::Result<u64> {
         self.node()
-            .send_message(request, fs, fds)
+            .send_message(request, body, fds)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{}", e)))
     }
 
@@ -126,7 +128,7 @@ impl SlaveFsCacheReq {
     }
 }
 
-impl VhostUserMasterReqHandler for SlaveFsCacheReq {
+impl VhostUserMasterReqHandler for Slave {
     /// Forward vhost-user-fs map file requests to the slave.
     fn fs_slave_map(&self, fs: &VhostUserFSSlaveMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
         self.send_message(SlaveReq::FS_MAP, fs, Some(&[fd.as_raw_fd()]))
@@ -145,34 +147,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_slave_fs_cache_req_set_failed() {
+    fn test_slave_req_set_failed() {
         let (p1, _p2) = UnixStream::pair().unwrap();
-        let fs_cache = SlaveFsCacheReq::from_stream(p1);
+        let slave = Slave::from_stream(p1);
 
-        assert!(fs_cache.node().error.is_none());
-        fs_cache.set_failed(libc::EAGAIN);
-        assert_eq!(fs_cache.node().error, Some(libc::EAGAIN));
+        assert!(slave.node().error.is_none());
+        slave.set_failed(libc::EAGAIN);
+        assert_eq!(slave.node().error, Some(libc::EAGAIN));
     }
 
     #[test]
-    fn test_slave_fs_cache_send_failure() {
+    fn test_slave_req_send_failure() {
         let (p1, p2) = UnixStream::pair().unwrap();
-        let fs_cache = SlaveFsCacheReq::from_stream(p1);
+        let slave = Slave::from_stream(p1);
 
-        fs_cache.set_failed(libc::ECONNRESET);
-        fs_cache
+        slave.set_failed(libc::ECONNRESET);
+        slave
             .fs_slave_map(&VhostUserFSSlaveMsg::default(), &p2)
             .unwrap_err();
-        fs_cache
+        slave
             .fs_slave_unmap(&VhostUserFSSlaveMsg::default())
             .unwrap_err();
-        fs_cache.node().error = None;
+        slave.node().error = None;
     }
 
     #[test]
-    fn test_slave_fs_cache_recv_negative() {
+    fn test_slave_req_recv_negative() {
         let (p1, p2) = UnixStream::pair().unwrap();
-        let fs_cache = SlaveFsCacheReq::from_stream(p1);
+        let slave = Slave::from_stream(p1);
         let mut master = Endpoint::<SlaveReq>::from_stream(p2);
 
         let len = mem::size_of::<VhostUserFSSlaveMsg>();
@@ -186,31 +188,31 @@ mod tests {
         master
             .send_message(&hdr, &body, Some(&[master.as_raw_fd()]))
             .unwrap();
-        fs_cache
+        slave
             .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
             .unwrap();
 
-        fs_cache.set_reply_ack_flag(true);
-        fs_cache
+        slave.set_reply_ack_flag(true);
+        slave
             .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
             .unwrap_err();
 
         hdr.set_code(SlaveReq::FS_UNMAP);
         master.send_message(&hdr, &body, None).unwrap();
-        fs_cache
+        slave
             .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
             .unwrap_err();
         hdr.set_code(SlaveReq::FS_MAP);
 
         let body = VhostUserU64::new(1);
         master.send_message(&hdr, &body, None).unwrap();
-        fs_cache
+        slave
             .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
             .unwrap_err();
 
         let body = VhostUserU64::new(0);
         master.send_message(&hdr, &body, None).unwrap();
-        fs_cache
+        slave
             .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
             .unwrap();
     }
