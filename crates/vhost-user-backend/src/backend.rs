@@ -23,7 +23,7 @@ use std::ops::Deref;
 use std::sync::{Arc, Mutex, RwLock};
 
 use vhost::vhost_user::message::VhostUserProtocolFeatures;
-use vhost::vhost_user::SlaveFsCacheReq;
+use vhost::vhost_user::Slave;
 use vm_memory::bitmap::Bitmap;
 use vmm_sys_util::epoll::EventSet;
 use vmm_sys_util::eventfd::EventFd;
@@ -80,9 +80,7 @@ where
     ///
     /// A default implementation is provided as we cannot expect all backends to implement this
     /// function.
-    ///
-    /// TODO: this interface is designed only for vhost-user-fs, it should be refined.
-    fn set_slave_req_fd(&self, _vu_req: SlaveFsCacheReq) {}
+    fn set_slave_req_fd(&self, _slave: Slave) {}
 
     /// Get the map to map queue index to worker thread index.
     ///
@@ -163,9 +161,7 @@ where
     ///
     /// A default implementation is provided as we cannot expect all backends to implement this
     /// function.
-    ///
-    /// TODO: this interface is designed only for vhost-user-fs, it should be refined.
-    fn set_slave_req_fd(&mut self, _vu_req: SlaveFsCacheReq) {}
+    fn set_slave_req_fd(&mut self, _slave: Slave) {}
 
     /// Get the map to map queue index to worker thread index.
     ///
@@ -240,8 +236,8 @@ where
         self.deref().update_memory(mem)
     }
 
-    fn set_slave_req_fd(&self, vu_req: SlaveFsCacheReq) {
-        self.deref().set_slave_req_fd(vu_req)
+    fn set_slave_req_fd(&self, slave: Slave) {
+        self.deref().set_slave_req_fd(slave)
     }
 
     fn queues_per_thread(&self) -> Vec<u64> {
@@ -305,8 +301,8 @@ where
         self.lock().unwrap().update_memory(mem)
     }
 
-    fn set_slave_req_fd(&self, vu_req: SlaveFsCacheReq) {
-        self.lock().unwrap().set_slave_req_fd(vu_req)
+    fn set_slave_req_fd(&self, slave: Slave) {
+        self.lock().unwrap().set_slave_req_fd(slave)
     }
 
     fn queues_per_thread(&self) -> Vec<u64> {
@@ -371,8 +367,8 @@ where
         self.write().unwrap().update_memory(mem)
     }
 
-    fn set_slave_req_fd(&self, vu_req: SlaveFsCacheReq) {
-        self.write().unwrap().set_slave_req_fd(vu_req)
+    fn set_slave_req_fd(&self, slave: Slave) {
+        self.write().unwrap().set_slave_req_fd(slave)
     }
 
     fn queues_per_thread(&self) -> Vec<u64> {
@@ -463,7 +459,7 @@ pub mod tests {
             Ok(())
         }
 
-        fn set_slave_req_fd(&mut self, _vu_req: SlaveFsCacheReq) {}
+        fn set_slave_req_fd(&mut self, _slave: Slave) {}
 
         fn queues_per_thread(&self) -> Vec<u64> {
             vec![1, 1]

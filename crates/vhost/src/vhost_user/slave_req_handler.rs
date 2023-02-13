@@ -12,7 +12,7 @@ use vm_memory::ByteValued;
 
 use super::connection::Endpoint;
 use super::message::*;
-use super::slave_fs_cache::SlaveFsCacheReq;
+use super::slave_req::Slave;
 use super::{take_single_file, Error, Result};
 
 /// Services provided to the master by the slave with interior mutability.
@@ -64,7 +64,7 @@ pub trait VhostUserSlaveReqHandler {
     fn set_vring_enable(&self, index: u32, enable: bool) -> Result<()>;
     fn get_config(&self, offset: u32, size: u32, flags: VhostUserConfigFlags) -> Result<Vec<u8>>;
     fn set_config(&self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
-    fn set_slave_req_fd(&self, _vu_req: SlaveFsCacheReq) {}
+    fn set_slave_req_fd(&self, _slave: Slave) {}
     fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, File)>;
     fn set_inflight_fd(&self, inflight: &VhostUserInflight, file: File) -> Result<()>;
     fn get_max_mem_slots(&self) -> Result<u64>;
@@ -109,7 +109,7 @@ pub trait VhostUserSlaveReqHandlerMut {
         flags: VhostUserConfigFlags,
     ) -> Result<Vec<u8>>;
     fn set_config(&mut self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
-    fn set_slave_req_fd(&mut self, _vu_req: SlaveFsCacheReq) {}
+    fn set_slave_req_fd(&mut self, _slave: Slave) {}
     fn get_inflight_fd(
         &mut self,
         inflight: &VhostUserInflight,
@@ -203,8 +203,8 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
         self.lock().unwrap().set_config(offset, buf, flags)
     }
 
-    fn set_slave_req_fd(&self, vu_req: SlaveFsCacheReq) {
-        self.lock().unwrap().set_slave_req_fd(vu_req)
+    fn set_slave_req_fd(&self, slave: Slave) {
+        self.lock().unwrap().set_slave_req_fd(slave)
     }
 
     fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, File)> {
@@ -620,8 +620,8 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
     fn set_slave_req_fd(&mut self, files: Option<Vec<File>>) -> Result<()> {
         let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
         let sock = unsafe { UnixStream::from_raw_fd(file.into_raw_fd()) };
-        let vu_req = SlaveFsCacheReq::from_stream(sock);
-        self.backend.set_slave_req_fd(vu_req);
+        let slave = Slave::from_stream(sock);
+        self.backend.set_slave_req_fd(slave);
         Ok(())
     }
 

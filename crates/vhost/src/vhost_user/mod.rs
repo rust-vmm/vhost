@@ -49,9 +49,9 @@ pub use self::slave_req_handler::{
     SlaveReqHandler, VhostUserSlaveReqHandler, VhostUserSlaveReqHandlerMut,
 };
 #[cfg(feature = "vhost-user-slave")]
-mod slave_fs_cache;
+mod slave_req;
 #[cfg(feature = "vhost-user-slave")]
-pub use self::slave_fs_cache::SlaveFsCacheReq;
+pub use self::slave_req::Slave;
 
 /// Errors for vhost-user operations
 #[derive(Debug)]

@@ -10,7 +10,7 @@ use std::thread;
 use vhost::vhost_user::message::{
     VhostUserConfigFlags, VhostUserHeaderFlag, VhostUserInflight, VhostUserProtocolFeatures,
 };
-use vhost::vhost_user::{Listener, Master, SlaveFsCacheReq, VhostUserMaster};
+use vhost::vhost_user::{Listener, Master, Slave, VhostUserMaster};
 use vhost::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
 use vhost_user_backend::{VhostUserBackendMut, VhostUserDaemon, VringRwLock};
 use vm_memory::{
@@ -81,7 +81,7 @@ impl VhostUserBackendMut<VringRwLock, ()> for MockVhostBackend {
         Ok(())
     }
 
-    fn set_slave_req_fd(&mut self, _vu_req: SlaveFsCacheReq) {}
+    fn set_slave_req_fd(&mut self, _slave: Slave) {}
 
     fn queues_per_thread(&self) -> Vec<u64> {
         vec![1, 1]

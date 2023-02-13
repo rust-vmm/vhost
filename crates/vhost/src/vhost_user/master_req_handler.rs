@@ -17,7 +17,7 @@ use super::{Error, HandlerResult, Result};
 /// request services from masters. The [VhostUserMasterReqHandler] trait defines services provided
 /// by masters, and it's used both on the master side and slave side.
 /// - on the slave side, a stub forwarder implementing [VhostUserMasterReqHandler] will proxy
-///   service requests to masters. The [SlaveFsCacheReq] is an example stub forwarder.
+///   service requests to masters. The [Slave] is an example stub forwarder.
 /// - on the master side, the [MasterReqHandler] will forward service requests to a handler
 ///   implementing [VhostUserMasterReqHandler].
 ///
@@ -26,7 +26,7 @@ use super::{Error, HandlerResult, Result};
 ///
 /// [VhostUserMasterReqHandler]: trait.VhostUserMasterReqHandler.html
 /// [MasterReqHandler]: struct.MasterReqHandler.html
-/// [SlaveFsCacheReq]: struct.SlaveFsCacheReq.html
+/// [Slave]: struct.Slave.html
 pub trait VhostUserMasterReqHandler {
     /// Handle device configuration change notifications.
     fn handle_config_change(&self) -> HandlerResult<u64> {
@@ -362,7 +362,7 @@ mod tests {
     use super::*;
 
     #[cfg(feature = "vhost-user-slave")]
-    use crate::vhost_user::SlaveFsCacheReq;
+    use crate::vhost_user::Slave;
     #[cfg(feature = "vhost-user-slave")]
     use std::os::unix::io::FromRawFd;
 
@@ -410,7 +410,7 @@ mod tests {
             panic!("failed to duplicated tx fd!");
         }
         let stream = unsafe { UnixStream::from_raw_fd(fd) };
-        let fs_cache = SlaveFsCacheReq::from_stream(stream);
+        let slave = Slave::from_stream(stream);
 
         std::thread::spawn(move || {
             let res = handler.handle_request().unwrap();
@@ -418,12 +418,12 @@ mod tests {
             handler.handle_request().unwrap_err();
         });
 
-        fs_cache
+        slave
             .fs_slave_map(&VhostUserFSSlaveMsg::default(), &fd)
             .unwrap();
         // When REPLY_ACK has not been negotiated, the master has no way to detect failure from
         // slave side.
-        fs_cache
+        slave
             .fs_slave_unmap(&VhostUserFSSlaveMsg::default())
             .unwrap();
     }
@@ -440,7 +440,7 @@ mod tests {
             panic!("failed to duplicated tx fd!");
         }
         let stream = unsafe { UnixStream::from_raw_fd(fd) };
-        let fs_cache = SlaveFsCacheReq::from_stream(stream);
+        let slave = Slave::from_stream(stream);
 
         std::thread::spawn(move || {
             let res = handler.handle_request().unwrap();
@@ -448,11 +448,11 @@ mod tests {
             handler.handle_request().unwrap_err();
         });
 
-        fs_cache.set_reply_ack_flag(true);
-        fs_cache
+        slave.set_reply_ack_flag(true);
+        slave
             .fs_slave_map(&VhostUserFSSlaveMsg::default(), &fd)
             .unwrap();
-        fs_cache
+        slave
             .fs_slave_unmap(&VhostUserFSSlaveMsg::default())
             .unwrap_err();
     }
