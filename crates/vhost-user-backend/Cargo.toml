@@ -11,14 +11,14 @@ license = "Apache-2.0"
 [dependencies]
 libc = "0.2.39"
 log = "0.4.17"
-vhost = { path = "../vhost", version = "0.6", features = ["vhost-user-slave"] }
-virtio-bindings = "0.1.0"
-virtio-queue = "0.7.0"
-vm-memory = { version = "0.10.0", features = ["backend-mmap", "backend-atomic"] }
+vhost = { path = "../vhost", features = ["vhost-user-slave"] }
+virtio-bindings = { git = "https://github.com/vireshk/vm-virtio", branch = "main" }
+virtio-queue = { git = "https://github.com/vireshk/vm-virtio", branch = "main" }
+vm-memory = { git = "https://github.com/vireshk/vm-memory", branch = "main", features = ["backend-mmap", "backend-atomic"] }
 vmm-sys-util = "0.11.0"
 
 [dev-dependencies]
 nix = "0.26"
-vhost = { path = "../vhost", version = "0.6", features = ["vhost-user-master", "vhost-user-slave"] }
-vm-memory = { version = "0.10.0", features = ["backend-mmap", "backend-atomic", "backend-bitmap"] }
+vhost = { path = "../vhost", features = ["vhost-user-master", "vhost-user-slave"] }
+vm-memory = { git = "https://github.com/vireshk/vm-memory", branch = "main", features = ["backend-mmap", "backend-atomic", "backend-bitmap"] }
 tempfile = "3.2.0"
