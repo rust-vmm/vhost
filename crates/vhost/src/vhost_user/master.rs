@@ -193,13 +193,8 @@ impl VhostBackend for Master {
             if region.memory_size == 0 || region.mmap_handle < 0 {
                 return error_code(VhostUserError::InvalidParam);
             }
-            let reg = VhostUserMemoryRegion {
-                guest_phys_addr: region.guest_phys_addr,
-                memory_size: region.memory_size,
-                user_addr: region.userspace_addr,
-                mmap_offset: region.mmap_offset,
-            };
-            ctx.append(&reg, region.mmap_handle);
+
+            ctx.append(&region.to_region(), region.mmap_handle);
         }
 
         let mut node = self.node();
@@ -501,12 +496,7 @@ impl VhostUserMaster for Master {
             return error_code(VhostUserError::InvalidParam);
         }
 
-        let body = VhostUserSingleMemoryRegion::new(
-            region.guest_phys_addr,
-            region.memory_size,
-            region.userspace_addr,
-            region.mmap_offset,
-        );
+        let body = region.to_single_region();
         let fds = [region.mmap_handle];
         let hdr = node.send_request_with_body(MasterReq::ADD_MEM_REG, &body, Some(&fds))?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
@@ -519,12 +509,7 @@ impl VhostUserMaster for Master {
             return error_code(VhostUserError::InvalidParam);
         }
 
-        let body = VhostUserSingleMemoryRegion::new(
-            region.guest_phys_addr,
-            region.memory_size,
-            region.userspace_addr,
-            region.mmap_offset,
-        );
+        let body = region.to_single_region();
         let hdr = node.send_request_with_body(MasterReq::REM_MEM_REG, &body, None)?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
     }

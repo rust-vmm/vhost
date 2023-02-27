@@ -10,12 +10,15 @@
 //! Common traits and structs for vhost-kern and vhost-user backend drivers.
 
 use std::cell::RefCell;
+use std::os::unix::io::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::sync::RwLock;
 
+use vm_memory::{bitmap::Bitmap, Address, GuestMemoryRegion, GuestRegionMmap};
 use vmm_sys_util::eventfd::EventFd;
 
-use super::Result;
+use super::vhost_user::message::{VhostUserMemoryRegion, VhostUserSingleMemoryRegion};
+use super::{Error, Result};
 
 /// Maximum number of memory regions supported.
 pub const VHOST_MAX_MEMORY_REGIONS: usize = 255;
@@ -72,6 +75,70 @@ pub struct VhostUserMemoryRegionInfo {
     pub mmap_offset: u64,
     /// Optional file descriptor for mmap.
     pub mmap_handle: RawFd,
+
+    #[cfg(feature = "xen")]
+    /// Xen specific flags.
+    pub xen_mmap_flags: u32,
+
+    #[cfg(feature = "xen")]
+    /// Xen specific data.
+    pub xen_mmap_data: u32,
+}
+
+impl VhostUserMemoryRegionInfo {
+    /// Creates Self from GuestRegionMmap.
+    pub fn from_guest_region<B: Bitmap>(region: &GuestRegionMmap<B>) -> Result<Self> {
+        let file_offset = region
+            .file_offset()
+            .ok_or(Error::InvalidGuestMemoryRegion)?;
+
+        Ok(Self {
+            guest_phys_addr: region.start_addr().raw_value(),
+            memory_size: region.len(),
+            userspace_addr: region.as_ptr() as u64,
+            mmap_offset: file_offset.start(),
+            mmap_handle: file_offset.file().as_raw_fd(),
+            #[cfg(feature = "xen")]
+            xen_mmap_flags: region.xen_mmap_flags(),
+            #[cfg(feature = "xen")]
+            xen_mmap_data: region.xen_mmap_data(),
+        })
+    }
+
+    /// Creates VhostUserMemoryRegion from Self.
+    pub fn to_region(&self) -> VhostUserMemoryRegion {
+        #[cfg(not(feature = "xen"))]
+        return VhostUserMemoryRegion::new(
+            self.guest_phys_addr,
+            self.memory_size,
+            self.userspace_addr,
+            self.mmap_offset,
+        );
+
+        #[cfg(feature = "xen")]
+        VhostUserMemoryRegion::with_xen(
+            self.guest_phys_addr,
+            self.memory_size,
+            self.userspace_addr,
+            self.mmap_offset,
+            self.xen_mmap_flags,
+            self.xen_mmap_data,
+        )
+    }
+
+    /// Creates VhostUserSingleMemoryRegion from Self.
+    pub fn to_single_region(&self) -> VhostUserSingleMemoryRegion {
+        VhostUserSingleMemoryRegion::new(
+            self.guest_phys_addr,
+            self.memory_size,
+            self.userspace_addr,
+            self.mmap_offset,
+            #[cfg(feature = "xen")]
+            self.xen_mmap_flags,
+            #[cfg(feature = "xen")]
+            self.xen_mmap_data,
+        )
+    }
 }
 
 /// Shared memory region data for logging dirty pages
@@ -460,6 +527,11 @@ impl VhostUserMemoryRegionInfo {
             userspace_addr,
             mmap_offset,
             mmap_handle,
+
+            #[cfg(feature = "xen")]
+            xen_mmap_flags: vm_memory::MmapXenFlags::UNIX.bits(),
+            #[cfg(feature = "xen")]
+            xen_mmap_data: 0,
         }
     }
 }

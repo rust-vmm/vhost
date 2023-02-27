@@ -432,6 +432,9 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 self.acked_protocol_features = msg.value;
                 self.update_reply_ack_flag();
                 self.send_ack_message(&hdr, res)?;
+
+                #[cfg(feature = "xen")]
+                self.check_proto_feature(VhostUserProtocolFeatures::XEN_MMAP)?;
             }
             Ok(MasterReq::GET_QUEUE_NUM) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::MQ)?;

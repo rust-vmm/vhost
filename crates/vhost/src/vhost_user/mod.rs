@@ -345,9 +345,17 @@ mod tests {
 
             slave.handle_request().unwrap();
             slave.handle_request().unwrap();
+
+            let mut features = VhostUserProtocolFeatures::all();
+
+            // Disable Xen mmap feature.
+            if !cfg!(feature = "xen") {
+                features.remove(VhostUserProtocolFeatures::XEN_MMAP);
+            }
+
             assert_eq!(
                 slave_be.lock().unwrap().acked_protocol_features,
-                VhostUserProtocolFeatures::all().bits()
+                features.bits()
             );
 
             // get_inflight_fd()
@@ -403,8 +411,14 @@ mod tests {
         master.set_features(VIRTIO_FEATURES & !0x1).unwrap();
 
         // set vhost protocol features
-        let features = master.get_protocol_features().unwrap();
+        let mut features = master.get_protocol_features().unwrap();
         assert_eq!(features.bits(), VhostUserProtocolFeatures::all().bits());
+
+        // Disable Xen mmap feature.
+        if !cfg!(feature = "xen") {
+            features.remove(VhostUserProtocolFeatures::XEN_MMAP);
+        }
+
         master.set_protocol_features(features).unwrap();
 
         // Retrieve inflight I/O tracking information
