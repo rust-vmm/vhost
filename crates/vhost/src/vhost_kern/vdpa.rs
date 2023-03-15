@@ -367,7 +367,8 @@ mod tests {
 
         vdpa.set_owner().unwrap();
 
-        vdpa.set_mem_table(&[]).unwrap_err();
+        let region: Vec<VhostUserMemoryRegionInfo> = Vec::new();
+        vdpa.set_mem_table(&region).unwrap_err();
 
         let region = VhostUserMemoryRegionInfo {
             guest_phys_addr: 0x0,

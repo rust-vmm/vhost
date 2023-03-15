@@ -22,7 +22,8 @@ use vmm_sys_util::ioctl::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_
 
 use super::{
     Error, Result, VhostBackend, VhostIotlbBackend, VhostIotlbMsg, VhostIotlbMsgParser,
-    VhostUserDirtyLogRegion, VhostUserMemoryRegionInfo, VringConfigData, VHOST_MAX_MEMORY_REGIONS,
+    VhostUserDirtyLogRegion, VhostUserMemoryRegionInfoTrait, VringConfigData,
+    VHOST_MAX_MEMORY_REGIONS,
 };
 
 pub mod vhost_binding;
@@ -133,7 +134,10 @@ impl<T: VhostKernBackend> VhostBackend for T {
     }
 
     /// Set the guest memory mappings for vhost to use.
-    fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
+    fn set_mem_table<R>(&self, regions: &[R]) -> Result<()>
+    where
+        R: VhostUserMemoryRegionInfoTrait,
+    {
         if regions.is_empty() || regions.len() > VHOST_MAX_MEMORY_REGIONS {
             return Err(Error::InvalidGuestMemory);
         }
@@ -143,9 +147,9 @@ impl<T: VhostKernBackend> VhostBackend for T {
             vhost_memory.set_region(
                 index as u32,
                 &vhost_memory_region {
-                    guest_phys_addr: region.guest_phys_addr,
-                    memory_size: region.memory_size,
-                    userspace_addr: region.userspace_addr,
+                    guest_phys_addr: region.guest_phys_addr(),
+                    memory_size: region.memory_size(),
+                    userspace_addr: region.userspace_addr(),
                     flags_padding: 0u64,
                 },
             )?;

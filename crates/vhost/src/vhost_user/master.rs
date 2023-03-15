@@ -17,7 +17,7 @@ use super::connection::Endpoint;
 use super::message::*;
 use super::{take_single_file, Error as VhostUserError, Result as VhostUserResult};
 use crate::backend::{
-    VhostBackend, VhostUserDirtyLogRegion, VhostUserMemoryRegionInfo, VringConfigData,
+    VhostBackend, VhostUserDirtyLogRegion, VhostUserMemoryRegionInfoTrait, VringConfigData,
 };
 use crate::{Error, Result};
 
@@ -68,10 +68,16 @@ pub trait VhostUserMaster: VhostBackend {
     fn get_max_mem_slots(&mut self) -> Result<u64>;
 
     /// Add a new guest memory mapping for vhost to use.
-    fn add_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()>;
+    fn add_mem_region<R>(&mut self, region: &R) -> Result<()>
+    where
+        R: VhostUserMemoryRegionInfoTrait,
+        R::SingleRegion: ByteValued;
 
     /// Remove a guest memory mapping from vhost.
-    fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()>;
+    fn remove_mem_region<R>(&mut self, region: &R) -> Result<()>
+    where
+        R: VhostUserMemoryRegionInfoTrait,
+        R::SingleRegion: ByteValued;
 }
 
 fn error_code<T>(err: VhostUserError) -> Result<T> {
@@ -183,23 +189,21 @@ impl VhostBackend for Master {
 
     /// Set the memory map regions on the slave so it can translate the vring
     /// addresses. In the ancillary data there is an array of file descriptors
-    fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
+    fn set_mem_table<R>(&self, regions: &[R]) -> Result<()>
+    where
+        R: VhostUserMemoryRegionInfoTrait,
+    {
         if regions.is_empty() || regions.len() > MAX_ATTACHED_FD_ENTRIES {
             return error_code(VhostUserError::InvalidParam);
         }
 
         let mut ctx = VhostUserMemoryContext::new();
         for region in regions.iter() {
-            if region.memory_size == 0 || region.mmap_handle < 0 {
+            if !region.is_valid() {
                 return error_code(VhostUserError::InvalidParam);
             }
-            let reg = VhostUserMemoryRegion {
-                guest_phys_addr: region.guest_phys_addr,
-                memory_size: region.memory_size,
-                user_addr: region.userspace_addr,
-                mmap_offset: region.mmap_offset,
-            };
-            ctx.append(&reg, region.mmap_handle);
+
+            ctx.append(region.as_region(), region.mmap_handle());
         }
 
         let mut node = self.node();
@@ -493,37 +497,36 @@ impl VhostUserMaster for Master {
         Ok(val.value)
     }
 
-    fn add_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()> {
+    fn add_mem_region<R>(&mut self, region: &R) -> Result<()>
+    where
+        R: VhostUserMemoryRegionInfoTrait,
+        R::SingleRegion: ByteValued,
+    {
         let mut node = self.node();
         node.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
-        if region.memory_size == 0 || region.mmap_handle < 0 {
+
+        if !region.is_valid() {
             return error_code(VhostUserError::InvalidParam);
         }
 
-        let body = VhostUserSingleMemoryRegion::new(
-            region.guest_phys_addr,
-            region.memory_size,
-            region.userspace_addr,
-            region.mmap_offset,
-        );
-        let fds = [region.mmap_handle];
+        let body = region.as_single_region();
+        let fds = [region.mmap_handle()];
         let hdr = node.send_request_with_body(MasterReq::ADD_MEM_REG, &body, Some(&fds))?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
-    fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()> {
+    fn remove_mem_region<R>(&mut self, region: &R) -> Result<()>
+    where
+        R: VhostUserMemoryRegionInfoTrait,
+        R::SingleRegion: ByteValued,
+    {
         let mut node = self.node();
         node.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
-        if region.memory_size == 0 {
+        if region.memory_size() == 0 {
             return error_code(VhostUserError::InvalidParam);
         }
 
-        let body = VhostUserSingleMemoryRegion::new(
-            region.guest_phys_addr,
-            region.memory_size,
-            region.userspace_addr,
-            region.mmap_offset,
-        );
+        let body = region.as_single_region();
         let hdr = node.send_request_with_body(MasterReq::REM_MEM_REG, &body, None)?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
@@ -537,23 +540,23 @@ impl AsRawFd for Master {
 }
 
 /// Context object to pass guest memory configuration to VhostUserMaster::set_mem_table().
-struct VhostUserMemoryContext {
-    regions: VhostUserMemoryPayload,
+struct VhostUserMemoryContext<T> {
+    regions: Vec<T>,
     fds: Vec<RawFd>,
 }
 
-impl VhostUserMemoryContext {
+impl<T> VhostUserMemoryContext<T> {
     /// Create a context object.
     pub fn new() -> Self {
         VhostUserMemoryContext {
-            regions: VhostUserMemoryPayload::new(),
+            regions: Vec::<T>::new(),
             fds: Vec::new(),
         }
     }
 
     /// Append a user memory region and corresponding RawFd into the context object.
-    pub fn append(&mut self, region: &VhostUserMemoryRegion, fd: RawFd) {
-        self.regions.push(*region);
+    pub fn append(&mut self, region: T, fd: RawFd) {
+        self.regions.push(region);
         self.fds.push(fd);
     }
 }
@@ -763,6 +766,7 @@ impl MasterInternal {
 mod tests {
     use super::super::connection::Listener;
     use super::*;
+    use crate::backend::VhostUserMemoryRegionInfo;
     use vmm_sys_util::rand::rand_alphanumerics;
 
     use std::path::PathBuf;
@@ -1116,7 +1120,8 @@ mod tests {
     fn test_maset_set_mem_table_failure() {
         let (master, _peer) = create_pair2();
 
-        master.set_mem_table(&[]).unwrap_err();
+        let tables: Vec<VhostUserMemoryRegionInfo> = Vec::new();
+        master.set_mem_table(&tables).unwrap_err();
         let tables = vec![VhostUserMemoryRegionInfo::default(); MAX_ATTACHED_FD_ENTRIES + 1];
         master.set_mem_table(&tables).unwrap_err();
     }

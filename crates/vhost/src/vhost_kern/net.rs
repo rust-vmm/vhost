@@ -127,7 +127,8 @@ mod tests {
 
         net.set_owner().unwrap();
 
-        net.set_mem_table(&[]).unwrap_err();
+        let region: Vec<VhostUserMemoryRegionInfo> = Vec::new();
+        net.set_mem_table(&region).unwrap_err();
 
         let region = VhostUserMemoryRegionInfo {
             guest_phys_addr: 0x0,

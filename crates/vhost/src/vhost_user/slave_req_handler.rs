@@ -41,7 +41,9 @@ pub trait VhostUserSlaveReqHandler {
     fn reset_owner(&self) -> Result<()>;
     fn get_features(&self) -> Result<u64>;
     fn set_features(&self, features: u64) -> Result<()>;
-    fn set_mem_table(&self, ctx: &[VhostUserMemoryRegion], files: Vec<File>) -> Result<()>;
+    fn set_mem_table<R>(&self, ctx: &[R], files: Vec<File>) -> Result<()>
+    where
+        R: VhostUserMemoryRegionTrait;
     fn set_vring_num(&self, index: u32, num: u32) -> Result<()>;
     fn set_vring_addr(
         &self,
@@ -68,8 +70,12 @@ pub trait VhostUserSlaveReqHandler {
     fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, File)>;
     fn set_inflight_fd(&self, inflight: &VhostUserInflight, file: File) -> Result<()>;
     fn get_max_mem_slots(&self) -> Result<u64>;
-    fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
-    fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
+    fn add_mem_region<R>(&self, region: &R, fd: File) -> Result<()>
+    where
+        R: VhostUserMemoryRegionTrait;
+    fn remove_mem_region<R>(&self, region: &R) -> Result<()>
+    where
+        R: VhostUserMemoryRegionTrait;
 }
 
 /// Services provided to the master by the slave without interior mutability.
@@ -81,7 +87,9 @@ pub trait VhostUserSlaveReqHandlerMut {
     fn reset_owner(&mut self) -> Result<()>;
     fn get_features(&mut self) -> Result<u64>;
     fn set_features(&mut self, features: u64) -> Result<()>;
-    fn set_mem_table(&mut self, ctx: &[VhostUserMemoryRegion], files: Vec<File>) -> Result<()>;
+    fn set_mem_table<R>(&mut self, ctx: &[R], files: Vec<File>) -> Result<()>
+    where
+        R: VhostUserMemoryRegionTrait;
     fn set_vring_num(&mut self, index: u32, num: u32) -> Result<()>;
     fn set_vring_addr(
         &mut self,
@@ -116,8 +124,12 @@ pub trait VhostUserSlaveReqHandlerMut {
     ) -> Result<(VhostUserInflight, File)>;
     fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, file: File) -> Result<()>;
     fn get_max_mem_slots(&mut self) -> Result<u64>;
-    fn add_mem_region(&mut self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
-    fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
+    fn add_mem_region<R>(&mut self, region: &R, fd: File) -> Result<()>
+    where
+        R: VhostUserMemoryRegionTrait;
+    fn remove_mem_region<R>(&mut self, region: &R) -> Result<()>
+    where
+        R: VhostUserMemoryRegionTrait;
 }
 
 impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
@@ -137,7 +149,10 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
         self.lock().unwrap().set_features(features)
     }
 
-    fn set_mem_table(&self, ctx: &[VhostUserMemoryRegion], files: Vec<File>) -> Result<()> {
+    fn set_mem_table<R>(&self, ctx: &[R], files: Vec<File>) -> Result<()>
+    where
+        R: VhostUserMemoryRegionTrait,
+    {
         self.lock().unwrap().set_mem_table(ctx, files)
     }
 
@@ -219,11 +234,17 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
         self.lock().unwrap().get_max_mem_slots()
     }
 
-    fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()> {
+    fn add_mem_region<R>(&self, region: &R, fd: File) -> Result<()>
+    where
+        R: VhostUserMemoryRegionTrait,
+    {
         self.lock().unwrap().add_mem_region(region, fd)
     }
 
-    fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()> {
+    fn remove_mem_region<R>(&self, region: &R) -> Result<()>
+    where
+        R: VhostUserMemoryRegionTrait,
+    {
         self.lock().unwrap().remove_mem_region(region)
     }
 }
@@ -366,7 +387,8 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 self.send_ack_message(&hdr, res)?;
             }
             Ok(MasterReq::SET_MEM_TABLE) => {
-                let res = self.set_mem_table(&hdr, size, &buf, files);
+                self.verify_mem_table::<VhostUserMemoryRegion>(&hdr, size, &buf, &files)?;
+                let res = self.set_mem_table::<VhostUserMemoryRegion>(&buf, files);
                 self.send_ack_message(&hdr, res)?;
             }
             Ok(MasterReq::SET_VRING_NUM) => {
@@ -494,13 +516,18 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
             }
             Ok(MasterReq::ADD_MEM_REG) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
+
                 let mut files = files.ok_or(Error::InvalidParam)?;
                 if files.len() != 1 {
                     return Err(Error::InvalidParam);
                 }
+
                 let msg =
                     self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
-                let res = self.backend.add_mem_region(&msg, files.swap_remove(0));
+                let res = self
+                    .backend
+                    .add_mem_region::<VhostUserSingleMemoryRegion>(&msg, files.swap_remove(0));
+
                 self.send_ack_message(&hdr, res)?;
             }
             Ok(MasterReq::REM_MEM_REG) => {
@@ -508,7 +535,10 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
 
                 let msg =
                     self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
-                let res = self.backend.remove_mem_region(&msg);
+                let res = self
+                    .backend
+                    .remove_mem_region::<VhostUserSingleMemoryRegion>(&msg);
+
                 self.send_ack_message(&hdr, res)?;
             }
             _ => {
@@ -518,12 +548,12 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         Ok(())
     }
 
-    fn set_mem_table(
+    fn verify_mem_table<R>(
         &mut self,
         hdr: &VhostUserMsgHeader<MasterReq>,
         size: usize,
         buf: &[u8],
-        files: Option<Vec<File>>,
+        files: &Option<Vec<File>>,
     ) -> Result<()> {
         self.check_request_size(hdr, size, hdr.get_size() as usize)?;
 
@@ -536,20 +566,33 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);
         }
-        if size != hdrsize + msg.num_regions as usize * mem::size_of::<VhostUserMemoryRegion>() {
+        if size != hdrsize + msg.num_regions as usize * mem::size_of::<R>() {
             return Err(Error::InvalidMessage);
         }
 
         // validate number of fds matching number of memory regions
-        let files = files.ok_or(Error::InvalidMessage)?;
+        let files = files.as_ref().ok_or(Error::InvalidMessage)?;
         if files.len() != msg.num_regions as usize {
             return Err(Error::InvalidMessage);
         }
 
+        Ok(())
+    }
+
+    fn set_mem_table<R>(&mut self, buf: &[u8], files: Option<Vec<File>>) -> Result<()>
+    where
+        R: VhostUserMsgValidator + VhostUserMemoryRegionTrait,
+    {
+        let hdrsize = mem::size_of::<VhostUserMemory>();
+        let msg = unsafe { &*(buf.as_ptr() as *const VhostUserMemory) };
+
+        // validate number of fds matching number of memory regions
+        let files = files.ok_or(Error::InvalidMessage)?;
+
         // Validate memory regions
         let regions = unsafe {
             slice::from_raw_parts(
-                buf.as_ptr().add(hdrsize) as *const VhostUserMemoryRegion,
+                buf.as_ptr().add(hdrsize) as *const R,
                 msg.num_regions as usize,
             )
         };

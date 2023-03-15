@@ -12,6 +12,7 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
+use vm_memory::mmap::{MmapDefault, MmapInternal};
 use vm_memory::ByteValued;
 
 use super::{Error, Result};
@@ -476,24 +477,46 @@ impl VhostUserMsgValidator for VhostUserMemory {
     }
 }
 
+/// Trait for memory region configuration.
+pub trait VhostUserMemoryRegionTrait {
+    /// Mapping implementation.
+    type MappingTarget: MmapInternal;
+
+    /// Return guest phys addr.
+    fn guest_phys_addr(&self) -> u64;
+    /// Return memory size.
+    fn memory_size(&self) -> u64;
+
+    /// Return userspace addr.
+    fn user_addr(&self) -> u64;
+
+    /// Return mmap offset.
+    fn mmap_offset(&self) -> u64;
+
+    /// Get map.
+    fn map(&self) -> Self::MappingTarget;
+}
+
 /// Memory region descriptors as payload for the SET_MEM_TABLE request.
+
+/// Generic Memory region descriptor.
 #[repr(packed)]
 #[derive(Default, Clone, Copy)]
 pub struct VhostUserMemoryRegion {
     /// Guest physical address of the memory region.
-    pub guest_phys_addr: u64,
+    guest_phys_addr: u64,
     /// Size of the memory region.
-    pub memory_size: u64,
+    memory_size: u64,
     /// Virtual address in the current process.
-    pub user_addr: u64,
+    user_addr: u64,
     /// Offset where region starts in the mapped memory.
-    pub mmap_offset: u64,
+    mmap_offset: u64,
 }
 
 impl VhostUserMemoryRegion {
     /// Create a new instance.
     pub fn new(guest_phys_addr: u64, memory_size: u64, user_addr: u64, mmap_offset: u64) -> Self {
-        VhostUserMemoryRegion {
+        Self {
             guest_phys_addr,
             memory_size,
             user_addr,
@@ -515,51 +538,87 @@ impl VhostUserMsgValidator for VhostUserMemoryRegion {
     }
 }
 
-/// Payload of the VhostUserMemory message.
-pub type VhostUserMemoryPayload = Vec<VhostUserMemoryRegion>;
+impl VhostUserMemoryRegionTrait for VhostUserMemoryRegion {
+    type MappingTarget = MmapDefault;
+
+    fn guest_phys_addr(&self) -> u64 {
+        self.guest_phys_addr
+    }
+
+    fn memory_size(&self) -> u64 {
+        self.memory_size
+    }
+
+    fn user_addr(&self) -> u64 {
+        self.user_addr
+    }
+
+    fn mmap_offset(&self) -> u64 {
+        self.mmap_offset
+    }
+
+    fn map(&self) -> MmapDefault {
+        MmapDefault::new()
+    }
+}
 
 /// Single memory region descriptor as payload for ADD_MEM_REG and REM_MEM_REG
 /// requests.
+
+/// Generic Single Memory region descriptor.
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
 pub struct VhostUserSingleMemoryRegion {
     /// Padding for correct alignment
     padding: u64,
-    /// Guest physical address of the memory region.
-    pub guest_phys_addr: u64,
-    /// Size of the memory region.
-    pub memory_size: u64,
-    /// Virtual address in the current process.
-    pub user_addr: u64,
-    /// Offset where region starts in the mapped memory.
-    pub mmap_offset: u64,
+    /// General memory region
+    region: VhostUserMemoryRegion,
 }
 
 impl VhostUserSingleMemoryRegion {
     /// Create a new instance.
     pub fn new(guest_phys_addr: u64, memory_size: u64, user_addr: u64, mmap_offset: u64) -> Self {
-        VhostUserSingleMemoryRegion {
+        Self {
             padding: 0,
-            guest_phys_addr,
-            memory_size,
-            user_addr,
-            mmap_offset,
+            region: VhostUserMemoryRegion::new(
+                guest_phys_addr,
+                memory_size,
+                user_addr,
+                mmap_offset,
+            ),
         }
     }
 }
 
+// SAFETY: Safe as the structure is created from bytes by the core.
 unsafe impl ByteValued for VhostUserSingleMemoryRegion {}
 
 impl VhostUserMsgValidator for VhostUserSingleMemoryRegion {
     fn is_valid(&self) -> bool {
-        if self.memory_size == 0
-            || self.guest_phys_addr.checked_add(self.memory_size).is_none()
-            || self.user_addr.checked_add(self.memory_size).is_none()
-            || self.mmap_offset.checked_add(self.memory_size).is_none()
-        {
-            return false;
-        }
-        true
+        self.region.is_valid()
+    }
+}
+
+impl VhostUserMemoryRegionTrait for VhostUserSingleMemoryRegion {
+    type MappingTarget = MmapDefault;
+    fn guest_phys_addr(&self) -> u64 {
+        self.region.guest_phys_addr()
+    }
+
+    fn memory_size(&self) -> u64 {
+        self.region.memory_size()
+    }
+
+    fn user_addr(&self) -> u64 {
+        self.region.user_addr()
+    }
+
+    fn mmap_offset(&self) -> u64 {
+        self.region.mmap_offset()
+    }
+
+    fn map(&self) -> MmapDefault {
+        self.region.map()
     }
 }
 

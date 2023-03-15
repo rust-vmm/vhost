@@ -11,9 +11,8 @@ use std::sync::Arc;
 use std::thread;
 
 use vhost::vhost_user::message::{
-    VhostUserConfigFlags, VhostUserMemoryRegion, VhostUserProtocolFeatures,
-    VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
-    VhostUserVringState,
+    VhostUserConfigFlags, VhostUserMemoryRegionTrait, VhostUserProtocolFeatures,
+    VhostUserVirtioFeatures, VhostUserVringAddrFlags, VhostUserVringState,
 };
 use vhost::vhost_user::{
     Error as VhostUserError, Result as VhostUserResult, Slave, VhostUserSlaveReqHandlerMut,
@@ -270,30 +269,30 @@ where
         Ok(())
     }
 
-    fn set_mem_table(
-        &mut self,
-        ctx: &[VhostUserMemoryRegion],
-        files: Vec<File>,
-    ) -> VhostUserResult<()> {
+    fn set_mem_table<R>(&mut self, ctx: &[R], files: Vec<File>) -> VhostUserResult<()>
+    where
+        R: VhostUserMemoryRegionTrait,
+    {
         // We need to create tuple of ranges from the list of VhostUserMemoryRegion
         // that we get from the caller.
-        let mut regions: Vec<(GuestAddress, usize, Option<FileOffset>)> = Vec::new();
+        let mut regions: Vec<(R::MappingTarget, GuestAddress, usize, Option<FileOffset>)> =
+            Vec::new();
         let mut mappings: Vec<AddrMapping> = Vec::new();
 
         for (region, file) in ctx.iter().zip(files) {
-            let g_addr = GuestAddress(region.guest_phys_addr);
-            let len = region.memory_size as usize;
-            let f_off = FileOffset::new(file, region.mmap_offset);
+            let g_addr = GuestAddress(region.guest_phys_addr());
+            let len = region.memory_size() as usize;
+            let f_off = FileOffset::new(file, region.mmap_offset());
 
-            regions.push((g_addr, len, Some(f_off)));
+            regions.push((region.map(), g_addr, len, Some(f_off)));
             mappings.push(AddrMapping {
-                vmm_addr: region.user_addr,
-                size: region.memory_size,
-                gpa_base: region.guest_phys_addr,
+                vmm_addr: region.user_addr(),
+                size: region.memory_size(),
+                gpa_base: region.guest_phys_addr(),
             });
         }
 
-        let mem = GuestMemoryMmap::from_ranges_with_files(regions).map_err(|e| {
+        let mem = GuestMemoryMmap::from_ranges_with_files_and_map(&regions).map_err(|e| {
             VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
         })?;
 
@@ -526,19 +525,20 @@ where
         Ok(MAX_MEM_SLOTS)
     }
 
-    fn add_mem_region(
-        &mut self,
-        region: &VhostUserSingleMemoryRegion,
-        file: File,
-    ) -> VhostUserResult<()> {
+    fn add_mem_region<R>(&mut self, region: &R, file: File) -> VhostUserResult<()>
+    where
+        R: VhostUserMemoryRegionTrait,
+    {
         let guest_region = Arc::new(
-            GuestRegionMmap::from_range(
-                GuestAddress(region.guest_phys_addr),
-                region.memory_size as usize,
-                Some(FileOffset::new(file, region.mmap_offset)),
-            ).map_err(
-                |e| VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e)),
-            )?,
+            GuestRegionMmap::from_range_with_map(
+                region.map(),
+                GuestAddress(region.guest_phys_addr()),
+                region.memory_size() as usize,
+                Some(FileOffset::new(file, region.mmap_offset())),
+            )
+            .map_err(|e| {
+                VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
+            })?,
         );
 
         let mem = self
@@ -558,19 +558,22 @@ where
             })?;
 
         self.mappings.push(AddrMapping {
-            vmm_addr: region.user_addr,
-            size: region.memory_size,
-            gpa_base: region.guest_phys_addr,
+            vmm_addr: region.user_addr(),
+            size: region.memory_size(),
+            gpa_base: region.guest_phys_addr(),
         });
 
         Ok(())
     }
 
-    fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> VhostUserResult<()> {
+    fn remove_mem_region<R>(&mut self, region: &R) -> VhostUserResult<()>
+    where
+        R: VhostUserMemoryRegionTrait,
+    {
         let (mem, _) = self
             .atomic_mem
             .memory()
-            .remove_region(GuestAddress(region.guest_phys_addr), region.memory_size)
+            .remove_region(GuestAddress(region.guest_phys_addr()), region.memory_size())
             .map_err(|e| {
                 VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
             })?;
@@ -584,7 +587,7 @@ where
             })?;
 
         self.mappings
-            .retain(|mapping| mapping.gpa_base != region.guest_phys_addr);
+            .retain(|mapping| mapping.gpa_base != region.guest_phys_addr());
 
         Ok(())
     }

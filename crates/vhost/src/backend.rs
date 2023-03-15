@@ -10,12 +10,15 @@
 //! Common traits and structs for vhost-kern and vhost-user backend drivers.
 
 use std::cell::RefCell;
+use std::os::unix::io::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::sync::RwLock;
 
+use vm_memory::{bitmap::Bitmap, Address, GuestMemoryRegion, GuestRegionMmap};
 use vmm_sys_util::eventfd::EventFd;
 
-use super::Result;
+use super::vhost_user::message::{VhostUserMemoryRegion, VhostUserSingleMemoryRegion};
+use super::{Error, Result};
 
 /// Maximum number of memory regions supported.
 pub const VHOST_MAX_MEMORY_REGIONS: usize = 255;
@@ -59,6 +62,45 @@ impl VringConfigData {
     }
 }
 
+/// Trait for memory region configuration.
+pub trait VhostUserMemoryRegionInfoTrait {
+    /// Memory region.
+    type Region;
+    /// Single memory region.
+    type SingleRegion;
+
+    /// Return guest phys addr.
+    fn guest_phys_addr(&self) -> u64;
+
+    /// Return memory size.
+    fn memory_size(&self) -> u64;
+
+    /// Return userspace addr.
+    fn userspace_addr(&self) -> u64;
+
+    /// Return mmap offset.
+    fn mmap_offset(&self) -> u64;
+
+    /// Return mmap handle.
+    fn mmap_handle(&self) -> RawFd;
+
+    /// Validates the region.
+    fn is_valid(&self) -> bool {
+        self.memory_size() != 0 && self.mmap_handle() >= 0
+    }
+
+    /// Create self from GuestMemoryMmap
+    fn from_guest_region<B: Bitmap>(region: &GuestRegionMmap<B>) -> Result<Self>
+    where
+        Self: Sized;
+
+    /// Convert to Region of type X.
+    fn as_region(&self) -> Self::Region;
+
+    /// Convert to Region of type Y.
+    fn as_single_region(&self) -> Self::SingleRegion;
+}
+
 /// Memory region configuration data.
 #[derive(Default, Clone, Copy)]
 pub struct VhostUserMemoryRegionInfo {
@@ -72,6 +114,64 @@ pub struct VhostUserMemoryRegionInfo {
     pub mmap_offset: u64,
     /// Optional file descriptor for mmap.
     pub mmap_handle: RawFd,
+}
+
+impl VhostUserMemoryRegionInfoTrait for VhostUserMemoryRegionInfo {
+    type Region = VhostUserMemoryRegion;
+    type SingleRegion = VhostUserSingleMemoryRegion;
+
+    fn guest_phys_addr(&self) -> u64 {
+        self.guest_phys_addr
+    }
+
+    fn memory_size(&self) -> u64 {
+        self.memory_size
+    }
+
+    fn userspace_addr(&self) -> u64 {
+        self.userspace_addr
+    }
+
+    fn mmap_offset(&self) -> u64 {
+        self.mmap_offset
+    }
+
+    fn mmap_handle(&self) -> RawFd {
+        self.mmap_handle
+    }
+
+    fn from_guest_region<B: Bitmap>(region: &GuestRegionMmap<B>) -> Result<Self> {
+        let (mmap_handle, mmap_offset) = match region.file_offset() {
+            Some(file_offset) => (file_offset.file().as_raw_fd(), file_offset.start()),
+            None => return Err(Error::InvalidGuestMemoryRegion),
+        };
+
+        Ok(Self {
+            guest_phys_addr: region.start_addr().raw_value(),
+            memory_size: region.len(),
+            userspace_addr: region.as_ptr() as u64,
+            mmap_offset,
+            mmap_handle,
+        })
+    }
+
+    fn as_region(&self) -> VhostUserMemoryRegion {
+        VhostUserMemoryRegion::new(
+            self.guest_phys_addr,
+            self.memory_size,
+            self.userspace_addr,
+            self.mmap_offset,
+        )
+    }
+
+    fn as_single_region(&self) -> VhostUserSingleMemoryRegion {
+        VhostUserSingleMemoryRegion::new(
+            self.guest_phys_addr,
+            self.memory_size,
+            self.userspace_addr,
+            self.mmap_offset,
+        )
+    }
 }
 
 /// Shared memory region data for logging dirty pages
@@ -195,7 +295,9 @@ pub trait VhostBackend: std::marker::Sized {
     fn reset_owner(&self) -> Result<()>;
 
     /// Set the guest memory mappings for vhost to use.
-    fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()>;
+    fn set_mem_table<R>(&self, regions: &[R]) -> Result<()>
+    where
+        R: VhostUserMemoryRegionInfoTrait;
 
     /// Set base address for page modification logging.
     fn set_log_base(&self, base: u64, region: Option<VhostUserDirtyLogRegion>) -> Result<()>;
@@ -281,7 +383,9 @@ pub trait VhostBackendMut: std::marker::Sized {
     fn reset_owner(&mut self) -> Result<()>;
 
     /// Set the guest memory mappings for vhost to use.
-    fn set_mem_table(&mut self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()>;
+    fn set_mem_table<R>(&mut self, regions: &[R]) -> Result<()>
+    where
+        R: VhostUserMemoryRegionInfoTrait;
 
     /// Set base address for page modification logging.
     fn set_log_base(&mut self, base: u64, region: Option<VhostUserDirtyLogRegion>) -> Result<()>;
@@ -353,7 +457,10 @@ impl<T: VhostBackendMut> VhostBackend for RwLock<T> {
         self.write().unwrap().reset_owner()
     }
 
-    fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
+    fn set_mem_table<R>(&self, regions: &[R]) -> Result<()>
+    where
+        R: VhostUserMemoryRegionInfoTrait,
+    {
         self.write().unwrap().set_mem_table(regions)
     }
 
@@ -413,7 +520,10 @@ impl<T: VhostBackendMut> VhostBackend for RefCell<T> {
         self.borrow_mut().reset_owner()
     }
 
-    fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
+    fn set_mem_table<R>(&self, regions: &[R]) -> Result<()>
+    where
+        R: VhostUserMemoryRegionInfoTrait,
+    {
         self.borrow_mut().set_mem_table(regions)
     }
 
@@ -477,7 +587,7 @@ mod tests {
             Ok(())
         }
 
-        fn set_mem_table(&mut self, _regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
+        fn set_mem_table<R>(&mut self, _regions: &[R]) -> Result<()> {
             Ok(())
         }
 
@@ -544,12 +654,13 @@ mod tests {
     #[test]
     fn test_vring_backend_mut() {
         let b = RwLock::new(MockBackend {});
+        let region: Vec<VhostUserMemoryRegionInfo> = Vec::new();
 
         assert_eq!(b.get_features().unwrap(), 0x1);
         b.set_features(0x1).unwrap();
         b.set_owner().unwrap();
         b.reset_owner().unwrap();
-        b.set_mem_table(&[]).unwrap();
+        b.set_mem_table(&region).unwrap();
         b.set_log_base(
             0x100,
             Some(VhostUserDirtyLogRegion {

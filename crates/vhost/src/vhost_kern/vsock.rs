@@ -130,7 +130,8 @@ mod tests {
 
         vsock.set_owner().unwrap();
 
-        vsock.set_mem_table(&[]).unwrap_err();
+        let region: Vec<VhostUserMemoryRegionInfo> = Vec::new();
+        vsock.set_mem_table(&region).unwrap_err();
 
         /*
         let region = VhostUserMemoryRegionInfo {

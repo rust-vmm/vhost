@@ -104,7 +104,7 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
         Ok(())
     }
 
-    fn set_mem_table(&mut self, _ctx: &[VhostUserMemoryRegion], _files: Vec<File>) -> Result<()> {
+    fn set_mem_table<R>(&mut self, _ctx: &[R], _files: Vec<File>) -> Result<()> {
         Ok(())
     }
 
@@ -284,11 +284,11 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
         Ok(MAX_MEM_SLOTS as u64)
     }
 
-    fn add_mem_region(&mut self, _region: &VhostUserSingleMemoryRegion, _fd: File) -> Result<()> {
+    fn add_mem_region<R>(&mut self, _region: &R, _fd: File) -> Result<()> {
         Ok(())
     }
 
-    fn remove_mem_region(&mut self, _region: &VhostUserSingleMemoryRegion) -> Result<()> {
+    fn remove_mem_region<R>(&mut self, _region: &R) -> Result<()> {
         Ok(())
     }
 }
