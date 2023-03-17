@@ -17,7 +17,10 @@ use std::sync::RwLock;
 use vm_memory::{bitmap::Bitmap, Address, GuestMemoryRegion, GuestRegionMmap};
 use vmm_sys_util::eventfd::EventFd;
 
-use super::vhost_user::message::{VhostUserMemoryRegion, VhostUserSingleMemoryRegion};
+use super::vhost_user::message::{
+    VhostUserMemoryRegion, VhostUserSingleMemoryRegion, VhostUserSingleXenMemoryRegion,
+    VhostUserXenMemoryRegion,
+};
 use super::{Error, Result};
 
 /// Maximum number of memory regions supported.
@@ -170,6 +173,72 @@ impl VhostUserMemoryRegionInfoTrait for VhostUserMemoryRegionInfo {
             self.memory_size,
             self.userspace_addr,
             self.mmap_offset,
+        )
+    }
+}
+
+/// Memory region configuration data.
+#[derive(Default, Clone, Copy)]
+pub struct VhostUserXenMemoryRegionInfo {
+    /// Generic memory region info.
+    region: VhostUserMemoryRegionInfo,
+    /// Xen flags.
+    mmap_flags: u32,
+    /// Xen domid.
+    mmap_data: u32,
+}
+
+impl VhostUserMemoryRegionInfoTrait for VhostUserXenMemoryRegionInfo {
+    type Region = VhostUserXenMemoryRegion;
+    type SingleRegion = VhostUserSingleXenMemoryRegion;
+
+    fn guest_phys_addr(&self) -> u64 {
+        self.region.guest_phys_addr()
+    }
+
+    fn memory_size(&self) -> u64 {
+        self.region.memory_size()
+    }
+
+    fn userspace_addr(&self) -> u64 {
+        self.region.userspace_addr()
+    }
+
+    fn mmap_offset(&self) -> u64 {
+        self.region.mmap_offset()
+    }
+
+    fn mmap_handle(&self) -> RawFd {
+        self.region.mmap_handle()
+    }
+
+    fn from_guest_region<B: Bitmap>(region: &GuestRegionMmap<B>) -> Result<Self> {
+        Ok(Self {
+            region: VhostUserMemoryRegionInfo::from_guest_region(region)?,
+            mmap_flags: region.mmap_flags(),
+            mmap_data: region.mmap_data(),
+        })
+    }
+
+    fn as_region(&self) -> VhostUserXenMemoryRegion {
+        VhostUserXenMemoryRegion::new(
+            self.guest_phys_addr(),
+            self.memory_size(),
+            self.userspace_addr(),
+            self.mmap_offset(),
+            self.mmap_flags,
+            self.mmap_data,
+        )
+    }
+
+    fn as_single_region(&self) -> VhostUserSingleXenMemoryRegion {
+        VhostUserSingleXenMemoryRegion::new(
+            self.guest_phys_addr(),
+            self.memory_size(),
+            self.userspace_addr(),
+            self.mmap_offset(),
+            self.mmap_flags,
+            self.mmap_data,
         )
     }
 }

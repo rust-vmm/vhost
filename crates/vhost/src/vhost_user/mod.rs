@@ -348,6 +348,7 @@ mod tests {
             assert_eq!(
                 slave_be.lock().unwrap().acked_protocol_features,
                 VhostUserProtocolFeatures::all().bits()
+                    & !VhostUserProtocolFeatures::XEN_MMAP.bits()
             );
 
             // get_inflight_fd()
@@ -403,8 +404,11 @@ mod tests {
         master.set_features(VIRTIO_FEATURES & !0x1).unwrap();
 
         // set vhost protocol features
-        let features = master.get_protocol_features().unwrap();
+        let mut features = master.get_protocol_features().unwrap();
         assert_eq!(features.bits(), VhostUserProtocolFeatures::all().bits());
+
+        // Disable Xen mmap feature.
+        features.remove(VhostUserProtocolFeatures::XEN_MMAP);
         master.set_protocol_features(features).unwrap();
 
         // Retrieve inflight I/O tracking information

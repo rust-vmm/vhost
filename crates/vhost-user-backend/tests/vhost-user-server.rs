@@ -53,7 +53,11 @@ impl VhostUserBackendMut<VringRwLock, ()> for MockVhostBackend {
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
-        VhostUserProtocolFeatures::all()
+        let mut features = VhostUserProtocolFeatures::all();
+
+        // Disable Xen mmap feature.
+        features.remove(VhostUserProtocolFeatures::XEN_MMAP);
+        features
     }
 
     fn set_event_idx(&mut self, enabled: bool) {

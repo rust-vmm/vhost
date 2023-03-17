@@ -13,7 +13,8 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use vm_memory::mmap::{MmapDefault, MmapInternal};
-use vm_memory::ByteValued;
+use vm_memory::mmap_xen::{MmapXenFlags, MmapXenForeign, MmapXenGrant};
+use vm_memory::{ByteValued, GuestAddress};
 
 use super::{Error, Result};
 use crate::VringConfigData;
@@ -421,6 +422,15 @@ bitflags! {
         const CONFIGURE_MEM_SLOTS = 0x0000_8000;
         /// Support reporting status.
         const STATUS = 0x0001_0000;
+        /// Support Xen mmap.
+        const XEN_MMAP = 0x0002_0000;
+    }
+}
+
+impl VhostUserProtocolFeatures {
+    /// XEN_MMAP is set.
+    pub fn is_xen_mmap(features: u64) -> bool {
+        features & Self::XEN_MMAP.bits() != 0
     }
 }
 
@@ -562,6 +572,224 @@ impl VhostUserMemoryRegionTrait for VhostUserMemoryRegion {
     }
 }
 
+/// Generic Xen Memory region descriptor.
+#[repr(packed)]
+#[derive(Default, Clone, Copy)]
+pub struct VhostUserXenMemoryRegion {
+    /// General memory region
+    region: VhostUserMemoryRegion,
+    /// Xen specific flags.
+    flags: u32,
+    /// Xen domain id.
+    domid: u32,
+}
+
+impl VhostUserXenMemoryRegion {
+    /// Create a new instance.
+    pub fn new(
+        guest_phys_addr: u64,
+        memory_size: u64,
+        user_addr: u64,
+        mmap_offset: u64,
+        flags: u32,
+        domid: u32,
+    ) -> Self {
+        Self {
+            region: VhostUserMemoryRegion::new(
+                guest_phys_addr,
+                memory_size,
+                user_addr,
+                mmap_offset,
+            ),
+            flags,
+            domid,
+        }
+    }
+}
+
+impl VhostUserXenMemoryRegion {
+    fn guest_phys_addr(&self) -> u64 {
+        self.region.guest_phys_addr()
+    }
+
+    fn memory_size(&self) -> u64 {
+        self.region.memory_size()
+    }
+
+    fn user_addr(&self) -> u64 {
+        self.region.user_addr()
+    }
+
+    fn mmap_offset(&self) -> u64 {
+        self.region.mmap_offset()
+    }
+
+    pub(crate) fn flags(&self) -> u32 {
+        self.flags
+    }
+
+    fn domid(&self) -> u32 {
+        self.domid
+    }
+
+    fn is_valid(&self) -> bool {
+        if !self.region.is_valid() {
+            return false;
+        }
+
+        // Only of one of FOREIGN or GRANT should be set.
+        MmapXenFlags::is_valid(self.flags)
+    }
+}
+
+/// Generic Xen Foreign Memory region descriptor.
+#[repr(packed)]
+#[derive(Default, Clone, Copy)]
+pub struct VhostUserXenForeignMemoryRegion {
+    /// General Xen memory region
+    region: VhostUserXenMemoryRegion,
+}
+
+impl VhostUserXenForeignMemoryRegion {
+    /// Create a new instance.
+    pub fn new(
+        guest_phys_addr: u64,
+        memory_size: u64,
+        user_addr: u64,
+        mmap_offset: u64,
+        flags: u32,
+        domid: u32,
+    ) -> Self {
+        Self {
+            region: VhostUserXenMemoryRegion::new(
+                guest_phys_addr,
+                memory_size,
+                user_addr,
+                mmap_offset,
+                flags,
+                domid,
+            ),
+        }
+    }
+}
+
+impl VhostUserMsgValidator for VhostUserXenForeignMemoryRegion {
+    fn is_valid(&self) -> bool {
+        if !self.region.is_valid() {
+            return false;
+        }
+
+        if !MmapXenFlags::is_foreign(self.region.flags()) {
+            panic!();
+        }
+
+        true
+    }
+}
+
+impl VhostUserMemoryRegionTrait for VhostUserXenForeignMemoryRegion {
+    type MappingTarget = MmapXenForeign;
+
+    fn guest_phys_addr(&self) -> u64 {
+        self.region.guest_phys_addr()
+    }
+
+    fn memory_size(&self) -> u64 {
+        self.region.memory_size()
+    }
+
+    fn user_addr(&self) -> u64 {
+        self.region.user_addr()
+    }
+
+    fn mmap_offset(&self) -> u64 {
+        self.region.mmap_offset()
+    }
+
+    fn map(&self) -> MmapXenForeign {
+        MmapXenForeign::new_with(
+            self.region.domid(),
+            GuestAddress(self.guest_phys_addr()),
+            self.region.flags(),
+        )
+        .unwrap()
+    }
+}
+
+/// Generic Xen Grant Memory region descriptor.
+#[repr(packed)]
+#[derive(Default, Clone, Copy)]
+pub struct VhostUserXenGrantMemoryRegion {
+    /// General Xen memory region
+    region: VhostUserXenMemoryRegion,
+}
+
+impl VhostUserXenGrantMemoryRegion {
+    /// Create a new instance.
+    pub fn new(
+        guest_phys_addr: u64,
+        memory_size: u64,
+        user_addr: u64,
+        mmap_offset: u64,
+        flags: u32,
+        domid: u32,
+    ) -> Self {
+        Self {
+            region: VhostUserXenMemoryRegion::new(
+                guest_phys_addr,
+                memory_size,
+                user_addr,
+                mmap_offset,
+                flags,
+                domid,
+            ),
+        }
+    }
+}
+
+impl VhostUserMsgValidator for VhostUserXenGrantMemoryRegion {
+    fn is_valid(&self) -> bool {
+        if !self.region.is_valid() {
+            return false;
+        }
+
+        if !MmapXenFlags::is_grant(self.region.flags()) {
+            panic!();
+        }
+
+        true
+    }
+}
+
+impl VhostUserMemoryRegionTrait for VhostUserXenGrantMemoryRegion {
+    type MappingTarget = MmapXenGrant;
+
+    fn guest_phys_addr(&self) -> u64 {
+        self.region.guest_phys_addr()
+    }
+
+    fn memory_size(&self) -> u64 {
+        self.region.memory_size()
+    }
+
+    fn user_addr(&self) -> u64 {
+        self.region.user_addr()
+    }
+
+    fn mmap_offset(&self) -> u64 {
+        self.region.mmap_offset()
+    }
+
+    fn map(&self) -> MmapXenGrant {
+        MmapXenGrant::new_with(
+            self.region.domid(),
+            GuestAddress(self.guest_phys_addr()),
+            self.region.flags(),
+        )
+        .unwrap()
+    }
+}
+
 /// Single memory region descriptor as payload for ADD_MEM_REG and REM_MEM_REG
 /// requests.
 
@@ -618,6 +846,226 @@ impl VhostUserMemoryRegionTrait for VhostUserSingleMemoryRegion {
     }
 
     fn map(&self) -> MmapDefault {
+        self.region.map()
+    }
+}
+
+/// Generic Single Xen Memory region descriptor.
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct VhostUserSingleXenMemoryRegion {
+    /// Padding for correct alignment
+    padding: u64,
+    /// General Xen memory region
+    region: VhostUserXenMemoryRegion,
+}
+
+impl VhostUserSingleXenMemoryRegion {
+    /// Create a new instance.
+    pub fn new(
+        guest_phys_addr: u64,
+        memory_size: u64,
+        user_addr: u64,
+        mmap_offset: u64,
+        flags: u32,
+        domid: u32,
+    ) -> Self {
+        Self {
+            padding: 0,
+            region: VhostUserXenMemoryRegion::new(
+                guest_phys_addr,
+                memory_size,
+                user_addr,
+                mmap_offset,
+                flags,
+                domid,
+            ),
+        }
+    }
+}
+
+// SAFETY: Safe as the structure is created from bytes by the core.
+unsafe impl ByteValued for VhostUserSingleXenMemoryRegion {}
+
+impl VhostUserSingleXenMemoryRegion {
+    fn guest_phys_addr(&self) -> u64 {
+        self.region.guest_phys_addr()
+    }
+
+    fn memory_size(&self) -> u64 {
+        self.region.memory_size()
+    }
+
+    fn user_addr(&self) -> u64 {
+        self.region.user_addr()
+    }
+
+    fn mmap_offset(&self) -> u64 {
+        self.region.mmap_offset()
+    }
+
+    pub(crate) fn flags(&self) -> u32 {
+        self.region.flags()
+    }
+
+    fn domid(&self) -> u32 {
+        self.region.domid()
+    }
+}
+
+impl VhostUserMsgValidator for VhostUserSingleXenMemoryRegion {
+    fn is_valid(&self) -> bool {
+        self.region.is_valid()
+    }
+}
+
+/// Generic Single Xen Foreign Memory region descriptor.
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct VhostUserSingleXenForeignMemoryRegion {
+    /// Padding for correct alignment
+    padding: u64,
+    /// General Xen foreign memory region
+    region: VhostUserXenForeignMemoryRegion,
+}
+
+impl VhostUserSingleXenForeignMemoryRegion {
+    /// Create a new instance.
+    pub fn new(
+        guest_phys_addr: u64,
+        memory_size: u64,
+        user_addr: u64,
+        mmap_offset: u64,
+        flags: u32,
+        domid: u32,
+    ) -> Self {
+        Self {
+            padding: 0,
+            region: VhostUserXenForeignMemoryRegion::new(
+                guest_phys_addr,
+                memory_size,
+                user_addr,
+                mmap_offset,
+                flags,
+                domid,
+            ),
+        }
+    }
+}
+
+// SAFETY: Safe as the structure is created from bytes by the core.
+unsafe impl ByteValued for VhostUserSingleXenForeignMemoryRegion {}
+
+impl From<VhostUserSingleXenMemoryRegion> for VhostUserSingleXenForeignMemoryRegion {
+    fn from(r: VhostUserSingleXenMemoryRegion) -> VhostUserSingleXenForeignMemoryRegion {
+        Self {
+            padding: 0,
+            region: VhostUserXenForeignMemoryRegion { region: r.region },
+        }
+    }
+}
+
+impl VhostUserMsgValidator for VhostUserSingleXenForeignMemoryRegion {
+    fn is_valid(&self) -> bool {
+        self.region.is_valid()
+    }
+}
+
+impl VhostUserMemoryRegionTrait for VhostUserSingleXenForeignMemoryRegion {
+    type MappingTarget = MmapXenForeign;
+    fn guest_phys_addr(&self) -> u64 {
+        self.region.guest_phys_addr()
+    }
+
+    fn memory_size(&self) -> u64 {
+        self.region.memory_size()
+    }
+
+    fn user_addr(&self) -> u64 {
+        self.region.user_addr()
+    }
+
+    fn mmap_offset(&self) -> u64 {
+        self.region.mmap_offset()
+    }
+
+    fn map(&self) -> MmapXenForeign {
+        self.region.map()
+    }
+}
+
+/// Generic Single Xen Grant Memory region descriptor.
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct VhostUserSingleXenGrantMemoryRegion {
+    /// Padding for correct alignment
+    padding: u64,
+    /// General Xen grant memory region
+    region: VhostUserXenGrantMemoryRegion,
+}
+
+impl VhostUserSingleXenGrantMemoryRegion {
+    /// Create a new instance.
+    pub fn new(
+        guest_phys_addr: u64,
+        memory_size: u64,
+        user_addr: u64,
+        mmap_offset: u64,
+        flags: u32,
+        domid: u32,
+    ) -> Self {
+        Self {
+            padding: 0,
+            region: VhostUserXenGrantMemoryRegion::new(
+                guest_phys_addr,
+                memory_size,
+                user_addr,
+                mmap_offset,
+                flags,
+                domid,
+            ),
+        }
+    }
+}
+
+// SAFETY: Safe as the structure is created from bytes by the core.
+unsafe impl ByteValued for VhostUserSingleXenGrantMemoryRegion {}
+
+impl VhostUserMsgValidator for VhostUserSingleXenGrantMemoryRegion {
+    fn is_valid(&self) -> bool {
+        self.region.is_valid()
+    }
+}
+
+impl From<VhostUserSingleXenMemoryRegion> for VhostUserSingleXenGrantMemoryRegion {
+    fn from(r: VhostUserSingleXenMemoryRegion) -> VhostUserSingleXenGrantMemoryRegion {
+        Self {
+            padding: 0,
+            region: VhostUserXenGrantMemoryRegion { region: r.region },
+        }
+    }
+}
+
+impl VhostUserMemoryRegionTrait for VhostUserSingleXenGrantMemoryRegion {
+    type MappingTarget = MmapXenGrant;
+
+    fn guest_phys_addr(&self) -> u64 {
+        self.region.guest_phys_addr()
+    }
+
+    fn memory_size(&self) -> u64 {
+        self.region.memory_size()
+    }
+
+    fn user_addr(&self) -> u64 {
+        self.region.user_addr()
+    }
+
+    fn mmap_offset(&self) -> u64 {
+        self.region.mmap_offset()
+    }
+
+    fn map(&self) -> MmapXenGrant {
         self.region.map()
     }
 }

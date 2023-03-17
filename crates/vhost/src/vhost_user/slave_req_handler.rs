@@ -8,6 +8,7 @@ use std::os::unix::net::UnixStream;
 use std::slice;
 use std::sync::{Arc, Mutex};
 
+use vm_memory::mmap_xen::MmapXenFlags;
 use vm_memory::ByteValued;
 
 use super::connection::Endpoint;
@@ -387,8 +388,28 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 self.send_ack_message(&hdr, res)?;
             }
             Ok(MasterReq::SET_MEM_TABLE) => {
-                self.verify_mem_table::<VhostUserMemoryRegion>(&hdr, size, &buf, &files)?;
-                let res = self.set_mem_table::<VhostUserMemoryRegion>(&buf, files);
+                let res = if !VhostUserProtocolFeatures::is_xen_mmap(self.acked_protocol_features) {
+                    self.verify_mem_table::<VhostUserMemoryRegion>(&hdr, size, &buf, &files)?;
+                    self.set_mem_table::<VhostUserMemoryRegion>(&buf, files)
+                } else {
+                    self.verify_mem_table::<VhostUserXenMemoryRegion>(&hdr, size, &buf, &files)?;
+
+                    // FIXME
+                    let region = unsafe {
+                        slice::from_raw_parts(
+                            buf.as_ptr().add(mem::size_of::<VhostUserMemory>())
+                                as *const VhostUserXenMemoryRegion,
+                            1,
+                        )
+                    };
+
+                    if MmapXenFlags::is_foreign(region[0].flags()) {
+                        self.set_mem_table::<VhostUserXenForeignMemoryRegion>(&buf, files)
+                    } else {
+                        self.set_mem_table::<VhostUserXenGrantMemoryRegion>(&buf, files)
+                    }
+                };
+
                 self.send_ack_message(&hdr, res)?;
             }
             Ok(MasterReq::SET_VRING_NUM) => {
@@ -522,22 +543,52 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                     return Err(Error::InvalidParam);
                 }
 
-                let msg =
-                    self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
-                let res = self
-                    .backend
-                    .add_mem_region::<VhostUserSingleMemoryRegion>(&msg, files.swap_remove(0));
+                let res = if !VhostUserProtocolFeatures::is_xen_mmap(self.acked_protocol_features) {
+                    let msg =
+                        self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
+                    self.backend
+                        .add_mem_region::<VhostUserSingleMemoryRegion>(&msg, files.swap_remove(0))
+                } else {
+                    let msg = self
+                        .extract_request_body::<VhostUserSingleXenMemoryRegion>(&hdr, size, &buf)?;
+
+                    if MmapXenFlags::is_foreign(msg.flags()) {
+                        self.backend
+                            .add_mem_region::<VhostUserSingleXenForeignMemoryRegion>(
+                                &msg.into(),
+                                files.swap_remove(0),
+                            )
+                    } else {
+                        self.backend
+                            .add_mem_region::<VhostUserSingleXenGrantMemoryRegion>(
+                                &msg.into(),
+                                files.swap_remove(0),
+                            )
+                    }
+                };
 
                 self.send_ack_message(&hdr, res)?;
             }
             Ok(MasterReq::REM_MEM_REG) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
 
-                let msg =
-                    self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
-                let res = self
-                    .backend
-                    .remove_mem_region::<VhostUserSingleMemoryRegion>(&msg);
+                let res = if !VhostUserProtocolFeatures::is_xen_mmap(self.acked_protocol_features) {
+                    let msg =
+                        self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
+                    self.backend
+                        .remove_mem_region::<VhostUserSingleMemoryRegion>(&msg)
+                } else {
+                    let msg = self
+                        .extract_request_body::<VhostUserSingleXenMemoryRegion>(&hdr, size, &buf)?;
+
+                    if MmapXenFlags::is_foreign(msg.flags()) {
+                        self.backend
+                            .remove_mem_region::<VhostUserSingleXenForeignMemoryRegion>(&msg.into())
+                    } else {
+                        self.backend
+                            .remove_mem_region::<VhostUserSingleXenGrantMemoryRegion>(&msg.into())
+                    }
+                };
 
                 self.send_ack_message(&hdr, res)?;
             }
