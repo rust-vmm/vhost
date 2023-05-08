@@ -386,6 +386,8 @@ where
             }
         }
 
+        let next_avail = self.vrings[index as usize].queue_next_avail();
+
         self.vrings[index as usize].set_kick(None);
         self.vrings[index as usize].set_call(None);
 
@@ -396,8 +398,6 @@ where
             .get_mut()
             .get_queue_mut()
             .reset();
-
-        let next_avail = self.vrings[index as usize].queue_next_avail();
 
         Ok(VhostUserVringState::new(index, u32::from(next_avail)))
     }
