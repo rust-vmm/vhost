@@ -35,7 +35,10 @@ impl MockVhostBackend {
     }
 }
 
-impl VhostUserBackendMut<VringRwLock, ()> for MockVhostBackend {
+impl VhostUserBackendMut for MockVhostBackend {
+    type Bitmap = ();
+    type Vring = VringRwLock;
+
     fn num_queues(&self) -> usize {
         2
     }

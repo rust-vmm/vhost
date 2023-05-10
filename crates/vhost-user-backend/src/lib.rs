@@ -14,7 +14,6 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use vhost::vhost_user::{BackendListener, BackendReqHandler, Error as VhostUserError, Listener};
-use vm_memory::bitmap::Bitmap;
 use vm_memory::mmap::NewBitmap;
 use vm_memory::{GuestMemoryAtomic, GuestMemoryMmap};
 
@@ -81,17 +80,17 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///
 /// This structure is the public API the backend is allowed to interact with in order to run
 /// a fully functional vhost-user daemon.
-pub struct VhostUserDaemon<S, V, B: Bitmap + 'static = ()> {
+pub struct VhostUserDaemon<T: VhostUserBackend> {
     name: String,
-    handler: Arc<Mutex<VhostUserHandler<S, V, B>>>,
+    handler: Arc<Mutex<VhostUserHandler<T>>>,
     main_thread: Option<thread::JoinHandle<Result<()>>>,
 }
 
-impl<S, V, B> VhostUserDaemon<S, V, B>
+impl<T> VhostUserDaemon<T>
 where
-    S: VhostUserBackend<V, B> + Clone + 'static,
-    V: VringT<GM<B>> + Clone + Send + Sync + 'static,
-    B: NewBitmap + Clone + Send + Sync,
+    T: VhostUserBackend + Clone + 'static,
+    T::Bitmap: NewBitmap + Clone + Send + Sync,
+    T::Vring: Clone + Send + Sync,
 {
     /// Create the daemon instance, providing the backend implementation of `VhostUserBackend`.
     ///
@@ -100,8 +99,8 @@ where
     /// but they get to be registered later during the sequence.
     pub fn new(
         name: String,
-        backend: S,
-        atomic_mem: GuestMemoryAtomic<GuestMemoryMmap<B>>,
+        backend: T,
+        atomic_mem: GuestMemoryAtomic<GuestMemoryMmap<T::Bitmap>>,
     ) -> Result<Self> {
         let handler = Arc::new(Mutex::new(
             VhostUserHandler::new(backend, atomic_mem).map_err(Error::NewVhostUserHandler)?,
@@ -122,7 +121,7 @@ where
     /// it acts as a client or a server.
     fn start_daemon(
         &mut self,
-        mut handler: BackendReqHandler<Mutex<VhostUserHandler<S, V, B>>>,
+        mut handler: BackendReqHandler<Mutex<VhostUserHandler<T>>>,
     ) -> Result<()> {
         let handle = thread::Builder::new()
             .name(self.name.clone())
@@ -165,8 +164,8 @@ where
 
     fn accept(
         &self,
-        backend_listener: &mut BackendListener<Mutex<VhostUserHandler<S, V, B>>>,
-    ) -> Result<BackendReqHandler<Mutex<VhostUserHandler<S, V, B>>>> {
+        backend_listener: &mut BackendListener<Mutex<VhostUserHandler<T>>>,
+    ) -> Result<BackendReqHandler<Mutex<VhostUserHandler<T>>>> {
         loop {
             match backend_listener.accept() {
                 Err(e) => return Err(Error::CreateBackendListener(e)),
@@ -232,7 +231,7 @@ where
     ///
     /// This is necessary to perform further actions like registering and unregistering some extra
     /// event file descriptors.
-    pub fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S, V, B>>> {
+    pub fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<T>>> {
         // Do not expect poisoned lock.
         self.handler.lock().unwrap().get_epoll_handlers()
     }

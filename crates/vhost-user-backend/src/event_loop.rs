@@ -8,13 +8,11 @@ use std::io::{self, Result};
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use vm_memory::bitmap::Bitmap;
 use vmm_sys_util::epoll::{ControlOperation, Epoll, EpollEvent, EventSet};
 use vmm_sys_util::eventfd::EventFd;
 
 use super::backend::VhostUserBackend;
 use super::vring::VringT;
-use super::GM;
 
 /// Errors related to vring epoll event handling.
 #[derive(Debug)]
@@ -58,16 +56,16 @@ pub type VringEpollResult<T> = std::result::Result<T, VringEpollError>;
 /// - add file descriptors to be monitored by the epoll fd
 /// - remove registered file descriptors from the epoll fd
 /// - run the event loop to handle pending events on the epoll fd
-pub struct VringEpollHandler<S, V, B> {
+pub struct VringEpollHandler<T: VhostUserBackend> {
     epoll: Epoll,
-    backend: S,
-    vrings: Vec<V>,
+    backend: T,
+    vrings: Vec<T::Vring>,
     thread_id: usize,
     exit_event_fd: Option<EventFd>,
-    phantom: PhantomData<B>,
+    phantom: PhantomData<T::Bitmap>,
 }
 
-impl<S, V, B> VringEpollHandler<S, V, B> {
+impl<T: VhostUserBackend> VringEpollHandler<T> {
     /// Send `exit event` to break the event loop.
     pub fn send_exit_event(&self) {
         if let Some(eventfd) = self.exit_event_fd.as_ref() {
@@ -76,14 +74,16 @@ impl<S, V, B> VringEpollHandler<S, V, B> {
     }
 }
 
-impl<S, V, B> VringEpollHandler<S, V, B>
+impl<T> VringEpollHandler<T>
 where
-    S: VhostUserBackend<V, B>,
-    V: VringT<GM<B>>,
-    B: Bitmap + 'static,
+    T: VhostUserBackend,
 {
     /// Create a `VringEpollHandler` instance.
-    pub(crate) fn new(backend: S, vrings: Vec<V>, thread_id: usize) -> VringEpollResult<Self> {
+    pub(crate) fn new(
+        backend: T,
+        vrings: Vec<T::Vring>,
+        thread_id: usize,
+    ) -> VringEpollResult<Self> {
         let epoll = Epoll::new().map_err(VringEpollError::EpollCreateFd)?;
         let exit_event_fd = backend.exit_event(thread_id);
 
@@ -217,7 +217,7 @@ where
     }
 }
 
-impl<S, V, B> AsRawFd for VringEpollHandler<S, V, B> {
+impl<T: VhostUserBackend> AsRawFd for VringEpollHandler<T> {
     fn as_raw_fd(&self) -> RawFd {
         self.epoll.as_raw_fd()
     }
