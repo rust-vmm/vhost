@@ -34,11 +34,10 @@ use super::GM;
 /// Trait with interior mutability for vhost user backend servers to implement concrete services.
 ///
 /// To support multi-threading and asynchronous IO, we enforce `Send + Sync` bound.
-pub trait VhostUserBackend<V, B = ()>: Send + Sync
-where
-    V: VringT<GM<B>>,
-    B: Bitmap + 'static,
-{
+pub trait VhostUserBackend: Send + Sync {
+    type Bitmap: Bitmap + 'static;
+    type Vring: VringT<GM<Self::Bitmap>>;
+
     /// Get number of queues supported.
     fn num_queues(&self) -> usize;
 
@@ -74,7 +73,7 @@ where
     }
 
     /// Update guest memory regions.
-    fn update_memory(&self, mem: GM<B>) -> Result<()>;
+    fn update_memory(&self, mem: GM<Self::Bitmap>) -> Result<()>;
 
     /// Set handler for communicating with the frontend by the backend communication channel.
     ///
@@ -108,17 +107,16 @@ where
         &self,
         device_event: u16,
         evset: EventSet,
-        vrings: &[V],
+        vrings: &[Self::Vring],
         thread_id: usize,
     ) -> Result<()>;
 }
 
 /// Trait without interior mutability for vhost user backend servers to implement concrete services.
-pub trait VhostUserBackendMut<V, B = ()>: Send + Sync
-where
-    V: VringT<GM<B>>,
-    B: Bitmap + 'static,
-{
+pub trait VhostUserBackendMut: Send + Sync {
+    type Bitmap: Bitmap + 'static;
+    type Vring: VringT<GM<Self::Bitmap>>;
+
     /// Get number of queues supported.
     fn num_queues(&self) -> usize;
 
@@ -154,7 +152,7 @@ where
     }
 
     /// Update guest memory regions.
-    fn update_memory(&mut self, mem: GM<B>) -> Result<()>;
+    fn update_memory(&mut self, mem: GM<Self::Bitmap>) -> Result<()>;
 
     /// Set handler for communicating with the frontend by the backend communication channel.
     ///
@@ -189,16 +187,15 @@ where
         &mut self,
         device_event: u16,
         evset: EventSet,
-        vrings: &[V],
+        vrings: &[Self::Vring],
         thread_id: usize,
     ) -> Result<()>;
 }
 
-impl<T: VhostUserBackend<V, B>, V, B> VhostUserBackend<V, B> for Arc<T>
-where
-    V: VringT<GM<B>>,
-    B: Bitmap + 'static,
-{
+impl<T: VhostUserBackend> VhostUserBackend for Arc<T> {
+    type Bitmap = T::Bitmap;
+    type Vring = T::Vring;
+
     fn num_queues(&self) -> usize {
         self.deref().num_queues()
     }
@@ -231,7 +228,7 @@ where
         self.deref().set_config(offset, buf)
     }
 
-    fn update_memory(&self, mem: GM<B>) -> Result<()> {
+    fn update_memory(&self, mem: GM<Self::Bitmap>) -> Result<()> {
         self.deref().update_memory(mem)
     }
 
@@ -251,7 +248,7 @@ where
         &self,
         device_event: u16,
         evset: EventSet,
-        vrings: &[V],
+        vrings: &[Self::Vring],
         thread_id: usize,
     ) -> Result<()> {
         self.deref()
@@ -259,11 +256,10 @@ where
     }
 }
 
-impl<T: VhostUserBackendMut<V, B>, V, B> VhostUserBackend<V, B> for Mutex<T>
-where
-    V: VringT<GM<B>>,
-    B: Bitmap + 'static,
-{
+impl<T: VhostUserBackendMut> VhostUserBackend for Mutex<T> {
+    type Bitmap = T::Bitmap;
+    type Vring = T::Vring;
+
     fn num_queues(&self) -> usize {
         self.lock().unwrap().num_queues()
     }
@@ -296,7 +292,7 @@ where
         self.lock().unwrap().set_config(offset, buf)
     }
 
-    fn update_memory(&self, mem: GM<B>) -> Result<()> {
+    fn update_memory(&self, mem: GM<Self::Bitmap>) -> Result<()> {
         self.lock().unwrap().update_memory(mem)
     }
 
@@ -316,7 +312,7 @@ where
         &self,
         device_event: u16,
         evset: EventSet,
-        vrings: &[V],
+        vrings: &[Self::Vring],
         thread_id: usize,
     ) -> Result<()> {
         self.lock()
@@ -325,11 +321,10 @@ where
     }
 }
 
-impl<T: VhostUserBackendMut<V, B>, V, B> VhostUserBackend<V, B> for RwLock<T>
-where
-    V: VringT<GM<B>>,
-    B: Bitmap + 'static,
-{
+impl<T: VhostUserBackendMut> VhostUserBackend for RwLock<T> {
+    type Bitmap = T::Bitmap;
+    type Vring = T::Vring;
+
     fn num_queues(&self) -> usize {
         self.read().unwrap().num_queues()
     }
@@ -362,7 +357,7 @@ where
         self.write().unwrap().set_config(offset, buf)
     }
 
-    fn update_memory(&self, mem: GM<B>) -> Result<()> {
+    fn update_memory(&self, mem: GM<Self::Bitmap>) -> Result<()> {
         self.write().unwrap().update_memory(mem)
     }
 
@@ -382,7 +377,7 @@ where
         &self,
         device_event: u16,
         evset: EventSet,
-        vrings: &[V],
+        vrings: &[Self::Vring],
         thread_id: usize,
     ) -> Result<()> {
         self.write()
@@ -426,7 +421,10 @@ pub mod tests {
         }
     }
 
-    impl VhostUserBackendMut<VringRwLock, ()> for MockVhostBackend {
+    impl VhostUserBackendMut for MockVhostBackend {
+        type Bitmap = ();
+        type Vring = VringRwLock;
+
         fn num_queues(&self) -> usize {
             2
         }

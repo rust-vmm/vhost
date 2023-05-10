@@ -7,6 +7,8 @@
 ### Changed
 - Change uses of master/slave for frontend/backend in the codebase.
 - [[#192]](https://github.com/rust-vmm/vhost/pull/192) vhost-user-backend: remove return value from handle_event
+- [[#155]](https://github.com/rust-vmm/vhost/pull/155) Converted generic type
+  parameters of VhostUserBackend into associated types.
 
 ### Fixed
 

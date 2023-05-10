@@ -20,7 +20,6 @@ use vhost::vhost_user::{
 };
 use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use virtio_queue::{Error as VirtQueError, QueueT};
-use vm_memory::bitmap::Bitmap;
 use vm_memory::mmap::NewBitmap;
 use vm_memory::{GuestAddress, GuestAddressSpace, GuestMemoryMmap, GuestRegionMmap};
 use vmm_sys_util::epoll::EventSet;
@@ -74,9 +73,9 @@ struct AddrMapping {
     gpa_base: u64,
 }
 
-pub struct VhostUserHandler<S, V, B: Bitmap + 'static> {
-    backend: S,
-    handlers: Vec<Arc<VringEpollHandler<S, V, B>>>,
+pub struct VhostUserHandler<T: VhostUserBackend> {
+    backend: T,
+    handlers: Vec<Arc<VringEpollHandler<T>>>,
     owned: bool,
     features_acked: bool,
     acked_features: u64,
@@ -85,26 +84,26 @@ pub struct VhostUserHandler<S, V, B: Bitmap + 'static> {
     max_queue_size: usize,
     queues_per_thread: Vec<u64>,
     mappings: Vec<AddrMapping>,
-    atomic_mem: GM<B>,
-    vrings: Vec<V>,
+    atomic_mem: GM<T::Bitmap>,
+    vrings: Vec<T::Vring>,
     worker_threads: Vec<thread::JoinHandle<VringEpollResult<()>>>,
 }
 
 // Ensure VhostUserHandler: Clone + Send + Sync + 'static.
-impl<S, V, B> VhostUserHandler<S, V, B>
+impl<T> VhostUserHandler<T>
 where
-    S: VhostUserBackend<V, B> + Clone + 'static,
-    V: VringT<GM<B>> + Clone + Send + Sync + 'static,
-    B: Bitmap + Clone + Send + Sync + 'static,
+    T: VhostUserBackend + Clone + 'static,
+    T::Vring: Clone + Send + Sync + 'static,
+    T::Bitmap: Clone + Send + Sync + 'static,
 {
-    pub(crate) fn new(backend: S, atomic_mem: GM<B>) -> VhostUserHandlerResult<Self> {
+    pub(crate) fn new(backend: T, atomic_mem: GM<T::Bitmap>) -> VhostUserHandlerResult<Self> {
         let num_queues = backend.num_queues();
         let max_queue_size = backend.max_queue_size();
         let queues_per_thread = backend.queues_per_thread();
 
         let mut vrings = Vec::new();
         for _ in 0..num_queues {
-            let vring = V::new(atomic_mem.clone(), max_queue_size as u16)
+            let vring = T::Vring::new(atomic_mem.clone(), max_queue_size as u16)
                 .map_err(VhostUserHandlerError::CreateVring)?;
             vrings.push(vring);
         }
@@ -151,7 +150,7 @@ where
     }
 }
 
-impl<S, V, B: Bitmap> VhostUserHandler<S, V, B> {
+impl<T: VhostUserBackend> VhostUserHandler<T> {
     pub(crate) fn send_exit_event(&self) {
         for handler in self.handlers.iter() {
             handler.send_exit_event();
@@ -169,17 +168,15 @@ impl<S, V, B: Bitmap> VhostUserHandler<S, V, B> {
     }
 }
 
-impl<S, V, B> VhostUserHandler<S, V, B>
+impl<T> VhostUserHandler<T>
 where
-    S: VhostUserBackend<V, B>,
-    V: VringT<GM<B>>,
-    B: Bitmap,
+    T: VhostUserBackend,
 {
-    pub(crate) fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S, V, B>>> {
+    pub(crate) fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<T>>> {
         self.handlers.clone()
     }
 
-    fn vring_needs_init(&self, vring: &V) -> bool {
+    fn vring_needs_init(&self, vring: &T::Vring) -> bool {
         let vring_state = vring.get_ref();
 
         // If the vring wasn't initialized and we already have an EventFd for
@@ -187,7 +184,7 @@ where
         !vring_state.get_queue().ready() && vring_state.get_kick().is_some()
     }
 
-    fn initialize_vring(&self, vring: &V, index: u8) -> VhostUserResult<()> {
+    fn initialize_vring(&self, vring: &T::Vring, index: u8) -> VhostUserResult<()> {
         assert!(vring.get_ref().get_kick().is_some());
 
         if let Some(fd) = vring.get_ref().get_kick() {
@@ -218,11 +215,9 @@ where
     }
 }
 
-impl<S, V, B> VhostUserBackendReqHandlerMut for VhostUserHandler<S, V, B>
+impl<T: VhostUserBackend> VhostUserBackendReqHandlerMut for VhostUserHandler<T>
 where
-    S: VhostUserBackend<V, B>,
-    V: VringT<GM<B>>,
-    B: NewBitmap + Clone,
+    T::Bitmap: NewBitmap + Clone,
 {
     fn set_owner(&mut self) -> VhostUserResult<()> {
         if self.owned {
@@ -604,7 +599,7 @@ where
     }
 }
 
-impl<S, V, B: Bitmap> Drop for VhostUserHandler<S, V, B> {
+impl<T: VhostUserBackend> Drop for VhostUserHandler<T> {
     fn drop(&mut self) {
         // Signal all working threads to exit.
         self.send_exit_event();
