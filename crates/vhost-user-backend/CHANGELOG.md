@@ -9,10 +9,24 @@
 
 ### Deprecated
 
+## v0.9.0
+
+### Added
+- [[#138]](https://github.com/rust-vmm/vhost/pull/138): vhost-user-backend: add repository metadata
+
+### Changed
+- Updated dependency virtio-bindings 0.1.0 -> 0.2.0
+- Updated dependency virtio-queue 0.7.0 -> 0.8.0
+- Updated dependency vm-memory 0.10.0 -> 0.11.0
+
+### Fixed
+- [[#154]](https://github.com/rust-vmm/vhost/pull/154): Fix return value of GET_VRING_BASE message
+- [[#142]](https://github.com/rust-vmm/vhost/pull/142): vhost_user: Slave requests aren't only FS specific
+
 ## v0.8.0
 
 ### Added
-- [#120](https://github.com/rust-vmm/vhost/pull/120): vhost_kern: vdpa: Add missing ioctls
+- [[#120]](https://github.com/rust-vmm/vhost/pull/120): vhost_kern: vdpa: Add missing ioctls
 
 ### Changed
 - Updated dependency vhost 0.5 -> 0.6
