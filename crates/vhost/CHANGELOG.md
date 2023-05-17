@@ -6,7 +6,21 @@
 ### Changed
 
 ### Fixed
+
+### Deprecated
+
+## [0.7.0]
+
+### Added
+- [[#137]](https://github.com/rust-vmm/vhost/pull/137) vhost_user: add Error::Disconnected
+
+### Changed
+- Updated dependency vm-memory 0.10.0 to 0.11.0
+
+### Fixed
 - [[#135]](https://github.com/rust-vmm/vhost/pull/135) vhost_user: fix UB on invalid master request
+- [[#136]](https://github.com/rust-vmm/vhost/pull/136) vhost_user: fix unsound send_message functions
+- [[#153]](https://github.com/rust-vmm/vhost/pull/153) Fix set_vring_addr issues
 
 ### Deprecated
 
