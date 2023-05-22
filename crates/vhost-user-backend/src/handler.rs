@@ -367,12 +367,14 @@ where
         if index as usize >= self.num_queues {
             return Err(VhostUserError::InvalidParam);
         }
+
         // Quote from vhost-user specification:
         // Client must start ring upon receiving a kick (that is, detecting
         // that file descriptor is readable) on the descriptor specified by
         // VHOST_USER_SET_VRING_KICK, and stop ring upon receiving
         // VHOST_USER_GET_VRING_BASE.
         self.vrings[index as usize].set_queue_ready(false);
+
         if let Some(fd) = self.vrings[index as usize].get_ref().get_kick() {
             for (thread_index, queues_mask) in self.queues_per_thread.iter().enumerate() {
                 let shifted_queues_mask = queues_mask >> index;
@@ -390,14 +392,6 @@ where
 
         self.vrings[index as usize].set_kick(None);
         self.vrings[index as usize].set_call(None);
-
-        // Strictly speaking, we should do this upon receiving the first kick,
-        // but it's actually easier to just do it here so we're ready in case
-        // the vring gets re-initialized by the guest.
-        self.vrings[index as usize]
-            .get_mut()
-            .get_queue_mut()
-            .reset();
 
         Ok(VhostUserVringState::new(index, u32::from(next_avail)))
     }
