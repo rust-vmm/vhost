@@ -61,6 +61,34 @@ impl<AS: GuestAddressSpace> VhostKernVdpa<AS> {
             backend_features_acked,
         }
     }
+
+    /// Set the addresses for a given vring.
+    ///
+    /// # Arguments
+    /// * `queue_index` - Index of the queue to set addresses for.
+    /// * `config_data` - Vring config data, addresses of desc_table, avail_ring
+    ///     and used_ring are in the guest address space.
+    pub fn set_vring_addr(&self, queue_index: usize, config_data: &VringConfigData) -> Result<()> {
+        if !self.is_valid(config_data) {
+            return Err(Error::InvalidQueue);
+        }
+
+        // vDPA backends expect IOVA (that can be mapped 1:1 with
+        // GPA when no IOMMU is involved).
+        let vring_addr = vhost_vring_addr {
+            index: queue_index as u32,
+            flags: config_data.flags,
+            desc_user_addr: config_data.desc_table_addr,
+            used_user_addr: config_data.used_ring_addr,
+            avail_user_addr: config_data.avail_ring_addr,
+            log_guest_addr: config_data.get_log_addr(),
+        };
+
+        // This ioctl is called on a valid vhost fd and has its
+        // return value checked.
+        let ret = unsafe { ioctl_with_ref(self, VHOST_SET_VRING_ADDR(), &vring_addr) };
+        ioctl_result(ret, ())
+    }
 }
 
 impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
