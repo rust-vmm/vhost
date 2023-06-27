@@ -166,13 +166,13 @@ fn vhost_user_client(path: &Path, barrier: Arc<Barrier>) {
     let addr = mem.get_host_address(GuestAddress(0x100000)).unwrap() as u64;
     let reg = mem.find_region(GuestAddress(0x100000)).unwrap();
     let fd = reg.file_offset().unwrap();
-    let regions = [VhostUserMemoryRegionInfo {
-        guest_phys_addr: 0x100000,
-        memory_size: 0x100000,
-        userspace_addr: addr,
-        mmap_offset: 0,
-        mmap_handle: fd.file().as_raw_fd(),
-    }];
+    let regions = [VhostUserMemoryRegionInfo::new(
+        0x100000,
+        0x100000,
+        addr,
+        0,
+        fd.file().as_raw_fd(),
+    )];
     master.set_mem_table(&regions).unwrap();
 
     master.set_vring_num(0, 256).unwrap();
@@ -210,13 +210,7 @@ fn vhost_user_client(path: &Path, barrier: Arc<Barrier>) {
     master.set_vring_base(0, state as u16).unwrap();
 
     assert_eq!(master.get_max_mem_slots().unwrap(), 32);
-    let region = VhostUserMemoryRegionInfo {
-        guest_phys_addr: 0x800000,
-        memory_size: 0x100000,
-        userspace_addr: addr,
-        mmap_offset: 0,
-        mmap_handle: fd.file().as_raw_fd(),
-    };
+    let region = VhostUserMemoryRegionInfo::new(0x800000, 0x100000, addr, 0, fd.file().as_raw_fd());
     master.add_mem_region(&region).unwrap();
     master.remove_mem_region(&region).unwrap();
 }

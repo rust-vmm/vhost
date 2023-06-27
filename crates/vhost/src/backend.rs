@@ -443,6 +443,27 @@ impl<T: VhostBackendMut> VhostBackend for RefCell<T> {
         self.borrow_mut().set_vring_err(queue_index, fd)
     }
 }
+
+#[cfg(any(test, feature = "test-utils"))]
+impl VhostUserMemoryRegionInfo {
+    /// creates instance of `VhostUserMemoryRegionInfo`.
+    pub fn new(
+        guest_phys_addr: u64,
+        memory_size: u64,
+        userspace_addr: u64,
+        mmap_offset: u64,
+        mmap_handle: RawFd,
+    ) -> Self {
+        Self {
+            guest_phys_addr,
+            memory_size,
+            userspace_addr,
+            mmap_offset,
+            mmap_handle,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

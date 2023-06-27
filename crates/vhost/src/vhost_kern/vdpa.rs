@@ -436,13 +436,13 @@ mod tests {
 
         vdpa.set_mem_table(&[]).unwrap_err();
 
-        let region = VhostUserMemoryRegionInfo {
-            guest_phys_addr: 0x0,
-            memory_size: 0x10_0000,
-            userspace_addr: m.get_host_address(GuestAddress(0x0)).unwrap() as u64,
-            mmap_offset: 0,
-            mmap_handle: -1,
-        };
+        let region = VhostUserMemoryRegionInfo::new(
+            0x0,
+            0x10_0000,
+            m.get_host_address(GuestAddress(0x0)).unwrap() as u64,
+            0,
+            -1,
+        );
         vdpa.set_mem_table(&[region]).unwrap();
 
         let device_id = vdpa.get_device_id().unwrap();
