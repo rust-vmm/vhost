@@ -11,6 +11,7 @@
 
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::ops::Deref;
 
 use vm_memory::ByteValued;
 
@@ -528,14 +529,16 @@ pub type VhostUserMemoryPayload = Vec<VhostUserMemoryRegion>;
 pub struct VhostUserSingleMemoryRegion {
     /// Padding for correct alignment
     padding: u64,
-    /// Guest physical address of the memory region.
-    pub guest_phys_addr: u64,
-    /// Size of the memory region.
-    pub memory_size: u64,
-    /// Virtual address in the current process.
-    pub user_addr: u64,
-    /// Offset where region starts in the mapped memory.
-    pub mmap_offset: u64,
+    /// General memory region
+    region: VhostUserMemoryRegion,
+}
+
+impl Deref for VhostUserSingleMemoryRegion {
+    type Target = VhostUserMemoryRegion;
+
+    fn deref(&self) -> &VhostUserMemoryRegion {
+        &self.region
+    }
 }
 
 impl VhostUserSingleMemoryRegion {
@@ -543,29 +546,19 @@ impl VhostUserSingleMemoryRegion {
     pub fn new(guest_phys_addr: u64, memory_size: u64, user_addr: u64, mmap_offset: u64) -> Self {
         VhostUserSingleMemoryRegion {
             padding: 0,
-            guest_phys_addr,
-            memory_size,
-            user_addr,
-            mmap_offset,
+            region: VhostUserMemoryRegion::new(
+                guest_phys_addr,
+                memory_size,
+                user_addr,
+                mmap_offset,
+            ),
         }
     }
 }
 
 // SAFETY: Safe because all fields of VhostUserSingleMemoryRegion are POD.
 unsafe impl ByteValued for VhostUserSingleMemoryRegion {}
-
-impl VhostUserMsgValidator for VhostUserSingleMemoryRegion {
-    fn is_valid(&self) -> bool {
-        if self.memory_size == 0
-            || self.guest_phys_addr.checked_add(self.memory_size).is_none()
-            || self.user_addr.checked_add(self.memory_size).is_none()
-            || self.mmap_offset.checked_add(self.memory_size).is_none()
-        {
-            return false;
-        }
-        true
-    }
-}
+impl VhostUserMsgValidator for VhostUserSingleMemoryRegion {}
 
 /// Vring state descriptor.
 #[repr(packed)]
