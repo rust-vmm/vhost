@@ -87,9 +87,10 @@ pub struct VhostUserDirtyLogRegion {
 
 /// Vhost memory access permission (VHOST_ACCESS_* mapping)
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum VhostAccess {
     /// No access.
+    #[default]
     No = 0,
     /// Read-Only access.
     ReadOnly = 1,
@@ -99,17 +100,12 @@ pub enum VhostAccess {
     ReadWrite = 3,
 }
 
-impl Default for VhostAccess {
-    fn default() -> Self {
-        VhostAccess::No
-    }
-}
-
 /// Vhost IOTLB message type (VHOST_IOTLB_* mapping)
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum VhostIotlbType {
     /// Empty message (not valid).
+    #[default]
     Empty = 0,
     /// I/O virtual address mapping is missing or invalidated.
     Miss = 1,
@@ -123,12 +119,6 @@ pub enum VhostIotlbType {
     BatchBegin = 5,
     /// Batch of multiple `Update` messages ends.
     BatchEnd = 6,
-}
-
-impl Default for VhostIotlbType {
-    fn default() -> Self {
-        VhostIotlbType::Empty
-    }
 }
 
 /// Vhost IOTLB message structure.
