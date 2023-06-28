@@ -201,7 +201,7 @@ impl<R: Req> Endpoint<R> {
         hdr: &VhostUserMsgHeader<R>,
         fds: Option<&[RawFd]>,
     ) -> Result<()> {
-        // Safe because there can't be other mutable referance to hdr.
+        // SAFETY: Safe because there can't be other mutable referance to hdr.
         let iovs = unsafe {
             [slice::from_raw_parts(
                 hdr as *const VhostUserMsgHeader<R> as *const u8,
@@ -292,7 +292,7 @@ impl<R: Req> Endpoint<R> {
             iov_base: rbuf.as_mut_ptr() as *mut c_void,
             iov_len: len,
         }];
-        // Safe because we own rbuf and it's safe to fill a byte array with arbitrary data.
+        // SAFETY: Safe because we own rbuf and it's safe to fill a byte array with arbitrary data.
         let (bytes, _) = unsafe { self.sock.recv_with_fds(&mut iovs, &mut [])? };
         Ok((bytes, rbuf))
     }
@@ -428,7 +428,7 @@ impl<R: Req> Endpoint<R> {
                 iov_base: buf.as_mut_ptr() as *mut c_void,
                 iov_len: buf_size,
             }];
-            // Safe because we own buf and it's safe to fill a byte array with arbitrary data.
+            // SAFETY: Safe because we own buf and it's safe to fill a byte array with arbitrary data.
             unsafe { self.recv_into_iovec(&mut iovs)? }
         };
         Ok((bytes, buf, files))
@@ -451,7 +451,7 @@ impl<R: Req> Endpoint<R> {
             iov_base: (&mut hdr as *mut VhostUserMsgHeader<R>) as *mut c_void,
             iov_len: mem::size_of::<VhostUserMsgHeader<R>>(),
         }];
-        // Safe because we own hdr and it's ByteValued.
+        // SAFETY: Safe because we own hdr and it's ByteValued.
         let (bytes, files) = unsafe { self.recv_into_iovec_all(&mut iovs[..])? };
 
         if bytes == 0 {
@@ -491,7 +491,7 @@ impl<R: Req> Endpoint<R> {
                 iov_len: mem::size_of::<T>(),
             },
         ];
-        // Safe because we own hdr and body and they're ByteValued.
+        // SAFETY: Safe because we own hdr and body and they're ByteValued.
         let (bytes, files) = unsafe { self.recv_into_iovec_all(&mut iovs[..])? };
 
         let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>();
@@ -533,7 +533,7 @@ impl<R: Req> Endpoint<R> {
                 iov_len: buf.len(),
             },
         ];
-        // Safe because we own hdr and have a mutable borrow of buf, and hdr is ByteValued
+        // SAFETY: Safe because we own hdr and have a mutable borrow of buf, and hdr is ByteValued
         // and it's safe to fill a byte slice with arbitrary data.
         let (bytes, files) = unsafe { self.recv_into_iovec_all(&mut iovs[..])? };
 
@@ -578,7 +578,7 @@ impl<R: Req> Endpoint<R> {
                 iov_len: buf.len(),
             },
         ];
-        // Safe because we own hdr and body and have a mutable borrow of buf, and
+        // SAFETY: Safe because we own hdr and body and have a mutable borrow of buf, and
         // hdr and body are ByteValued, and it's safe to fill a byte slice with
         // arbitrary data.
         let (bytes, files) = unsafe { self.recv_into_iovec_all(&mut iovs[..])? };
@@ -646,6 +646,8 @@ mod tests {
     fn create_listener_from_raw_fd() {
         let path = temp_path();
         let file = File::create(path).unwrap();
+
+        // SAFETY: Safe because `file` contains a valid fd to a file just created.
         let listener = unsafe { Listener::from_raw_fd(file.as_raw_fd()) };
 
         assert!(listener.as_raw_fd() > 0);
@@ -855,6 +857,8 @@ mod tests {
         master.send_message(&hdr1, &features1, None).unwrap();
 
         let mut features2 = 0u64;
+
+        // SAFETY: Safe because features2 is valid and it's an `u64`.
         let slice = unsafe {
             slice::from_raw_parts_mut(
                 (&mut features2 as *mut u64) as *mut u8,

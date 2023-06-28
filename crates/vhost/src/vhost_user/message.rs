@@ -273,7 +273,7 @@ impl<R: Req> VhostUserMsgHeader<R> {
     /// Get message type.
     pub fn get_code(&self) -> Result<R> {
         if R::is_valid(self.request) {
-            // It's safe because R is marked as repr(u32), and the value is valid.
+            // SAFETY: It's safe because R is marked as repr(u32), and the value is valid.
             Ok(unsafe { std::mem::transmute_copy::<u32, R>(&{ self.request }) })
         } else {
             Err(Error::InvalidMessage)
@@ -355,6 +355,7 @@ impl<R: Req> Default for VhostUserMsgHeader<R> {
     }
 }
 
+// SAFETY: Safe because all fields of VhostUserMsgHeader are POD.
 unsafe impl<R: Req> ByteValued for VhostUserMsgHeader<R> {}
 
 impl<T: Req> VhostUserMsgValidator for VhostUserMsgHeader<T> {
@@ -438,6 +439,7 @@ impl VhostUserU64 {
     }
 }
 
+// SAFETY: Safe because all fields of VhostUserU64 are POD.
 unsafe impl ByteValued for VhostUserU64 {}
 
 impl VhostUserMsgValidator for VhostUserU64 {}
@@ -462,6 +464,7 @@ impl VhostUserMemory {
     }
 }
 
+// SAFETY: Safe because all fields of VhostUserMemory are POD.
 unsafe impl ByteValued for VhostUserMemory {}
 
 impl VhostUserMsgValidator for VhostUserMemory {
@@ -548,6 +551,7 @@ impl VhostUserSingleMemoryRegion {
     }
 }
 
+// SAFETY: Safe because all fields of VhostUserSingleMemoryRegion are POD.
 unsafe impl ByteValued for VhostUserSingleMemoryRegion {}
 
 impl VhostUserMsgValidator for VhostUserSingleMemoryRegion {
@@ -580,6 +584,7 @@ impl VhostUserVringState {
     }
 }
 
+// SAFETY: Safe because all fields of VhostUserVringState are POD.
 unsafe impl ByteValued for VhostUserVringState {}
 
 impl VhostUserMsgValidator for VhostUserVringState {}
@@ -647,6 +652,7 @@ impl VhostUserVringAddr {
     }
 }
 
+// SAFETY: Safe because all fields of VhostUserVringAddr are POD.
 unsafe impl ByteValued for VhostUserVringAddr {}
 
 impl VhostUserMsgValidator for VhostUserVringAddr {
@@ -699,6 +705,7 @@ impl VhostUserConfig {
     }
 }
 
+// SAFETY: Safe because all fields of VhostUserConfig are POD.
 unsafe impl ByteValued for VhostUserConfig {}
 
 impl VhostUserMsgValidator for VhostUserConfig {
@@ -747,6 +754,7 @@ impl VhostUserInflight {
     }
 }
 
+// SAFETY: Safe because all fields of VhostUserInflight are POD.
 unsafe impl ByteValued for VhostUserInflight {}
 
 impl VhostUserMsgValidator for VhostUserInflight {
@@ -778,6 +786,7 @@ impl VhostUserLog {
     }
 }
 
+// SAFETY: Safe because all fields of VhostUserLog are POD.
 unsafe impl ByteValued for VhostUserLog {}
 
 impl VhostUserMsgValidator for VhostUserLog {
@@ -846,6 +855,7 @@ pub struct VhostUserFSSlaveMsg {
     pub flags: [VhostUserFSSlaveMsgFlags; VHOST_USER_FS_SLAVE_ENTRIES],
 }
 
+// SAFETY: Safe because all fields of VhostUserFSSlaveMsg are POD.
 unsafe impl ByteValued for VhostUserFSSlaveMsg {}
 
 impl VhostUserMsgValidator for VhostUserFSSlaveMsg {

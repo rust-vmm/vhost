@@ -304,6 +304,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         buf: &[u8],
     ) -> Result<T> {
         self.check_msg_size(hdr, size, mem::size_of::<T>())?;
+        // SAFETY: Safe because we checked that `buf` size is equal to T size.
         let msg = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const T) };
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);
@@ -405,10 +406,13 @@ mod tests {
         let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));
         let mut handler = MasterReqHandler::new(backend).unwrap();
 
+        // SAFETY: Safe because `handler` contains valid fds, and we are
+        // checking if `dup` returns a valid fd.
         let fd = unsafe { libc::dup(handler.get_tx_raw_fd()) };
         if fd < 0 {
             panic!("failed to duplicated tx fd!");
         }
+        // SAFETY: Safe because we checked if fd is valid.
         let stream = unsafe { UnixStream::from_raw_fd(fd) };
         let slave = Slave::from_stream(stream);
 
@@ -435,10 +439,13 @@ mod tests {
         let mut handler = MasterReqHandler::new(backend).unwrap();
         handler.set_reply_ack_flag(true);
 
+        // SAFETY: Safe because `handler` contains valid fds, and we are
+        // checking if `dup` returns a valid fd.
         let fd = unsafe { libc::dup(handler.get_tx_raw_fd()) };
         if fd < 0 {
             panic!("failed to duplicated tx fd!");
         }
+        // SAFETY: Safe because we checked if fd is valid.
         let stream = unsafe { UnixStream::from_raw_fd(fd) };
         let slave = Slave::from_stream(stream);
 

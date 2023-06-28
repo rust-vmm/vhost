@@ -102,7 +102,7 @@ impl<T: VhostKernBackend> VhostBackend for T {
     /// Get a bitmask of supported virtio/vhost features.
     fn get_features(&self) -> Result<u64> {
         let mut avail_features: u64 = 0;
-        // This ioctl is called on a valid vhost fd and has its return value checked.
+        // SAFETY: This ioctl is called on a valid vhost fd and has its return value checked.
         let ret = unsafe { ioctl_with_mut_ref(self, VHOST_GET_FEATURES(), &mut avail_features) };
         ioctl_result(ret, avail_features)
     }
@@ -113,7 +113,7 @@ impl<T: VhostKernBackend> VhostBackend for T {
     /// # Arguments
     /// * `features` - Bitmask of features to set.
     fn set_features(&self, features: u64) -> Result<()> {
-        // This ioctl is called on a valid vhost fd and has its return value checked.
+        // SAFETY: This ioctl is called on a valid vhost fd and has its return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_SET_FEATURES(), &features) };
         ioctl_result(ret, ())
     }
@@ -121,13 +121,13 @@ impl<T: VhostKernBackend> VhostBackend for T {
     /// Set the current process as the owner of this file descriptor.
     /// This must be run before any other vhost ioctls.
     fn set_owner(&self) -> Result<()> {
-        // This ioctl is called on a valid vhost fd and has its return value checked.
+        // SAFETY: This ioctl is called on a valid vhost fd and has its return value checked.
         let ret = unsafe { ioctl(self, VHOST_SET_OWNER()) };
         ioctl_result(ret, ())
     }
 
     fn reset_owner(&self) -> Result<()> {
-        // This ioctl is called on a valid vhost fd and has its return value checked.
+        // SAFETY: This ioctl is called on a valid vhost fd and has its return value checked.
         let ret = unsafe { ioctl(self, VHOST_RESET_OWNER()) };
         ioctl_result(ret, ())
     }
@@ -151,7 +151,7 @@ impl<T: VhostKernBackend> VhostBackend for T {
             )?;
         }
 
-        // This ioctl is called with a pointer that is valid for the lifetime
+        // SAFETY: This ioctl is called with a pointer that is valid for the lifetime
         // of this function. The kernel will make its own copy of the memory
         // tables. As always, check the return value.
         let ret = unsafe { ioctl_with_ptr(self, VHOST_SET_MEM_TABLE(), vhost_memory.as_ptr()) };
@@ -167,15 +167,15 @@ impl<T: VhostKernBackend> VhostBackend for T {
             return Err(Error::LogAddress);
         }
 
-        // This ioctl is called on a valid vhost fd and has its return value checked.
+        // SAFETY: This ioctl is called on a valid vhost fd and has its return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_SET_LOG_BASE(), &base) };
         ioctl_result(ret, ())
     }
 
     /// Specify an eventfd file descriptor to signal on log write.
     fn set_log_fd(&self, fd: RawFd) -> Result<()> {
-        // This ioctl is called on a valid vhost fd and has its return value checked.
         let val: i32 = fd;
+        // SAFETY: This ioctl is called on a valid vhost fd and has its return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_SET_LOG_FD(), &val) };
         ioctl_result(ret, ())
     }
@@ -191,7 +191,7 @@ impl<T: VhostKernBackend> VhostBackend for T {
             num: u32::from(num),
         };
 
-        // This ioctl is called on a valid vhost fd and has its return value checked.
+        // SAFETY: This ioctl is called on a valid vhost fd and has its return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_SET_VRING_NUM(), &vring_state) };
         ioctl_result(ret, ())
     }
@@ -210,7 +210,7 @@ impl<T: VhostKernBackend> VhostBackend for T {
         // The addresses are converted into the host address space.
         let vring_addr = config_data.to_vhost_vring_addr(queue_index, self.mem())?;
 
-        // This ioctl is called on a valid vhost fd and has its
+        // SAFETY: This ioctl is called on a valid vhost fd and has its
         // return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_SET_VRING_ADDR(), &vring_addr) };
         ioctl_result(ret, ())
@@ -227,7 +227,7 @@ impl<T: VhostKernBackend> VhostBackend for T {
             num: u32::from(base),
         };
 
-        // This ioctl is called on a valid vhost fd and has its return value checked.
+        // SAFETY: This ioctl is called on a valid vhost fd and has its return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_SET_VRING_BASE(), &vring_state) };
         ioctl_result(ret, ())
     }
@@ -238,7 +238,7 @@ impl<T: VhostKernBackend> VhostBackend for T {
             index: queue_index as u32,
             num: 0,
         };
-        // This ioctl is called on a valid vhost fd and has its return value checked.
+        // SAFETY: This ioctl is called on a valid vhost fd and has its return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_GET_VRING_BASE(), &vring_state) };
         ioctl_result(ret, vring_state.num)
     }
@@ -254,7 +254,7 @@ impl<T: VhostKernBackend> VhostBackend for T {
             fd: fd.as_raw_fd(),
         };
 
-        // This ioctl is called on a valid vhost fd and has its return value checked.
+        // SAFETY: This ioctl is called on a valid vhost fd and has its return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_SET_VRING_CALL(), &vring_file) };
         ioctl_result(ret, ())
     }
@@ -271,7 +271,7 @@ impl<T: VhostKernBackend> VhostBackend for T {
             fd: fd.as_raw_fd(),
         };
 
-        // This ioctl is called on a valid vhost fd and has its return value checked.
+        // SAFETY: This ioctl is called on a valid vhost fd and has its return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_SET_VRING_KICK(), &vring_file) };
         ioctl_result(ret, ())
     }
@@ -287,7 +287,7 @@ impl<T: VhostKernBackend> VhostBackend for T {
             fd: fd.as_raw_fd(),
         };
 
-        // This ioctl is called on a valid vhost fd and has its return value checked.
+        // SAFETY: This ioctl is called on a valid vhost fd and has its return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_SET_VRING_ERR(), &vring_file) };
         ioctl_result(ret, ())
     }
@@ -304,8 +304,9 @@ pub trait VhostKernFeatures: Sized + AsRawFd {
     /// Get a bitmask of supported vhost backend features.
     fn get_backend_features(&self) -> Result<u64> {
         let mut avail_features: u64 = 0;
-        // This ioctl is called on a valid vhost fd and has its return value checked.
+
         let ret =
+            // SAFETY: This ioctl is called on a valid vhost fd and has its return value checked.
             unsafe { ioctl_with_mut_ref(self, VHOST_GET_BACKEND_FEATURES(), &mut avail_features) };
         ioctl_result(ret, avail_features)
     }
@@ -316,7 +317,7 @@ pub trait VhostKernFeatures: Sized + AsRawFd {
     /// # Arguments
     /// * `features` - Bitmask of features to set.
     fn set_backend_features(&mut self, features: u64) -> Result<()> {
-        // This ioctl is called on a valid vhost fd and has its return value checked.
+        // SAFETY: This ioctl is called on a valid vhost fd and has its return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_SET_BACKEND_FEATURES(), &features) };
 
         if ret >= 0 {
@@ -348,6 +349,8 @@ impl<I: VhostKernBackend + VhostKernFeatures> VhostIotlbBackend for I {
             msg_v2.__bindgen_anon_1.iotlb.perm = msg.perm as u8;
             msg_v2.__bindgen_anon_1.iotlb.type_ = msg.msg_type as u8;
 
+            // SAFETY: This is safe because we are using a valid vhost fd, and
+            // a valid pointer and size to the vhost_msg_v2 structure.
             ret = unsafe {
                 write(
                     self.as_raw_fd(),
@@ -367,6 +370,8 @@ impl<I: VhostKernBackend + VhostKernFeatures> VhostIotlbBackend for I {
             msg_v1.__bindgen_anon_1.iotlb.perm = msg.perm as u8;
             msg_v1.__bindgen_anon_1.iotlb.type_ = msg.msg_type as u8;
 
+            // SAFETY: This is safe because we are using a valid vhost fd, and
+            // a valid pointer and size to the vhost_msg structure.
             ret = unsafe {
                 write(
                     self.as_raw_fd(),
@@ -386,6 +391,9 @@ impl VhostIotlbMsgParser for vhost_msg {
             return Err(Error::InvalidIotlbMsg);
         }
 
+        // SAFETY: We trust the kernel to return a structure with the union
+        // fields properly initialized. We are sure it is a vhost_msg, because
+        // we checked that `self.type_` is VHOST_IOTLB_MSG.
         unsafe {
             if self.__bindgen_anon_1.iotlb.type_ == 0 {
                 return Err(Error::InvalidIotlbMsg);
@@ -408,6 +416,9 @@ impl VhostIotlbMsgParser for vhost_msg_v2 {
             return Err(Error::InvalidIotlbMsg);
         }
 
+        // SAFETY: We trust the kernel to return a structure with the union
+        // fields properly initialized. We are sure it is a vhost_msg_v2, because
+        // we checked that `self.type_` is VHOST_IOTLB_MSG_V2.
         unsafe {
             if self.__bindgen_anon_1.iotlb.type_ == 0 {
                 return Err(Error::InvalidIotlbMsg);

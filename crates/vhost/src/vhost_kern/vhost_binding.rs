@@ -182,6 +182,8 @@ pub struct vhost_msg {
 
 impl Default for vhost_msg {
     fn default() -> Self {
+        // SAFETY: Zeroing all bytes is fine because they represent a valid
+        // value for all members of the structure
         unsafe { ::std::mem::zeroed() }
     }
 }
@@ -196,6 +198,8 @@ pub union vhost_msg__bindgen_ty_1 {
 
 impl Default for vhost_msg__bindgen_ty_1 {
     fn default() -> Self {
+        // SAFETY: Zeroing all bytes is fine because they represent a valid
+        // value for all members of the structure
         unsafe { ::std::mem::zeroed() }
     }
 }
@@ -210,6 +214,8 @@ pub struct vhost_msg_v2 {
 
 impl Default for vhost_msg_v2 {
     fn default() -> Self {
+        // SAFETY: Zeroing all bytes is fine because they represent a valid
+        // value for all members of the structure
         unsafe { ::std::mem::zeroed() }
     }
 }
@@ -224,6 +230,8 @@ pub union vhost_msg_v2__bindgen_ty_1 {
 
 impl Default for vhost_msg_v2__bindgen_ty_1 {
     fn default() -> Self {
+        // SAFETY: Zeroing all bytes is fine because they represent a valid
+        // value for all members of the structure
         unsafe { ::std::mem::zeroed() }
     }
 }
@@ -257,6 +265,8 @@ pub struct vhost_scsi_target {
 
 impl Default for vhost_scsi_target {
     fn default() -> Self {
+        // SAFETY: Zeroing all bytes is fine because they represent a valid
+        // value for all members of the structure
         unsafe { ::std::mem::zeroed() }
     }
 }
@@ -304,7 +314,7 @@ impl VhostMemory {
         if index >= self.buf[0].nregions {
             return None;
         }
-        // Safe because we have allocated enough space nregions
+        // SAFETY: Safe because we have allocated enough space nregions
         let regions = unsafe { self.buf[0].regions.as_slice(self.buf[0].nregions as usize) };
         Some(&regions[index as usize])
     }
@@ -313,7 +323,7 @@ impl VhostMemory {
         if index >= self.buf[0].nregions {
             return Err(Error::InvalidGuestMemory);
         }
-        // Safe because we have allocated enough space nregions and checked the index.
+        // SAFETY: Safe because we have allocated enough space nregions and checked the index.
         let regions = unsafe { self.buf[0].regions.as_mut_slice(index as usize + 1) };
         regions[index as usize] = *region;
         Ok(())
