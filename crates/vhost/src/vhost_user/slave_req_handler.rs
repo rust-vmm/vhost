@@ -532,6 +532,8 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         if size < hdrsize {
             return Err(Error::InvalidMessage);
         }
+        // SAFETY: Safe because we checked that `buf` size is at least that of
+        // VhostUserMemory.
         let msg = unsafe { &*(buf.as_ptr() as *const VhostUserMemory) };
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);
@@ -547,6 +549,9 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         }
 
         // Validate memory regions
+        //
+        // SAFETY: Safe because we checked that `buf` size is equal to that of
+        // VhostUserMemory, plus `msg.num_regions` elements of VhostUserMemoryRegion.
         let regions = unsafe {
             slice::from_raw_parts(
                 buf.as_ptr().add(hdrsize) as *const VhostUserMemoryRegion,
@@ -567,6 +572,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         if buf.len() > MAX_MSG_SIZE || buf.len() < payload_offset {
             return Err(Error::InvalidMessage);
         }
+        // SAFETY: Safe because we checked that `buf` size is at least that of VhostUserConfig.
         let msg = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const VhostUserConfig) };
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);
@@ -604,6 +610,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         if size > MAX_MSG_SIZE || size < mem::size_of::<VhostUserConfig>() {
             return Err(Error::InvalidMessage);
         }
+        // SAFETY: Safe because we checked that `buf` size is at least that of VhostUserConfig.
         let msg = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const VhostUserConfig) };
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);
@@ -619,6 +626,9 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
 
     fn set_slave_req_fd(&mut self, files: Option<Vec<File>>) -> Result<()> {
         let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
+        // SAFETY: Safe because we have ownership of the files that were
+        // checked when received. We have to trust that they are Unix sockets
+        // since we have no way to check this. If not, it will fail later.
         let sock = unsafe { UnixStream::from_raw_fd(file.into_raw_fd()) };
         let slave = Slave::from_stream(sock);
         self.backend.set_slave_req_fd(slave);
@@ -633,6 +643,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         if buf.len() > MAX_MSG_SIZE || buf.len() < mem::size_of::<VhostUserU64>() {
             return Err(Error::InvalidMessage);
         }
+        // SAFETY: Safe because we checked that `buf` size is at least that of VhostUserU64.
         let msg = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const VhostUserU64) };
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);
@@ -706,6 +717,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         buf: &[u8],
     ) -> Result<T> {
         self.check_request_size(hdr, size, mem::size_of::<T>())?;
+        // SAFETY: Safe because we checked that `buf` size is equal to T size.
         let msg = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const T) };
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);

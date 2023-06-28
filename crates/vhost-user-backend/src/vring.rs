@@ -515,6 +515,7 @@ mod tests {
         assert!(vring.get_ref().enabled);
 
         let eventfd = EventFd::new(0).unwrap();
+        // SAFETY: Safe because we panic before if eventfd is not valid.
         let file = unsafe { File::from_raw_fd(eventfd.as_raw_fd()) };
         assert!(vring.get_mut().kick.is_none());
         assert!(vring.read_kick().unwrap());
@@ -527,6 +528,7 @@ mod tests {
         std::mem::forget(eventfd);
 
         let eventfd = EventFd::new(0).unwrap();
+        // SAFETY: Safe because we panic before if eventfd is not valid.
         let file = unsafe { File::from_raw_fd(eventfd.as_raw_fd()) };
         assert!(vring.get_ref().call.is_none());
         vring.set_call(Some(file));
@@ -536,6 +538,7 @@ mod tests {
         std::mem::forget(eventfd);
 
         let eventfd = EventFd::new(0).unwrap();
+        // SAFETY: Safe because we panic before if eventfd is not valid.
         let file = unsafe { File::from_raw_fd(eventfd.as_raw_fd()) };
         assert!(vring.get_ref().err.is_none());
         vring.set_err(Some(file));

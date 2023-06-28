@@ -204,6 +204,7 @@ impl VhostBackend for Master {
 
         let mut node = self.node();
         let body = VhostUserMemory::new(ctx.regions.len() as u32);
+        // SAFETY: Safe because ctx.regions is a valid Vec() at this point.
         let (_, payload, _) = unsafe { ctx.regions.align_to::<u8>() };
         let hdr = node.send_request_with_payload(
             MasterReq::SET_MEM_TABLE,
@@ -944,6 +945,7 @@ mod tests {
         master
             .set_config(
                 0x100,
+                // SAFETY: This is a negative test, so we are setting unexpected flags.
                 unsafe { VhostUserConfigFlags::from_bits_unchecked(0xffff_ffff) },
                 &buf[0..4],
             )

@@ -153,6 +153,7 @@ fn vhost_user_client(path: &Path, barrier: Arc<Barrier>) {
         nix::sys::memfd::MemFdCreateFlag::empty(),
     )
     .unwrap();
+    // SAFETY: Safe because we panic before if memfd is not valid.
     let file = unsafe { File::from_raw_fd(memfd) };
     file.set_len(0x100000).unwrap();
     let file_offset = FileOffset::new(file, 0);

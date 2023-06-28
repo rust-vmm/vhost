@@ -84,7 +84,7 @@ impl<AS: GuestAddressSpace> VhostKernVdpa<AS> {
             log_guest_addr: config_data.get_log_addr(),
         };
 
-        // This ioctl is called on a valid vhost fd and has its
+        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
         // return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_SET_VRING_ADDR(), &vring_addr) };
         ioctl_result(ret, ())
@@ -94,17 +94,25 @@ impl<AS: GuestAddressSpace> VhostKernVdpa<AS> {
 impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
     fn get_device_id(&self) -> Result<u32> {
         let mut device_id: u32 = 0;
+
+        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+        // return value checked.
         let ret = unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_DEVICE_ID(), &mut device_id) };
         ioctl_result(ret, device_id)
     }
 
     fn get_status(&self) -> Result<u8> {
         let mut status: u8 = 0;
+
+        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+        // return value checked.
         let ret = unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_STATUS(), &mut status) };
         ioctl_result(ret, status)
     }
 
     fn set_status(&self, status: u8) -> Result<()> {
+        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+        // return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_VDPA_SET_STATUS(), &status) };
         ioctl_result(ret, ())
     }
@@ -115,6 +123,8 @@ impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
 
         config.as_mut_fam_struct().off = offset;
 
+        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+        // return value checked.
         let ret = unsafe {
             ioctl_with_ptr(
                 self,
@@ -136,8 +146,9 @@ impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
         config.as_mut_slice().copy_from_slice(buffer);
 
         let ret =
+            // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+            // return value checked.
             unsafe { ioctl_with_ptr(self, VHOST_VDPA_SET_CONFIG(), config.as_fam_struct_ptr()) };
-
         ioctl_result(ret, ())
     }
 
@@ -147,18 +158,26 @@ impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
             num: enabled as u32,
         };
 
+        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+        // return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_VDPA_SET_VRING_ENABLE(), &vring_state) };
         ioctl_result(ret, ())
     }
 
     fn get_vring_num(&self) -> Result<u16> {
         let mut vring_num: u16 = 0;
+
+        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+        // return value checked.
         let ret = unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_VRING_NUM(), &mut vring_num) };
         ioctl_result(ret, vring_num)
     }
 
     fn set_config_call(&self, fd: &EventFd) -> Result<()> {
         let event_fd: ::std::os::raw::c_int = fd.as_raw_fd();
+
+        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+        // return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_VDPA_SET_CONFIG_CALL(), &event_fd) };
         ioctl_result(ret, ())
     }
@@ -167,6 +186,8 @@ impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
         let mut low_iova_range = vhost_vdpa_iova_range { first: 0, last: 0 };
 
         let ret =
+            // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+            // return value checked.
             unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_IOVA_RANGE(), &mut low_iova_range) };
 
         let iova_range = VhostVdpaIovaRange {
@@ -179,25 +200,37 @@ impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
 
     fn get_config_size(&self) -> Result<u32> {
         let mut config_size: u32 = 0;
+
         let ret =
+            // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+            // return value checked.
             unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_CONFIG_SIZE(), &mut config_size) };
         ioctl_result(ret, config_size)
     }
 
     fn get_vqs_count(&self) -> Result<u32> {
         let mut vqs_count: u32 = 0;
+
+        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+        // return value checked.
         let ret = unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_VQS_COUNT(), &mut vqs_count) };
         ioctl_result(ret, vqs_count)
     }
 
     fn get_group_num(&self) -> Result<u32> {
         let mut group_num: u32 = 0;
+
+        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+        // return value checked.
         let ret = unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_GROUP_NUM(), &mut group_num) };
         ioctl_result(ret, group_num)
     }
 
     fn get_as_num(&self) -> Result<u32> {
         let mut as_num: u32 = 0;
+
+        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+        // return value checked.
         let ret = unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_AS_NUM(), &mut as_num) };
         ioctl_result(ret, as_num)
     }
@@ -209,6 +242,8 @@ impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
         };
 
         let ret =
+            // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+            // return value checked.
             unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_VRING_GROUP(), &mut vring_state) };
         ioctl_result(ret, vring_state.num)
     }
@@ -219,11 +254,15 @@ impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
             num: asid,
         };
 
+        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+        // return value checked.
         let ret = unsafe { ioctl_with_ref(self, VHOST_VDPA_GET_VRING_GROUP(), &vring_state) };
         ioctl_result(ret, ())
     }
 
     fn suspend(&self) -> Result<()> {
+        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+        // return value checked.
         let ret = unsafe { ioctl(self, VHOST_VDPA_SUSPEND()) };
         ioctl_result(ret, ())
     }
@@ -506,14 +545,16 @@ mod tests {
         vdpa.dma_map(0xFFFF_0000, 0xFFFF, std::ptr::null::<u8>(), false)
             .unwrap_err();
 
-        unsafe {
-            let layout = Layout::from_size_align(0xFFFF, 1).unwrap();
-            let ptr = alloc(layout);
+        let layout = Layout::from_size_align(0xFFFF, 1).unwrap();
 
-            vdpa.dma_map(0xFFFF_0000, 0xFFFF, ptr, false).unwrap();
-            vdpa.dma_unmap(0xFFFF_0000, 0xFFFF).unwrap();
+        // SAFETY: Safe because layout has non-zero size.
+        let ptr = unsafe { alloc(layout) };
 
-            dealloc(ptr, layout);
-        };
+        vdpa.dma_map(0xFFFF_0000, 0xFFFF, ptr, false).unwrap();
+        vdpa.dma_unmap(0xFFFF_0000, 0xFFFF).unwrap();
+
+        // SAFETY: Safe because `ptr` is allocated with the same allocator
+        // using the same `layout`.
+        unsafe { dealloc(ptr, layout) };
     }
 }

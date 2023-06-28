@@ -45,6 +45,7 @@ impl<AS: GuestAddressSpace> VhostNet for Net<AS> {
             fd: fd.map_or(-1, |v| v.as_raw_fd()),
         };
 
+        // SAFETY: Safe because the vhost-net fd is valid and we check the return value
         let ret = unsafe { ioctl_with_ref(self, VHOST_NET_SET_BACKEND(), &vring_file) };
         ioctl_result(ret, ())
     }

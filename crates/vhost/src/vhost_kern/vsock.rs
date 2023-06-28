@@ -42,6 +42,9 @@ impl<AS: GuestAddressSpace> Vsock<AS> {
 
     fn set_running(&self, running: bool) -> Result<()> {
         let on: ::std::os::raw::c_int = if running { 1 } else { 0 };
+
+        // SAFETY: This ioctl is called on a valid vhost-vsock fd and has its
+        // return value checked.
         let ret = unsafe { ioctl_with_ref(&self.fd, VHOST_VSOCK_SET_RUNNING(), &on) };
         ioctl_result(ret, ())
     }
@@ -49,6 +52,8 @@ impl<AS: GuestAddressSpace> Vsock<AS> {
 
 impl<AS: GuestAddressSpace> VhostVsock for Vsock<AS> {
     fn set_guest_cid(&self, cid: u64) -> Result<()> {
+        // SAFETY: This ioctl is called on a valid vhost-vsock fd and has its
+        // return value checked.
         let ret = unsafe { ioctl_with_ref(&self.fd, VHOST_VSOCK_SET_GUEST_CID(), &cid) };
         ioctl_result(ret, ())
     }
