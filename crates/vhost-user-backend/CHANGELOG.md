@@ -9,6 +9,14 @@
 
 ### Deprecated
 
+## v0.10.0
+
+### Added
+- [[#169]](https://github.com/rust-vmm/vhost/pull/160) vhost-user-backend: Add support for Xen memory mappings
+
+### Fixed
+- [[#161]](https://github.com/rust-vmm/vhost/pull/161) get_vring_base should not reset the queue
+
 ## v0.9.0
 
 ### Added
