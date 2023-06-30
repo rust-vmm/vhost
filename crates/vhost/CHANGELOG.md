@@ -6,9 +6,16 @@
 ### Changed
 
 ### Fixed
-- [[#165]](https://github.com/rust-vmm/vhost/pull/165) vhost: vdpa: Provide custom set_vring_addr() implementation
 
 ### Deprecated
+
+## [0.8.0]
+
+### Added
+- [[#169]](https://github.com/rust-vmm/vhost/pull/160) vhost: Add xen memory mapping support
+
+### Fixed
+- [[#165]](https://github.com/rust-vmm/vhost/pull/165) vhost: vdpa: Provide custom set_vring_addr() implementation
 
 ## [0.7.0]
 
