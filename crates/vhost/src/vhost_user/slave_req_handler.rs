@@ -421,6 +421,11 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
             Ok(MasterReq::GET_PROTOCOL_FEATURES) => {
                 self.check_request_size(&hdr, size, 0)?;
                 let features = self.backend.get_protocol_features()?;
+
+                // Enable the `XEN_MMAP` protocol feature for backends if xen feature is enabled.
+                #[cfg(feature = "xen")]
+                let features = features | VhostUserProtocolFeatures::XEN_MMAP;
+
                 let msg = VhostUserU64::new(features.bits());
                 self.send_reply_message(&hdr, &msg)?;
                 self.protocol_features = features;
