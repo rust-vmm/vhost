@@ -85,38 +85,27 @@ where
     /// Create a `VringEpollHandler` instance.
     pub(crate) fn new(backend: S, vrings: Vec<V>, thread_id: usize) -> VringEpollResult<Self> {
         let epoll = Epoll::new().map_err(VringEpollError::EpollCreateFd)?;
+        let exit_event_fd = backend.exit_event(thread_id);
 
-        let handler = match backend.exit_event(thread_id) {
-            Some(exit_event_fd) => {
-                let id = backend.num_queues();
-                epoll
-                    .ctl(
-                        ControlOperation::Add,
-                        exit_event_fd.as_raw_fd(),
-                        EpollEvent::new(EventSet::IN, id as u64),
-                    )
-                    .map_err(VringEpollError::RegisterExitEvent)?;
+        if let Some(exit_event_fd) = &exit_event_fd {
+            let id = backend.num_queues();
+            epoll
+                .ctl(
+                    ControlOperation::Add,
+                    exit_event_fd.as_raw_fd(),
+                    EpollEvent::new(EventSet::IN, id as u64),
+                )
+                .map_err(VringEpollError::RegisterExitEvent)?;
+        }
 
-                VringEpollHandler {
-                    epoll,
-                    backend,
-                    vrings,
-                    thread_id,
-                    exit_event_fd: Some(exit_event_fd),
-                    phantom: PhantomData,
-                }
-            }
-            None => VringEpollHandler {
-                epoll,
-                backend,
-                vrings,
-                thread_id,
-                exit_event_fd: None,
-                phantom: PhantomData,
-            },
-        };
-
-        Ok(handler)
+        Ok(VringEpollHandler {
+            epoll,
+            backend,
+            vrings,
+            thread_id,
+            exit_event_fd,
+            phantom: PhantomData,
+        })
     }
 
     /// Register an event into the epoll fd.
