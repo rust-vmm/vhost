@@ -16,6 +16,7 @@
 
 ### Fixed
 - [[#165]](https://github.com/rust-vmm/vhost/pull/165) vhost: vdpa: Provide custom set_vring_addr() implementation
+- [[#172]](https://github.com/rust-vmm/vhost/pull/172) Vhost user fix
 
 ## [0.7.0]
 
