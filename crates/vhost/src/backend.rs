@@ -17,6 +17,7 @@ use std::sync::RwLock;
 use vm_memory::{bitmap::Bitmap, Address, GuestMemoryRegion, GuestRegionMmap};
 use vmm_sys_util::eventfd::EventFd;
 
+#[cfg(feature = "vhost-user")]
 use super::vhost_user::message::{VhostUserMemoryRegion, VhostUserSingleMemoryRegion};
 use super::{Error, Result};
 
@@ -106,6 +107,7 @@ impl VhostUserMemoryRegionInfo {
     }
 
     /// Creates VhostUserMemoryRegion from Self.
+    #[cfg(feature = "vhost-user")]
     pub fn to_region(&self) -> VhostUserMemoryRegion {
         #[cfg(not(feature = "xen"))]
         return VhostUserMemoryRegion::new(
@@ -127,6 +129,7 @@ impl VhostUserMemoryRegionInfo {
     }
 
     /// Creates VhostUserSingleMemoryRegion from Self.
+    #[cfg(feature = "vhost-user")]
     pub fn to_single_region(&self) -> VhostUserSingleMemoryRegion {
         VhostUserSingleMemoryRegion::new(
             self.guest_phys_addr,
