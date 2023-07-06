@@ -9,6 +9,7 @@
 extern crate log;
 
 use std::fmt::{Display, Formatter};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -45,6 +46,8 @@ pub enum Error {
     CreateBackendListener(VhostUserError),
     /// Failed creating vhost-user backend handler.
     CreateBackendReqHandler(VhostUserError),
+    /// Failed creating listener socket
+    CreateVhostUserListener(VhostUserError),
     /// Failed starting daemon thread.
     StartDaemon(std::io::Error),
     /// Failed waiting for daemon thread.
@@ -60,6 +63,9 @@ impl Display for Error {
             Error::CreateBackendListener(e) => write!(f, "cannot create backend listener: {}", e),
             Error::CreateBackendReqHandler(e) => {
                 write!(f, "cannot create backend req handler: {}", e)
+            }
+            Error::CreateVhostUserListener(e) => {
+                write!(f, "cannot create vhost-user listener: {}", e)
             }
             Error::StartDaemon(e) => write!(f, "failed to start daemon: {}", e),
             Error::WaitDaemon(_e) => write!(f, "failed to wait for daemon exit"),
@@ -145,6 +151,9 @@ where
     ///
     /// This runs in an infinite loop that should be terminating once the other end of the socket
     /// (the VMM) disconnects.
+    ///
+    /// *Note:* A convenience function [VhostUserDaemon::serve] exists that
+    /// may be a better option than this for simple use-cases.
     // TODO: the current implementation has limitations that only one incoming connection will be
     // handled from the listener. Should it be enhanced to support reconnection?
     pub fn start(&mut self, listener: Listener) -> Result<()> {
@@ -168,6 +177,9 @@ where
     }
 
     /// Wait for the thread handling the vhost-user socket connection to terminate.
+    ///
+    /// *Note:* A convenience function [VhostUserDaemon::serve] exists that
+    /// may be a better option than this for simple use-cases.
     pub fn wait(&mut self) -> Result<()> {
         if let Some(handle) = self.main_thread.take() {
             match handle.join().map_err(Error::WaitDaemon)? {
@@ -177,6 +189,42 @@ where
             }
         } else {
             Ok(())
+        }
+    }
+
+    /// Bind to socket, handle a single connection and shutdown
+    ///
+    /// This is a convenience function that provides an easy way to handle the
+    /// following actions without needing to call the low-level functions:
+    /// - Create a listener
+    /// - Start listening
+    /// - Handle a single event
+    /// - Send the exit event to all handler threads
+    ///
+    /// Internal `Err` results that indicate a device disconnect will be treated
+    /// as success and `Ok(())` will be returned in those cases.
+    ///
+    /// *Note:* See [VhostUserDaemon::start] and [VhostUserDaemon::wait] if you
+    /// need more flexibility.
+    pub fn serve<P: AsRef<Path>>(&mut self, socket: P) -> Result<()> {
+        let listener = Listener::new(socket, true).map_err(Error::CreateVhostUserListener)?;
+
+        self.start(listener)?;
+        let result = self.wait();
+
+        // Regardless of the result, we want to signal worker threads to exit
+        self.handler.lock().unwrap().send_exit_event();
+
+        // For this convenience function we are not treating certain "expected"
+        // outcomes as error. Disconnects and partial messages can be usual
+        // behaviour seen from quitting guests.
+        match &result {
+            Err(e) => match e {
+                Error::HandleRequest(VhostUserError::Disconnected) => Ok(()),
+                Error::HandleRequest(VhostUserError::PartialMessage) => Ok(()),
+                _ => result,
+            },
+            _ => result,
         }
     }
 
@@ -194,8 +242,10 @@ where
 mod tests {
     use super::backend::tests::MockVhostBackend;
     use super::*;
+    use libc::EAGAIN;
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::sync::Barrier;
+    use std::time::Duration;
     use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
 
     #[test]
@@ -264,6 +314,50 @@ mod tests {
             daemon.wait().unwrap_err();
             daemon.wait().unwrap();
         });
+    }
 
+    #[test]
+    fn test_daemon_serve() {
+        let mem = GuestMemoryAtomic::new(
+            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+        );
+        let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
+        let mut daemon = VhostUserDaemon::new("test".to_owned(), backend.clone(), mem).unwrap();
+        let tmpdir = tempfile::tempdir().unwrap();
+        let socket_path = tmpdir.path().join("socket");
+
+        thread::scope(|s| {
+            s.spawn(|| {
+                let _ = daemon.serve(&socket_path);
+            });
+
+            // We have no way to wait for when the server becomes available...
+            // So we will have to spin!
+            while !socket_path.exists() {
+                thread::sleep(Duration::from_millis(10));
+            }
+
+            // Check that no exit events got triggered yet
+            for thread_id in 0..backend.queues_per_thread().len() {
+                let fd = backend.exit_event(thread_id).unwrap();
+                // Reading from exit fd should fail since nothing was written yet
+                assert_eq!(
+                    fd.read().unwrap_err().raw_os_error().unwrap(),
+                    EAGAIN,
+                    "exit event should not have been raised yet!"
+                );
+            }
+
+            let socket = UnixStream::connect(&socket_path).unwrap();
+            // disconnect immediately again
+            drop(socket);
+        });
+
+        // Check that exit events got triggered
+        let backend = backend.lock().unwrap();
+        for thread_id in 0..backend.queues_per_thread().len() {
+            let fd = backend.exit_event(thread_id).unwrap();
+            assert!(fd.read().is_ok(), "No exit event was raised!");
+        }
     }
 }
