@@ -93,9 +93,8 @@ where
 
     /// Provide an optional exit EventFd for the specified worker thread.
     ///
-    /// If an (`EventFd`, `token`) pair is returned, the returned `EventFd` will be monitored for IO
-    /// events by using epoll with the specified `token`. When the returned EventFd is written to,
-    /// the worker thread will exit.
+    /// The returned `EventFd` will be monitored for IO events. When the
+    /// returned EventFd is written to, the worker thread will exit.
     fn exit_event(&self, _thread_index: usize) -> Option<EventFd> {
         None
     }
