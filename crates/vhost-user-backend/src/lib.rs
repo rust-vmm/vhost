@@ -211,8 +211,7 @@ mod tests {
 
         let barrier = Arc::new(Barrier::new(2));
         let tmpdir = tempfile::tempdir().unwrap();
-        let mut path = tmpdir.path().to_path_buf();
-        path.push("socket");
+        let path = tmpdir.path().join("socket");
 
         let barrier2 = barrier.clone();
         let path1 = path.clone();
@@ -246,8 +245,7 @@ mod tests {
 
         let barrier = Arc::new(Barrier::new(2));
         let tmpdir = tempfile::tempdir().unwrap();
-        let mut path = tmpdir.path().to_path_buf();
-        path.push("socket");
+        let path = tmpdir.path().join("socket");
 
         let barrier2 = barrier.clone();
         let path1 = path.clone();
