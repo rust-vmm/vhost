@@ -213,23 +213,22 @@ mod tests {
         let tmpdir = tempfile::tempdir().unwrap();
         let path = tmpdir.path().join("socket");
 
-        let barrier2 = barrier.clone();
-        let path1 = path.clone();
-        let thread = thread::spawn(move || {
-            barrier2.wait();
-            let socket = UnixStream::connect(&path1).unwrap();
-            barrier2.wait();
-            drop(socket)
-        });
+        thread::scope(|s| {
+            s.spawn(|| {
+                barrier.wait();
+                let socket = UnixStream::connect(&path).unwrap();
+                barrier.wait();
+                drop(socket)
+            });
 
-        let listener = Listener::new(&path, false).unwrap();
-        barrier.wait();
-        daemon.start(listener).unwrap();
-        barrier.wait();
-        // Above process generates a `HandleRequest(PartialMessage)` error.
-        daemon.wait().unwrap_err();
-        daemon.wait().unwrap();
-        thread.join().unwrap();
+            let listener = Listener::new(&path, false).unwrap();
+            barrier.wait();
+            daemon.start(listener).unwrap();
+            barrier.wait();
+            // Above process generates a `HandleRequest(PartialMessage)` error.
+            daemon.wait().unwrap_err();
+            daemon.wait().unwrap();
+        });
     }
 
     #[test]
@@ -247,24 +246,24 @@ mod tests {
         let tmpdir = tempfile::tempdir().unwrap();
         let path = tmpdir.path().join("socket");
 
-        let barrier2 = barrier.clone();
-        let path1 = path.clone();
-        let thread = thread::spawn(move || {
-            let listener = UnixListener::bind(&path1).unwrap();
-            barrier2.wait();
-            let (stream, _) = listener.accept().unwrap();
-            barrier2.wait();
-            drop(stream)
+        thread::scope(|s| {
+            s.spawn(|| {
+                let listener = UnixListener::bind(&path).unwrap();
+                barrier.wait();
+                let (stream, _) = listener.accept().unwrap();
+                barrier.wait();
+                drop(stream)
+            });
+
+            barrier.wait();
+            daemon
+                .start_client(path.as_path().to_str().unwrap())
+                .unwrap();
+            barrier.wait();
+            // Above process generates a `HandleRequest(PartialMessage)` error.
+            daemon.wait().unwrap_err();
+            daemon.wait().unwrap();
         });
 
-        barrier.wait();
-        daemon
-            .start_client(path.as_path().to_str().unwrap())
-            .unwrap();
-        barrier.wait();
-        // Above process generates a `HandleRequest(PartialMessage)` error.
-        daemon.wait().unwrap_err();
-        daemon.wait().unwrap();
-        thread.join().unwrap();
     }
 }
