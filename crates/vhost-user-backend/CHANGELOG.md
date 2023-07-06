@@ -2,6 +2,7 @@
 ## [Unreleased]
 
 ### Added
+- [[#173]](https://github.com/rust-vmm/vhost/pull/173) vhost-user-backend: Added convenience function `serve`
 
 ### Changed
 - Change uses of master/slave for frontend/backend in the codebase.

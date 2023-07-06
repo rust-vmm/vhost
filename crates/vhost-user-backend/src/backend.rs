@@ -395,6 +395,7 @@ where
 pub mod tests {
     use super::*;
     use crate::VringRwLock;
+    use libc::EFD_NONBLOCK;
     use std::sync::Mutex;
     use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
 
@@ -402,15 +403,26 @@ pub mod tests {
         events: u64,
         event_idx: bool,
         acked_features: u64,
+        exit_event_fds: Vec<EventFd>,
     }
 
     impl MockVhostBackend {
         pub fn new() -> Self {
-            MockVhostBackend {
+            let mut backend = MockVhostBackend {
                 events: 0,
                 event_idx: false,
                 acked_features: 0,
-            }
+                exit_event_fds: vec![],
+            };
+
+            // Create a event_fd for each thread. We make it NONBLOCKing in
+            // order to allow tests maximum flexibility in checking whether
+            // signals arrived or not.
+            backend.exit_event_fds = (0..backend.queues_per_thread().len())
+                .map(|_| EventFd::new(EFD_NONBLOCK).unwrap())
+                .collect();
+
+            backend
         }
     }
 
@@ -464,10 +476,13 @@ pub mod tests {
             vec![1, 1]
         }
 
-        fn exit_event(&self, _thread_index: usize) -> Option<EventFd> {
-            let event_fd = EventFd::new(0).unwrap();
-
-            Some(event_fd)
+        fn exit_event(&self, thread_index: usize) -> Option<EventFd> {
+            Some(
+                self.exit_event_fds
+                    .get(thread_index)?
+                    .try_clone()
+                    .expect("Could not clone exit eventfd"),
+            )
         }
 
         fn handle_event(
