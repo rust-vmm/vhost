@@ -61,6 +61,7 @@ pub trait VhostUserSlaveReqHandler {
 
     fn get_protocol_features(&self) -> Result<VhostUserProtocolFeatures>;
     fn set_protocol_features(&self, features: u64) -> Result<()>;
+    fn specs(&self) -> Result<VhostUserBackendSpecs>;
     fn get_queue_num(&self) -> Result<u64>;
     fn set_vring_enable(&self, index: u32, enable: bool) -> Result<()>;
     fn get_config(&self, offset: u32, size: u32, flags: VhostUserConfigFlags) -> Result<Vec<u8>>;
@@ -103,6 +104,7 @@ pub trait VhostUserSlaveReqHandlerMut {
 
     fn get_protocol_features(&mut self) -> Result<VhostUserProtocolFeatures>;
     fn set_protocol_features(&mut self, features: u64) -> Result<()>;
+    fn specs(&self) -> Result<VhostUserBackendSpecs>;
     fn get_queue_num(&mut self) -> Result<u64>;
     fn set_vring_enable(&mut self, index: u32, enable: bool) -> Result<()>;
     fn get_config(
@@ -190,6 +192,10 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
 
     fn set_protocol_features(&self, features: u64) -> Result<()> {
         self.lock().unwrap().set_protocol_features(features)
+    }
+
+    fn specs(&self) -> Result<VhostUserBackendSpecs> {
+        self.lock().unwrap().specs()
     }
 
     fn get_queue_num(&self) -> Result<u64> {
@@ -543,6 +549,11 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
                 self.check_proto_feature(VhostUserProtocolFeatures::STATUS)?;
                 let num = self.backend.get_status()?;
                 let msg = VhostUserU64::new(num.into());
+                self.send_reply_message(&hdr, &msg)?;
+            }
+            Ok(MasterReq::GET_BACKEND_SPECS) => {
+                self.check_proto_feature(VhostUserProtocolFeatures::STANDALONE)?;
+                let msg = self.backend.specs()?;
                 self.send_reply_message(&hdr, &msg)?;
             }
             _ => {

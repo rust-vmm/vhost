@@ -455,6 +455,10 @@ where
         Ok(())
     }
 
+    fn specs(&self) -> VhostUserResult<vhost::vhost_user::message::VhostUserBackendSpecs> {
+        Ok(self.backend.specs())
+    }
+
     fn get_queue_num(&mut self) -> VhostUserResult<u64> {
         Ok(self.num_queues as u64)
     }

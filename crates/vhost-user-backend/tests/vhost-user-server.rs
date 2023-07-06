@@ -8,7 +8,8 @@ use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
 
 use vhost::vhost_user::message::{
-    VhostUserConfigFlags, VhostUserHeaderFlag, VhostUserInflight, VhostUserProtocolFeatures,
+    VhostUserBackendSpecs, VhostUserConfigFlags, VhostUserHeaderFlag, VhostUserInflight,
+    VhostUserProtocolFeatures,
 };
 use vhost::vhost_user::{Listener, Master, Slave, VhostUserMaster};
 use vhost::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
@@ -54,6 +55,10 @@ impl VhostUserBackendMut<VringRwLock, ()> for MockVhostBackend {
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
         VhostUserProtocolFeatures::all()
+    }
+
+    fn specs(&self) -> VhostUserBackendSpecs {
+        VhostUserBackendSpecs::new(1, 32, 4, 8)
     }
 
     fn set_event_idx(&mut self, enabled: bool) {

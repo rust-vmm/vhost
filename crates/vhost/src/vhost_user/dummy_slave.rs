@@ -204,6 +204,10 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
         Ok(())
     }
 
+    fn specs(&self) -> Result<VhostUserBackendSpecs> {
+        Ok(VhostUserBackendSpecs::new(1, 2, 3, 4))
+    }
+
     fn get_queue_num(&mut self) -> Result<u64> {
         Ok(MAX_QUEUE_NUM as u64)
     }
