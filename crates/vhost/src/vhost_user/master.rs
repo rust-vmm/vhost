@@ -3,6 +3,7 @@
 
 //! Traits and Struct for vhost-user master.
 
+use std::convert::TryFrom;
 use std::fs::File;
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -329,6 +330,26 @@ impl VhostBackend for Master {
         }
         let hdr = node.send_fd_for_vring(MasterReq::SET_VRING_ERR, queue_index, fd.as_raw_fd())?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
+    }
+
+    /// Set the status at the remote end (if supported)
+    fn set_status(&self, status: u8) -> Result<()> {
+        let mut node = self.node();
+        // depends on VhostUserProtocolFeatures::STATUS
+        node.check_proto_feature(VhostUserProtocolFeatures::STATUS)?;
+        let val = VhostUserU64::new(status.into());
+        node.send_request_with_body(MasterReq::SET_STATUS, &val, None)?;
+        Ok(())
+    }
+
+    /// Get the status from the remote end (if supported)
+    fn get_status(&self) -> Result<u8> {
+        let mut node = self.node();
+        // depends on VhostUserProtocolFeatures::STATUS
+        node.check_proto_feature(VhostUserProtocolFeatures::STATUS)?;
+        let hdr = node.send_request_header(MasterReq::GET_STATUS, None)?;
+        let reply = node.recv_reply::<VhostUserU64>(&hdr)?;
+        u8::try_from(reply.value).or(error_code(VhostUserError::InvalidParam))
     }
 }
 
