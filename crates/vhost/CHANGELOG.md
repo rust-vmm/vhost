@@ -9,6 +9,11 @@
 
 ### Deprecated
 
+## [0.8.1]
+
+### Fixed
+- [[#175]](https://github.com/rust-vmm/vhost/pull/175) vhost: Always enable vm-memory/backend-mmap
+
 ## [0.8.0]
 
 ### Added
