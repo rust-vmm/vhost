@@ -10,6 +10,7 @@ use std::io;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::result::Result;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use virtio_queue::{Error as VirtQueError, Queue, QueueT};
@@ -73,6 +74,12 @@ pub trait VringT<M: GuestAddressSpace>:
 
     /// Set queue next avail head.
     fn set_queue_next_avail(&self, base: u16);
+
+    /// Set queue next used head.
+    fn set_queue_next_used(&self, idx: u16);
+
+    /// Get queue next used head index from the guest memory.
+    fn queue_used_idx(&self) -> Result<u16, VirtQueError>;
 
     /// Set configured queue size.
     fn set_queue_size(&self, num: u16);
@@ -190,6 +197,18 @@ impl<M: GuestAddressSpace> VringState<M> {
     /// Set queue next avail head.
     fn set_queue_next_avail(&mut self, base: u16) {
         self.queue.set_next_avail(base);
+    }
+
+    /// Set queue next used head.
+    fn set_queue_next_used(&mut self, idx: u16) {
+        self.queue.set_next_used(idx);
+    }
+
+    /// Get queue next used head index from the guest memory.
+    fn queue_used_idx(&self) -> Result<u16, VirtQueError> {
+        self.queue
+            .used_idx(self.mem.memory().deref(), Ordering::Relaxed)
+            .map(|idx| idx.0)
     }
 
     /// Set configured queue size.
@@ -326,6 +345,14 @@ impl<M: 'static + GuestAddressSpace> VringT<M> for VringMutex<M> {
         self.lock().set_queue_next_avail(base)
     }
 
+    fn set_queue_next_used(&self, idx: u16) {
+        self.lock().set_queue_next_used(idx)
+    }
+
+    fn queue_used_idx(&self) -> Result<u16, VirtQueError> {
+        self.lock().queue_used_idx()
+    }
+
     fn set_queue_size(&self, num: u16) {
         self.lock().set_queue_size(num);
     }
@@ -431,6 +458,14 @@ impl<M: 'static + GuestAddressSpace> VringT<M> for VringRwLock<M> {
 
     fn set_queue_next_avail(&self, base: u16) {
         self.write_lock().set_queue_next_avail(base)
+    }
+
+    fn set_queue_next_used(&self, idx: u16) {
+        self.write_lock().set_queue_next_used(idx)
+    }
+
+    fn queue_used_idx(&self) -> Result<u16, VirtQueError> {
+        self.get_ref().queue_used_idx()
     }
 
     fn set_queue_size(&self, num: u16) {
