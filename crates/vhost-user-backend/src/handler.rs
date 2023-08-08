@@ -349,6 +349,22 @@ where
             self.vrings[index as usize]
                 .set_queue_info(desc_table, avail_ring, used_ring)
                 .map_err(|_| VhostUserError::InvalidParam)?;
+
+            // SET_VRING_BASE will only restore the 'avail' index, however, after the guest driver
+            // changes, for instance, after reboot, the 'used' index should be reset to 0.
+            //
+            // So let's fetch the used index from the vring as set by the guest here to keep
+            // compatibility with the QEMU's vhost-user library just in case, any implementation
+            // expects the 'used' index to be set when receiving a SET_VRING_ADDR message.
+            //
+            // Note: I'm not sure why QEMU's vhost-user library sets the 'user' index here,
+            // _probably_ to make sure that the VQ is already configured. A better solution would
+            // be to receive the 'used' index in SET_VRING_BASE, as is done when using packed VQs.
+            let idx = self.vrings[index as usize]
+                .queue_used_idx()
+                .map_err(|_| VhostUserError::SlaveInternalError)?;
+            self.vrings[index as usize].set_queue_next_used(idx);
+
             Ok(())
         } else {
             Err(VhostUserError::InvalidParam)
