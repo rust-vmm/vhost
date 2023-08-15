@@ -10,6 +10,12 @@
 
 ### Deprecated
 
+## [0.6.1]
+
+### Fixed
+- [[#182]](https://github.com/rust-vmm/vhost/pull/182) Fix set_vring_addr
+  issues & vhost: vdpa: Provide custom set_vring_addr() implementation
+
 ## [0.6.0]
 
 ### Upgraded
