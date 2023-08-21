@@ -9,6 +9,11 @@
 
 ### Deprecated
 
+## v0.10.1
+
+### Fixed
+- [[#180]](https://github.com/rust-vmm/vhost/pull/180) vhost-user-backend: fetch 'used' index from guest
+
 ## v0.10.0
 
 ### Added
