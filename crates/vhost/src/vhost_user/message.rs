@@ -203,7 +203,7 @@ impl Req for SlaveReq {
 }
 
 /// Vhost message Validator.
-pub trait VhostUserMsgValidator {
+pub trait VhostUserMsgValidator: ByteValued {
     /// Validate message syntax only.
     /// It doesn't validate message semantics such as protocol version number and dependency
     /// on feature flags etc.
@@ -593,6 +593,9 @@ impl VhostUserMemoryRegion {
         }
     }
 }
+
+// SAFETY: Safe because all fields of VhostUserMemoryRegion are POD.
+unsafe impl ByteValued for VhostUserMemoryRegion {}
 
 impl VhostUserMsgValidator for VhostUserMemoryRegion {
     fn is_valid(&self) -> bool {
