@@ -17,6 +17,7 @@ pub struct DummySlaveReqHandler {
     pub features_acked: bool,
     pub acked_features: u64,
     pub acked_protocol_features: u64,
+    pub status: u8,
     pub queue_num: usize,
     pub vring_num: [u32; MAX_QUEUE_NUM],
     pub vring_base: [u32; MAX_QUEUE_NUM],
@@ -203,6 +204,10 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
         Ok(())
     }
 
+    fn specs(&self) -> Result<VhostUserBackendSpecs> {
+        Ok(VhostUserBackendSpecs::new(1, 2, 3, 4))
+    }
+
     fn get_queue_num(&mut self) -> Result<u64> {
         Ok(MAX_QUEUE_NUM as u64)
     }
@@ -289,6 +294,15 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     }
 
     fn remove_mem_region(&mut self, _region: &VhostUserSingleMemoryRegion) -> Result<()> {
+        Ok(())
+    }
+
+    fn get_status(&self) -> Result<u8> {
+        Ok(self.status)
+    }
+
+    fn set_status(&mut self, status: u8) -> Result<()> {
+        self.status = status;
         Ok(())
     }
 }

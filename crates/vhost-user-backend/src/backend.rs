@@ -22,7 +22,7 @@ use std::io::Result;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, RwLock};
 
-use vhost::vhost_user::message::VhostUserProtocolFeatures;
+use vhost::vhost_user::message::{VhostUserBackendSpecs, VhostUserProtocolFeatures};
 use vhost::vhost_user::Slave;
 use vm_memory::bitmap::Bitmap;
 use vmm_sys_util::epoll::EventSet;
@@ -53,6 +53,9 @@ where
 
     /// Get available vhost protocol features.
     fn protocol_features(&self) -> VhostUserProtocolFeatures;
+
+    /// Get the backends specs
+    fn specs(&self) -> VhostUserBackendSpecs;
 
     /// Enable or disable the virtio EVENT_IDX feature
     fn set_event_idx(&self, enabled: bool);
@@ -134,6 +137,9 @@ where
 
     /// Get available vhost protocol features.
     fn protocol_features(&self) -> VhostUserProtocolFeatures;
+
+    /// Get specs
+    fn specs(&self) -> VhostUserBackendSpecs;
 
     /// Enable or disable the virtio EVENT_IDX feature
     fn set_event_idx(&mut self, enabled: bool);
@@ -220,6 +226,10 @@ where
         self.deref().protocol_features()
     }
 
+    fn specs(&self) -> VhostUserBackendSpecs {
+        self.deref().specs()
+    }
+
     fn set_event_idx(&self, enabled: bool) {
         self.deref().set_event_idx(enabled)
     }
@@ -283,6 +293,10 @@ where
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
         self.lock().unwrap().protocol_features()
+    }
+
+    fn specs(&self) -> VhostUserBackendSpecs {
+        self.lock().unwrap().specs()
     }
 
     fn set_event_idx(&self, enabled: bool) {
@@ -349,6 +363,10 @@ where
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
         self.read().unwrap().protocol_features()
+    }
+
+    fn specs(&self) -> VhostUserBackendSpecs {
+        self.read().unwrap().specs()
     }
 
     fn set_event_idx(&self, enabled: bool) {
@@ -434,6 +452,10 @@ pub mod tests {
 
         fn protocol_features(&self) -> VhostUserProtocolFeatures {
             VhostUserProtocolFeatures::all()
+        }
+
+        fn specs(&self) -> VhostUserBackendSpecs {
+            VhostUserBackendSpecs::new(2, 32, 4, 8)
         }
 
         fn set_event_idx(&mut self, enabled: bool) {

@@ -146,8 +146,10 @@ pub enum MasterReq {
     /// Query the backend for its device status as defined in the VIRTIO
     /// specification.
     GET_STATUS = 40,
+    /// Query the backend for its emulation specification
+    GET_BACKEND_SPECS = 41,
     /// Upper bound of valid commands.
-    MAX_CMD = 41,
+    MAX_CMD = 42,
 }
 
 impl From<MasterReq> for u32 {
@@ -429,6 +431,8 @@ bitflags! {
         const STATUS = 0x0001_0000;
         /// Support Xen mmap.
         const XEN_MMAP = 0x0002_0000;
+        /// Support GET_BACKEND_SPECS;
+        const STANDALONE = 0x0004_0000;
     }
 }
 
@@ -669,6 +673,35 @@ impl VhostUserSingleMemoryRegion {
 // SAFETY: Safe because all fields of VhostUserSingleMemoryRegion are POD.
 unsafe impl ByteValued for VhostUserSingleMemoryRegion {}
 impl VhostUserMsgValidator for VhostUserSingleMemoryRegion {}
+
+/// Supported specs of the backend.
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct VhostUserBackendSpecs {
+    /// VirtIO device ID
+    device_id: u32,
+    /// Size of config space
+    config_size: u32,
+    /// Minimum number of VQs
+    min_vqs: u32,
+    /// Maximum number of VQs
+    max_vqs: u32,
+}
+
+impl VhostUserBackendSpecs {
+    /// Create a new instance.
+    pub fn new(device_id: u32, config_size: u32, min_vqs: u32, max_vqs: u32) -> Self {
+        VhostUserBackendSpecs {
+            device_id,
+            config_size,
+            min_vqs,
+            max_vqs,
+        }
+    }
+}
+
+// SAFETY: Safe because all fields of VhostUserBackendSpecs are POD
+unsafe impl ByteValued for VhostUserBackendSpecs {}
 
 /// Vring state descriptor.
 #[repr(packed)]

@@ -33,17 +33,6 @@ pub trait VhostVdpa: VhostBackend {
     /// The device ids follow the same definition of the device id defined in virtio-spec.
     fn get_device_id(&self) -> Result<u32>;
 
-    /// Get the status.
-    /// The status bits follow the same definition of the device status defined in virtio-spec.
-    fn get_status(&self) -> Result<u8>;
-
-    /// Set the status.
-    /// The status bits follow the same definition of the device status defined in virtio-spec.
-    ///
-    /// # Arguments
-    /// * `status` - Status bits to set
-    fn set_status(&self, status: u8) -> Result<()>;
-
     /// Get the device configuration.
     ///
     /// # Arguments

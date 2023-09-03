@@ -88,6 +88,8 @@ pub struct VhostUserHandler<S, V, B: Bitmap + 'static> {
     atomic_mem: GM<B>,
     vrings: Vec<V>,
     worker_threads: Vec<thread::JoinHandle<VringEpollResult<()>>>,
+    /// VirtIO Device Status field, when using get/set status
+    status: u8,
 }
 
 // Ensure VhostUserHandler: Clone + Send + Sync + 'static.
@@ -147,6 +149,7 @@ where
             atomic_mem,
             vrings,
             worker_threads,
+            status: 0,
         })
     }
 }
@@ -468,6 +471,10 @@ where
         Ok(())
     }
 
+    fn specs(&self) -> VhostUserResult<vhost::vhost_user::message::VhostUserBackendSpecs> {
+        Ok(self.backend.specs())
+    }
+
     fn get_queue_num(&mut self) -> VhostUserResult<u64> {
         Ok(self.num_queues as u64)
     }
@@ -600,6 +607,15 @@ where
         self.mappings
             .retain(|mapping| mapping.gpa_base != region.guest_phys_addr);
 
+        Ok(())
+    }
+
+    fn get_status(&self) -> VhostUserResult<u8> {
+        Ok(self.status)
+    }
+
+    fn set_status(&mut self, status: u8) -> VhostUserResult<()> {
+        self.status = status;
         Ok(())
     }
 }

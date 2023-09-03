@@ -308,6 +308,30 @@ pub trait VhostBackend: std::marker::Sized {
     /// * `queue_index` - Index of the queue to modify.
     /// * `fd` - EventFd that will be signaled from guest.
     fn set_vring_err(&self, queue_index: usize, fd: &EventFd) -> Result<()>;
+
+    /// Set the status.
+    /// The status bits follow the same definition of the device
+    /// status defined in virtio-spec.
+    ///
+    /// As not all backends can implement this we provide a default
+    /// implementation that returns an Error.
+    ///
+    /// # Arguments
+    /// * `status` - Status bits to set
+    fn set_status(&self, _status: u8) -> Result<()> {
+        Err(Error::InvalidOperation)
+    }
+
+    /// Get the status.
+    ///
+    /// The status bits follow the same definition of the device
+    /// status defined in virtio-spec.
+    ///
+    /// As not all backends can implement this we provide a default
+    /// implementation that returns an Error.
+    fn get_status(&self) -> Result<u8> {
+        Err(Error::InvalidOperation)
+    }
 }
 
 /// An interface for setting up vhost-based backend drivers.
@@ -394,6 +418,17 @@ pub trait VhostBackendMut: std::marker::Sized {
     /// * `queue_index` - Index of the queue to modify.
     /// * `fd` - EventFd that will be signaled from guest.
     fn set_vring_err(&mut self, queue_index: usize, fd: &EventFd) -> Result<()>;
+
+    /// Set the status.
+    /// The status bits follow the same definition of the device status defined in virtio-spec.
+    ///
+    /// # Arguments
+    /// * `status` - Status bits to set
+    fn set_status(&mut self, status: u8) -> Result<()>;
+
+    /// Get the status.
+    /// The status bits follow the same definition of the device status defined in virtio-spec.
+    fn get_status(&self) -> Result<u8>;
 }
 
 impl<T: VhostBackendMut> VhostBackend for RwLock<T> {
@@ -454,6 +489,14 @@ impl<T: VhostBackendMut> VhostBackend for RwLock<T> {
     fn set_vring_err(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
         self.write().unwrap().set_vring_err(queue_index, fd)
     }
+
+    fn set_status(&self, status: u8) -> Result<()> {
+        self.write().unwrap().set_status(status)
+    }
+
+    fn get_status(&self) -> Result<u8> {
+        self.write().unwrap().get_status()
+    }
 }
 
 impl<T: VhostBackendMut> VhostBackend for RefCell<T> {
@@ -512,6 +555,14 @@ impl<T: VhostBackendMut> VhostBackend for RefCell<T> {
     fn set_vring_err(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
         self.borrow_mut().set_vring_err(queue_index, fd)
     }
+
+    fn set_status(&self, status: u8) -> Result<()> {
+        self.borrow_mut().set_status(status)
+    }
+
+    fn get_status(&self) -> Result<u8> {
+        self.borrow_mut().get_status()
+    }
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -543,7 +594,9 @@ impl VhostUserMemoryRegionInfo {
 mod tests {
     use super::*;
 
-    struct MockBackend {}
+    struct MockBackend {
+        status: u8,
+    }
 
     impl VhostBackendMut for MockBackend {
         fn get_features(&mut self) -> Result<u64> {
@@ -625,11 +678,20 @@ mod tests {
             assert_eq!(queue_index, 1);
             Ok(())
         }
+
+        fn set_status(&mut self, status: u8) -> Result<()> {
+            self.status = status;
+            Ok(())
+        }
+
+        fn get_status(&self) -> Result<u8> {
+            Ok(self.status)
+        }
     }
 
     #[test]
     fn test_vring_backend_mut() {
-        let b = RwLock::new(MockBackend {});
+        let b = RwLock::new(MockBackend { status: 0 });
 
         assert_eq!(b.get_features().unwrap(), 0x1);
         b.set_features(0x1).unwrap();

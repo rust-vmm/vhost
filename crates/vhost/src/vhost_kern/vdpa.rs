@@ -101,22 +101,6 @@ impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
         ioctl_result(ret, device_id)
     }
 
-    fn get_status(&self) -> Result<u8> {
-        let mut status: u8 = 0;
-
-        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
-        // return value checked.
-        let ret = unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_STATUS(), &mut status) };
-        ioctl_result(ret, status)
-    }
-
-    fn set_status(&self, status: u8) -> Result<()> {
-        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
-        // return value checked.
-        let ret = unsafe { ioctl_with_ref(self, VHOST_VDPA_SET_STATUS(), &status) };
-        ioctl_result(ret, ())
-    }
-
     fn get_config(&self, offset: u32, buffer: &mut [u8]) -> Result<()> {
         let mut config = VhostVdpaConfig::new(buffer.len())
             .map_err(|_| Error::IoctlError(IOError::from_raw_os_error(libc::ENOMEM)))?;

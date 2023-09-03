@@ -291,6 +291,22 @@ impl<T: VhostKernBackend> VhostBackend for T {
         let ret = unsafe { ioctl_with_ref(self, VHOST_SET_VRING_ERR(), &vring_file) };
         ioctl_result(ret, ())
     }
+
+    fn get_status(&self) -> Result<u8> {
+        let mut status: u8 = 0;
+
+        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+        // return value checked.
+        let ret = unsafe { ioctl_with_mut_ref(self, VHOST_VDPA_GET_STATUS(), &mut status) };
+        ioctl_result(ret, status)
+    }
+
+    fn set_status(&self, status: u8) -> Result<()> {
+        // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
+        // return value checked.
+        let ret = unsafe { ioctl_with_ref(self, VHOST_VDPA_SET_STATUS(), &status) };
+        ioctl_result(ret, ())
+    }
 }
 
 /// Interface to handle in-kernel backend features.
