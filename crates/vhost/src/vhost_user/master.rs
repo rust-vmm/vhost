@@ -383,7 +383,7 @@ impl VhostUserMaster for Master {
             return error_code(VhostUserError::InvalidParam);
         }
 
-        let flag = if enable { 1 } else { 0 };
+        let flag = enable.into();
         let val = VhostUserVringState::new(queue_index as u32, flag);
         let hdr = node.send_request_with_body(MasterReq::SET_VRING_ENABLE, &val, None)?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
