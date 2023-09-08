@@ -669,23 +669,23 @@ mod tests {
         let path = temp_path();
         let listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
+        let mut frontend = Endpoint::<FrontendReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
-        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
+        let mut backend = Endpoint::<FrontendReq>::from_stream(sock);
 
         let buf1 = vec![0x1, 0x2, 0x3, 0x4];
-        let mut len = master.send_slice(&buf1[..], None).unwrap();
+        let mut len = frontend.send_slice(&buf1[..], None).unwrap();
         assert_eq!(len, 4);
-        let (bytes, buf2, _) = slave.recv_into_buf(0x1000).unwrap();
+        let (bytes, buf2, _) = backend.recv_into_buf(0x1000).unwrap();
         assert_eq!(bytes, 4);
         assert_eq!(&buf1[..], &buf2[..bytes]);
 
-        len = master.send_slice(&buf1[..], None).unwrap();
+        len = frontend.send_slice(&buf1[..], None).unwrap();
         assert_eq!(len, 4);
-        let (bytes, buf2, _) = slave.recv_into_buf(0x2).unwrap();
+        let (bytes, buf2, _) = backend.recv_into_buf(0x2).unwrap();
         assert_eq!(bytes, 2);
         assert_eq!(&buf1[..2], &buf2[..]);
-        let (bytes, buf2, _) = slave.recv_into_buf(0x2).unwrap();
+        let (bytes, buf2, _) = backend.recv_into_buf(0x2).unwrap();
         assert_eq!(bytes, 2);
         assert_eq!(&buf1[2..], &buf2[..]);
     }
@@ -695,21 +695,21 @@ mod tests {
         let path = temp_path();
         let listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
+        let mut frontend = Endpoint::<FrontendReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
-        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
+        let mut backend = Endpoint::<FrontendReq>::from_stream(sock);
 
         let mut fd = TempFile::new().unwrap().into_file();
         write!(fd, "test").unwrap();
 
         // Normal case for sending/receiving file descriptors
         let buf1 = vec![0x1, 0x2, 0x3, 0x4];
-        let len = master
+        let len = frontend
             .send_slice(&buf1[..], Some(&[fd.as_raw_fd()]))
             .unwrap();
         assert_eq!(len, 4);
 
-        let (bytes, buf2, files) = slave.recv_into_buf(4).unwrap();
+        let (bytes, buf2, files) = backend.recv_into_buf(4).unwrap();
         assert_eq!(bytes, 4);
         assert_eq!(&buf1[..], &buf2[..]);
         assert!(files.is_some());
@@ -726,7 +726,7 @@ mod tests {
         // Following communication pattern should work:
         // Sending side: data(header, body) with fds
         // Receiving side: data(header) with fds, data(body)
-        let len = master
+        let len = frontend
             .send_slice(
                 &buf1[..],
                 Some(&[fd.as_raw_fd(), fd.as_raw_fd(), fd.as_raw_fd()]),
@@ -734,7 +734,7 @@ mod tests {
             .unwrap();
         assert_eq!(len, 4);
 
-        let (bytes, buf2, files) = slave.recv_into_buf(0x2).unwrap();
+        let (bytes, buf2, files) = backend.recv_into_buf(0x2).unwrap();
         assert_eq!(bytes, 2);
         assert_eq!(&buf1[..2], &buf2[..]);
         assert!(files.is_some());
@@ -747,7 +747,7 @@ mod tests {
             file.read_to_string(&mut content).unwrap();
             assert_eq!(content, "test");
         }
-        let (bytes, buf2, files) = slave.recv_into_buf(0x2).unwrap();
+        let (bytes, buf2, files) = backend.recv_into_buf(0x2).unwrap();
         assert_eq!(bytes, 2);
         assert_eq!(&buf1[2..], &buf2[..]);
         assert!(files.is_none());
@@ -755,7 +755,7 @@ mod tests {
         // Following communication pattern should not work:
         // Sending side: data(header, body) with fds
         // Receiving side: data(header), data(body) with fds
-        let len = master
+        let len = frontend
             .send_slice(
                 &buf1[..],
                 Some(&[fd.as_raw_fd(), fd.as_raw_fd(), fd.as_raw_fd()]),
@@ -763,10 +763,10 @@ mod tests {
             .unwrap();
         assert_eq!(len, 4);
 
-        let (bytes, buf4) = slave.recv_data(2).unwrap();
+        let (bytes, buf4) = backend.recv_data(2).unwrap();
         assert_eq!(bytes, 2);
         assert_eq!(&buf1[..2], &buf4[..]);
-        let (bytes, buf2, files) = slave.recv_into_buf(0x2).unwrap();
+        let (bytes, buf2, files) = backend.recv_into_buf(0x2).unwrap();
         assert_eq!(bytes, 2);
         assert_eq!(&buf1[2..], &buf2[..]);
         assert!(files.is_none());
@@ -774,9 +774,9 @@ mod tests {
         // Following communication pattern should work:
         // Sending side: data, data with fds
         // Receiving side: data, data with fds
-        let len = master.send_slice(&buf1[..], None).unwrap();
+        let len = frontend.send_slice(&buf1[..], None).unwrap();
         assert_eq!(len, 4);
-        let len = master
+        let len = frontend
             .send_slice(
                 &buf1[..],
                 Some(&[fd.as_raw_fd(), fd.as_raw_fd(), fd.as_raw_fd()]),
@@ -784,12 +784,12 @@ mod tests {
             .unwrap();
         assert_eq!(len, 4);
 
-        let (bytes, buf2, files) = slave.recv_into_buf(0x4).unwrap();
+        let (bytes, buf2, files) = backend.recv_into_buf(0x4).unwrap();
         assert_eq!(bytes, 4);
         assert_eq!(&buf1[..], &buf2[..]);
         assert!(files.is_none());
 
-        let (bytes, buf2, files) = slave.recv_into_buf(0x2).unwrap();
+        let (bytes, buf2, files) = backend.recv_into_buf(0x2).unwrap();
         assert_eq!(bytes, 2);
         assert_eq!(&buf1[..2], &buf2[..]);
         assert!(files.is_some());
@@ -802,7 +802,7 @@ mod tests {
             file.read_to_string(&mut content).unwrap();
             assert_eq!(content, "test");
         }
-        let (bytes, buf2, files) = slave.recv_into_buf(0x2).unwrap();
+        let (bytes, buf2, files) = backend.recv_into_buf(0x2).unwrap();
         assert_eq!(bytes, 2);
         assert_eq!(&buf1[2..], &buf2[..]);
         assert!(files.is_none());
@@ -810,9 +810,9 @@ mod tests {
         // Following communication pattern should not work:
         // Sending side: data1, data2 with fds
         // Receiving side: data + partial of data2, left of data2 with fds
-        let len = master.send_slice(&buf1[..], None).unwrap();
+        let len = frontend.send_slice(&buf1[..], None).unwrap();
         assert_eq!(len, 4);
-        let len = master
+        let len = frontend
             .send_slice(
                 &buf1[..],
                 Some(&[fd.as_raw_fd(), fd.as_raw_fd(), fd.as_raw_fd()]),
@@ -820,15 +820,15 @@ mod tests {
             .unwrap();
         assert_eq!(len, 4);
 
-        let (bytes, _) = slave.recv_data(5).unwrap();
+        let (bytes, _) = backend.recv_data(5).unwrap();
         assert_eq!(bytes, 5);
 
-        let (bytes, _, files) = slave.recv_into_buf(0x4).unwrap();
+        let (bytes, _, files) = backend.recv_into_buf(0x4).unwrap();
         assert_eq!(bytes, 3);
         assert!(files.is_none());
 
         // If the target fd array is too small, extra file descriptors will get lost.
-        let len = master
+        let len = frontend
             .send_slice(
                 &buf1[..],
                 Some(&[fd.as_raw_fd(), fd.as_raw_fd(), fd.as_raw_fd()]),
@@ -836,7 +836,7 @@ mod tests {
             .unwrap();
         assert_eq!(len, 4);
 
-        let (bytes, _, files) = slave.recv_into_buf(0x4).unwrap();
+        let (bytes, _, files) = backend.recv_into_buf(0x4).unwrap();
         assert_eq!(bytes, 4);
         assert!(files.is_some());
     }
@@ -846,15 +846,15 @@ mod tests {
         let path = temp_path();
         let listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
+        let mut frontend = Endpoint::<FrontendReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
-        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
+        let mut backend = Endpoint::<FrontendReq>::from_stream(sock);
 
         let mut hdr1 =
-            VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0, mem::size_of::<u64>() as u32);
+            VhostUserMsgHeader::new(FrontendReq::GET_FEATURES, 0, mem::size_of::<u64>() as u32);
         hdr1.set_need_reply(true);
         let features1 = 0x1u64;
-        master.send_message(&hdr1, &features1, None).unwrap();
+        frontend.send_message(&hdr1, &features1, None).unwrap();
 
         let mut features2 = 0u64;
 
@@ -865,14 +865,14 @@ mod tests {
                 mem::size_of::<u64>(),
             )
         };
-        let (hdr2, bytes, files) = slave.recv_body_into_buf(slice).unwrap();
+        let (hdr2, bytes, files) = backend.recv_body_into_buf(slice).unwrap();
         assert_eq!(hdr1, hdr2);
         assert_eq!(bytes, 8);
         assert_eq!(features1, features2);
         assert!(files.is_none());
 
-        master.send_header(&hdr1, None).unwrap();
-        let (hdr2, files) = slave.recv_header().unwrap();
+        frontend.send_header(&hdr1, None).unwrap();
+        let (hdr2, files) = backend.recv_header().unwrap();
         assert_eq!(hdr1, hdr2);
         assert!(files.is_none());
     }
@@ -881,13 +881,13 @@ mod tests {
     fn partial_message() {
         let path = temp_path();
         let listener = Listener::new(&path, true).unwrap();
-        let mut master = UnixStream::connect(&path).unwrap();
+        let mut frontend = UnixStream::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
-        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
+        let mut backend = Endpoint::<FrontendReq>::from_stream(sock);
 
-        write!(master, "a").unwrap();
-        drop(master);
-        assert!(matches!(slave.recv_header(), Err(Error::PartialMessage)));
+        write!(frontend, "a").unwrap();
+        drop(frontend);
+        assert!(matches!(backend.recv_header(), Err(Error::PartialMessage)));
     }
 
     #[test]
@@ -896,8 +896,8 @@ mod tests {
         let listener = Listener::new(&path, true).unwrap();
         let _ = UnixStream::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
-        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
+        let mut backend = Endpoint::<FrontendReq>::from_stream(sock);
 
-        assert!(matches!(slave.recv_header(), Err(Error::Disconnected)));
+        assert!(matches!(backend.recv_header(), Err(Error::Disconnected)));
     }
 }

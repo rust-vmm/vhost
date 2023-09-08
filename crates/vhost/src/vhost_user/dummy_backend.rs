@@ -12,7 +12,7 @@ pub const MAX_MEM_SLOTS: usize = 32;
 pub const VIRTIO_FEATURES: u64 = 0x40000003;
 
 #[derive(Default)]
-pub struct DummySlaveReqHandler {
+pub struct DummyBackendReqHandler {
     pub owned: bool,
     pub features_acked: bool,
     pub acked_features: u64,
@@ -28,9 +28,9 @@ pub struct DummySlaveReqHandler {
     pub inflight_file: Option<File>,
 }
 
-impl DummySlaveReqHandler {
+impl DummyBackendReqHandler {
     pub fn new() -> Self {
-        DummySlaveReqHandler {
+        DummyBackendReqHandler {
             queue_num: MAX_QUEUE_NUM,
             ..Default::default()
         }
@@ -55,7 +55,7 @@ impl DummySlaveReqHandler {
     }
 }
 
-impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
+impl VhostUserBackendReqHandlerMut for DummyBackendReqHandler {
     fn set_owner(&mut self) -> Result<()> {
         if self.owned {
             return Err(Error::InvalidOperation("already claimed"));
@@ -193,10 +193,10 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     }
 
     fn set_protocol_features(&mut self, features: u64) -> Result<()> {
-        // Note: slave that reported VHOST_USER_F_PROTOCOL_FEATURES must
+        // Note: backend that reported VHOST_USER_F_PROTOCOL_FEATURES must
         // support this message even before VHOST_USER_SET_FEATURES was
         // called.
-        // What happens if the master calls set_features() with
+        // What happens if the frontend calls set_features() with
         // VHOST_USER_F_PROTOCOL_FEATURES cleared after calling this
         // interface?
         self.acked_protocol_features = features;
@@ -216,7 +216,7 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
             return Err(Error::InvalidParam);
         }
 
-        // Slave must not pass data to/from the backend until ring is
+        // Backend must not pass data to/from the backend until ring is
         // enabled by VHOST_USER_SET_VRING_ENABLE with parameter 1,
         // or after it has been disabled by VHOST_USER_SET_VRING_ENABLE
         // with parameter 0.
