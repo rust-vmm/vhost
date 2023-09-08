@@ -4,6 +4,7 @@
 ### Added
 
 ### Changed
+- Change uses of master/slave for frontend/backend in the codebase.
 
 ### Fixed
 

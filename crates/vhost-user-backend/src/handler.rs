@@ -16,7 +16,7 @@ use vhost::vhost_user::message::{
     VhostUserVringState,
 };
 use vhost::vhost_user::{
-    Error as VhostUserError, Result as VhostUserResult, Slave, VhostUserSlaveReqHandlerMut,
+    Backend, Error as VhostUserError, Result as VhostUserResult, VhostUserBackendReqHandlerMut,
 };
 use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use virtio_queue::{Error as VirtQueError, QueueT};
@@ -218,7 +218,7 @@ where
     }
 }
 
-impl<S, V, B> VhostUserSlaveReqHandlerMut for VhostUserHandler<S, V, B>
+impl<S, V, B> VhostUserBackendReqHandlerMut for VhostUserHandler<S, V, B>
 where
     S: VhostUserBackend<V, B>,
     V: VringT<GM<B>>,
@@ -362,7 +362,7 @@ where
             // be to receive the 'used' index in SET_VRING_BASE, as is done when using packed VQs.
             let idx = self.vrings[index as usize]
                 .queue_used_idx()
-                .map_err(|_| VhostUserError::SlaveInternalError)?;
+                .map_err(|_| VhostUserError::BackendInternalError)?;
             self.vrings[index as usize].set_queue_next_used(idx);
 
             Ok(())
@@ -461,7 +461,7 @@ where
     }
 
     fn set_protocol_features(&mut self, features: u64) -> VhostUserResult<()> {
-        // Note: slave that reported VHOST_USER_F_PROTOCOL_FEATURES must
+        // Note: backend that reported VHOST_USER_F_PROTOCOL_FEATURES must
         // support this message even before VHOST_USER_SET_FEATURES was
         // called.
         self.acked_protocol_features = features;
@@ -481,7 +481,7 @@ where
             return Err(VhostUserError::InvalidParam);
         }
 
-        // Slave must not pass data to/from the backend until ring is
+        // Backend must not pass data to/from the backend until ring is
         // enabled by VHOST_USER_SET_VRING_ENABLE with parameter 1,
         // or after it has been disabled by VHOST_USER_SET_VRING_ENABLE
         // with parameter 0.
@@ -510,12 +510,12 @@ where
             .map_err(VhostUserError::ReqHandlerError)
     }
 
-    fn set_slave_req_fd(&mut self, slave: Slave) {
+    fn set_backend_req_fd(&mut self, backend: Backend) {
         if self.acked_protocol_features & VhostUserProtocolFeatures::REPLY_ACK.bits() != 0 {
-            slave.set_reply_ack_flag(true);
+            backend.set_reply_ack_flag(true);
         }
 
-        self.backend.set_slave_req_fd(slave);
+        self.backend.set_backend_req_fd(backend);
     }
 
     fn get_inflight_fd(

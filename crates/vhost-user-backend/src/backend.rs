@@ -23,7 +23,7 @@ use std::ops::Deref;
 use std::sync::{Arc, Mutex, RwLock};
 
 use vhost::vhost_user::message::VhostUserProtocolFeatures;
-use vhost::vhost_user::Slave;
+use vhost::vhost_user::Backend;
 use vm_memory::bitmap::Bitmap;
 use vmm_sys_util::epoll::EventSet;
 use vmm_sys_util::eventfd::EventFd;
@@ -76,11 +76,11 @@ where
     /// Update guest memory regions.
     fn update_memory(&self, mem: GM<B>) -> Result<()>;
 
-    /// Set handler for communicating with the master by the slave communication channel.
+    /// Set handler for communicating with the frontend by the backend communication channel.
     ///
     /// A default implementation is provided as we cannot expect all backends to implement this
     /// function.
-    fn set_slave_req_fd(&self, _slave: Slave) {}
+    fn set_backend_req_fd(&self, _backend: Backend) {}
 
     /// Get the map to map queue index to worker thread index.
     ///
@@ -157,11 +157,11 @@ where
     /// Update guest memory regions.
     fn update_memory(&mut self, mem: GM<B>) -> Result<()>;
 
-    /// Set handler for communicating with the master by the slave communication channel.
+    /// Set handler for communicating with the frontend by the backend communication channel.
     ///
     /// A default implementation is provided as we cannot expect all backends to implement this
     /// function.
-    fn set_slave_req_fd(&mut self, _slave: Slave) {}
+    fn set_backend_req_fd(&mut self, _backend: Backend) {}
 
     /// Get the map to map queue index to worker thread index.
     ///
@@ -236,8 +236,8 @@ where
         self.deref().update_memory(mem)
     }
 
-    fn set_slave_req_fd(&self, slave: Slave) {
-        self.deref().set_slave_req_fd(slave)
+    fn set_backend_req_fd(&self, backend: Backend) {
+        self.deref().set_backend_req_fd(backend)
     }
 
     fn queues_per_thread(&self) -> Vec<u64> {
@@ -301,8 +301,8 @@ where
         self.lock().unwrap().update_memory(mem)
     }
 
-    fn set_slave_req_fd(&self, slave: Slave) {
-        self.lock().unwrap().set_slave_req_fd(slave)
+    fn set_backend_req_fd(&self, backend: Backend) {
+        self.lock().unwrap().set_backend_req_fd(backend)
     }
 
     fn queues_per_thread(&self) -> Vec<u64> {
@@ -367,8 +367,8 @@ where
         self.write().unwrap().update_memory(mem)
     }
 
-    fn set_slave_req_fd(&self, slave: Slave) {
-        self.write().unwrap().set_slave_req_fd(slave)
+    fn set_backend_req_fd(&self, backend: Backend) {
+        self.write().unwrap().set_backend_req_fd(backend)
     }
 
     fn queues_per_thread(&self) -> Vec<u64> {
@@ -459,7 +459,7 @@ pub mod tests {
             Ok(())
         }
 
-        fn set_slave_req_fd(&mut self, _slave: Slave) {}
+        fn set_backend_req_fd(&mut self, _backend: Backend) {}
 
         fn queues_per_thread(&self) -> Vec<u64> {
             vec![1, 1]

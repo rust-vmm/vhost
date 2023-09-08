@@ -46,7 +46,7 @@ pub trait VringT<M: GuestAddressSpace>:
     /// Add an used descriptor into the used queue.
     fn add_used(&self, desc_index: u16, len: u32) -> Result<(), VirtQueError>;
 
-    /// Notify the vhost-user master that used descriptors have been put into the used queue.
+    /// Notify the vhost-user frontend that used descriptors have been put into the used queue.
     fn signal_used_queue(&self) -> io::Result<()>;
 
     /// Enable event notification for queue.
@@ -145,7 +145,7 @@ impl<M: GuestAddressSpace> VringState<M> {
             .add_used(self.mem.memory().deref(), desc_index, len)
     }
 
-    /// Notify the vhost-user master that used descriptors have been put into the used queue.
+    /// Notify the vhost-user frontend that used descriptors have been put into the used queue.
     pub fn signal_used_queue(&self) -> io::Result<()> {
         if let Some(call) = self.call.as_ref() {
             call.write(1)
