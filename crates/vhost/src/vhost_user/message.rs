@@ -55,21 +55,21 @@ pub(super) trait Req:
     fn is_valid(value: u32) -> bool;
 }
 
-/// Type of requests sending from masters to slaves.
+/// Type of requests sending from frontends to backends.
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum MasterReq {
+pub enum FrontendReq {
     /// Null operation.
     NOOP = 0,
     /// Get from the underlying vhost implementation the features bit mask.
     GET_FEATURES = 1,
     /// Enable features in the underlying vhost implementation using a bit mask.
     SET_FEATURES = 2,
-    /// Set the current Master as an owner of the session.
+    /// Set the current Frontend as an owner of the session.
     SET_OWNER = 3,
     /// No longer used.
     RESET_OWNER = 4,
-    /// Set the memory map regions on the slave so it can translate the vring addresses.
+    /// Set the memory map regions on the backend so it can translate the vring addresses.
     SET_MEM_TABLE = 5,
     /// Set logging shared memory space.
     SET_LOG_BASE = 6,
@@ -95,15 +95,15 @@ pub enum MasterReq {
     SET_PROTOCOL_FEATURES = 16,
     /// Query how many queues the backend supports.
     GET_QUEUE_NUM = 17,
-    /// Signal slave to enable or disable corresponding vring.
+    /// Signal backend to enable or disable corresponding vring.
     SET_VRING_ENABLE = 18,
     /// Ask vhost user backend to broadcast a fake RARP to notify the migration is terminated
     /// for guest that does not support GUEST_ANNOUNCE.
     SEND_RARP = 19,
     /// Set host MTU value exposed to the guest.
     NET_SET_MTU = 20,
-    /// Set the socket file descriptor for slave initiated requests.
-    SET_SLAVE_REQ_FD = 21,
+    /// Set the socket file descriptor for backend initiated requests.
+    SET_BACKEND_REQ_FD = 21,
     /// Send IOTLB messages with struct vhost_iotlb_msg as payload.
     IOTLB_MSG = 22,
     /// Set the endianness of a VQ for legacy devices.
@@ -116,15 +116,15 @@ pub enum MasterReq {
     CREATE_CRYPTO_SESSION = 26,
     /// Close a session for crypto operation.
     CLOSE_CRYPTO_SESSION = 27,
-    /// Advise slave that a migration with postcopy enabled is underway.
+    /// Advise backend that a migration with postcopy enabled is underway.
     POSTCOPY_ADVISE = 28,
-    /// Advise slave that a transition to postcopy mode has happened.
+    /// Advise backend that a transition to postcopy mode has happened.
     POSTCOPY_LISTEN = 29,
     /// Advise that postcopy migration has now completed.
     POSTCOPY_END = 30,
-    /// Get a shared buffer from slave.
+    /// Get a shared buffer from backend.
     GET_INFLIGHT_FD = 31,
-    /// Send the shared inflight buffer back to slave.
+    /// Send the shared inflight buffer back to backend.
     SET_INFLIGHT_FD = 32,
     /// Sets the GPU protocol socket file descriptor.
     GPU_SET_SOCKET = 33,
@@ -150,22 +150,22 @@ pub enum MasterReq {
     MAX_CMD = 41,
 }
 
-impl From<MasterReq> for u32 {
-    fn from(req: MasterReq) -> u32 {
+impl From<FrontendReq> for u32 {
+    fn from(req: FrontendReq) -> u32 {
         req as u32
     }
 }
 
-impl Req for MasterReq {
+impl Req for FrontendReq {
     fn is_valid(value: u32) -> bool {
-        (value > MasterReq::NOOP as u32) && (value < MasterReq::MAX_CMD as u32)
+        (value > FrontendReq::NOOP as u32) && (value < FrontendReq::MAX_CMD as u32)
     }
 }
 
-/// Type of requests sending from slaves to masters.
+/// Type of requests sending from backends to frontends.
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum SlaveReq {
+pub enum BackendReq {
     /// Null operation.
     NOOP = 0,
     /// Send IOTLB messages with struct vhost_iotlb_msg as payload.
@@ -190,15 +190,15 @@ pub enum SlaveReq {
     MAX_CMD = 10,
 }
 
-impl From<SlaveReq> for u32 {
-    fn from(req: SlaveReq) -> u32 {
+impl From<BackendReq> for u32 {
+    fn from(req: BackendReq) -> u32 {
         req as u32
     }
 }
 
-impl Req for SlaveReq {
+impl Req for BackendReq {
     fn is_valid(value: u32) -> bool {
-        (value > SlaveReq::NOOP as u32) && (value < SlaveReq::MAX_CMD as u32)
+        (value > BackendReq::NOOP as u32) && (value < BackendReq::MAX_CMD as u32)
     }
 }
 
@@ -403,19 +403,19 @@ bitflags! {
         const REPLY_ACK = 0x0000_0008;
         /// Support setting MTU for virtio-net devices.
         const MTU = 0x0000_0010;
-        /// Allow the slave to send requests to the master by an optional communication channel.
-        const SLAVE_REQ = 0x0000_0020;
-        /// Support setting slave endian by SET_VRING_ENDIAN.
+        /// Allow the backend to send requests to the frontend by an optional communication channel.
+        const BACKEND_REQ = 0x0000_0020;
+        /// Support setting backend endian by SET_VRING_ENDIAN.
         const CROSS_ENDIAN = 0x0000_0040;
         /// Support crypto operations.
         const CRYPTO_SESSION = 0x0000_0080;
-        /// Support sending userfault_fd from slaves to masters.
+        /// Support sending userfault_fd from backends to frontends.
         const PAGEFAULT = 0x0000_0100;
         /// Support Virtio device configuration.
         const CONFIG = 0x0000_0200;
-        /// Allow the slave to send fds (at most 8 descriptors in each message) to the master.
-        const SLAVE_SEND_FD = 0x0000_0400;
-        /// Allow the slave to register a host notifier.
+        /// Allow the backend to send fds (at most 8 descriptors in each message) to the frontend.
+        const BACKEND_SEND_FD = 0x0000_0400;
+        /// Allow the backend to register a host notifier.
         const HOST_NOTIFIER = 0x0000_0800;
         /// Support inflight shmfd.
         const INFLIGHT_SHMFD = 0x0000_1000;
@@ -778,9 +778,9 @@ impl VhostUserMsgValidator for VhostUserVringAddr {
 bitflags! {
     /// Flags for the device configuration message.
     pub struct VhostUserConfigFlags: u32 {
-        /// Vhost master messages used for writeable fields.
+        /// Vhost frontend messages used for writeable fields.
         const WRITABLE = 0x1;
-        /// Vhost master messages used for live migration.
+        /// Vhost frontend messages used for live migration.
         const LIVE_MIGRATION = 0x2;
     }
 }
@@ -927,11 +927,11 @@ pub struct VhostUserIotlb {
 }
 */
 
-// Bit mask for flags in virtio-fs slave messages
+// Bit mask for flags in virtio-fs backend messages
 bitflags! {
     #[derive(Default)]
-    /// Flags for virtio-fs slave messages.
-    pub struct VhostUserFSSlaveMsgFlags: u64 {
+    /// Flags for virtio-fs backend messages.
+    pub struct VhostUserFSBackendMsgFlags: u64 {
         /// Empty permission.
         const EMPTY = 0x0;
         /// Read permission.
@@ -941,30 +941,30 @@ bitflags! {
     }
 }
 
-/// Max entries in one virtio-fs slave request.
-pub const VHOST_USER_FS_SLAVE_ENTRIES: usize = 8;
+/// Max entries in one virtio-fs backend request.
+pub const VHOST_USER_FS_BACKEND_ENTRIES: usize = 8;
 
-/// Slave request message to update the MMIO window.
+/// Backend request message to update the MMIO window.
 #[repr(packed)]
 #[derive(Copy, Clone, Default)]
-pub struct VhostUserFSSlaveMsg {
+pub struct VhostUserFSBackendMsg {
     /// File offset.
-    pub fd_offset: [u64; VHOST_USER_FS_SLAVE_ENTRIES],
+    pub fd_offset: [u64; VHOST_USER_FS_BACKEND_ENTRIES],
     /// Offset into the DAX window.
-    pub cache_offset: [u64; VHOST_USER_FS_SLAVE_ENTRIES],
+    pub cache_offset: [u64; VHOST_USER_FS_BACKEND_ENTRIES],
     /// Size of region to map.
-    pub len: [u64; VHOST_USER_FS_SLAVE_ENTRIES],
+    pub len: [u64; VHOST_USER_FS_BACKEND_ENTRIES],
     /// Flags for the mmap operation
-    pub flags: [VhostUserFSSlaveMsgFlags; VHOST_USER_FS_SLAVE_ENTRIES],
+    pub flags: [VhostUserFSBackendMsgFlags; VHOST_USER_FS_BACKEND_ENTRIES],
 }
 
-// SAFETY: Safe because all fields of VhostUserFSSlaveMsg are POD.
-unsafe impl ByteValued for VhostUserFSSlaveMsg {}
+// SAFETY: Safe because all fields of VhostUserFSBackendMsg are POD.
+unsafe impl ByteValued for VhostUserFSBackendMsg {}
 
-impl VhostUserMsgValidator for VhostUserFSSlaveMsg {
+impl VhostUserMsgValidator for VhostUserFSBackendMsg {
     fn is_valid(&self) -> bool {
-        for i in 0..VHOST_USER_FS_SLAVE_ENTRIES {
-            if ({ self.flags[i] }.bits() & !VhostUserFSSlaveMsgFlags::all().bits()) != 0
+        for i in 0..VHOST_USER_FS_BACKEND_ENTRIES {
+            if ({ self.flags[i] }.bits() & !VhostUserFSBackendMsgFlags::all().bits()) != 0
                 || self.fd_offset[i].checked_add(self.len[i]).is_none()
                 || self.cache_offset[i].checked_add(self.len[i]).is_none()
             {
@@ -1126,33 +1126,33 @@ mod tests {
     }
 
     #[test]
-    fn check_master_request_code() {
-        assert!(!MasterReq::is_valid(MasterReq::NOOP as _));
-        assert!(!MasterReq::is_valid(MasterReq::MAX_CMD as _));
-        assert!(MasterReq::MAX_CMD > MasterReq::NOOP);
-        let code = MasterReq::GET_FEATURES;
-        assert!(MasterReq::is_valid(code as _));
+    fn check_frontend_request_code() {
+        assert!(!FrontendReq::is_valid(FrontendReq::NOOP as _));
+        assert!(!FrontendReq::is_valid(FrontendReq::MAX_CMD as _));
+        assert!(FrontendReq::MAX_CMD > FrontendReq::NOOP);
+        let code = FrontendReq::GET_FEATURES;
+        assert!(FrontendReq::is_valid(code as _));
         assert_eq!(code, code.clone());
-        assert!(!MasterReq::is_valid(10000));
+        assert!(!FrontendReq::is_valid(10000));
     }
 
     #[test]
-    fn check_slave_request_code() {
-        assert!(!SlaveReq::is_valid(SlaveReq::NOOP as _));
-        assert!(!SlaveReq::is_valid(SlaveReq::MAX_CMD as _));
-        assert!(SlaveReq::MAX_CMD > SlaveReq::NOOP);
-        let code = SlaveReq::CONFIG_CHANGE_MSG;
-        assert!(SlaveReq::is_valid(code as _));
+    fn check_backend_request_code() {
+        assert!(!BackendReq::is_valid(BackendReq::NOOP as _));
+        assert!(!BackendReq::is_valid(BackendReq::MAX_CMD as _));
+        assert!(BackendReq::MAX_CMD > BackendReq::NOOP);
+        let code = BackendReq::CONFIG_CHANGE_MSG;
+        assert!(BackendReq::is_valid(code as _));
         assert_eq!(code, code.clone());
-        assert!(!SlaveReq::is_valid(10000));
+        assert!(!BackendReq::is_valid(10000));
     }
 
     #[test]
     fn msg_header_ops() {
-        let mut hdr = VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0, 0x100);
-        assert_eq!(hdr.get_code().unwrap(), MasterReq::GET_FEATURES);
-        hdr.set_code(MasterReq::SET_FEATURES);
-        assert_eq!(hdr.get_code().unwrap(), MasterReq::SET_FEATURES);
+        let mut hdr = VhostUserMsgHeader::new(FrontendReq::GET_FEATURES, 0, 0x100);
+        assert_eq!(hdr.get_code().unwrap(), FrontendReq::GET_FEATURES);
+        hdr.set_code(FrontendReq::SET_FEATURES);
+        assert_eq!(hdr.get_code().unwrap(), FrontendReq::SET_FEATURES);
 
         assert_eq!(hdr.get_version(), 0x1);
 
@@ -1181,7 +1181,7 @@ mod tests {
         hdr.set_size(0x100);
         assert_eq!(hdr.get_size(), 0x100);
         assert!(hdr.is_valid());
-        hdr.set_size((MAX_MSG_SIZE - mem::size_of::<VhostUserMsgHeader<MasterReq>>()) as u32);
+        hdr.set_size((MAX_MSG_SIZE - mem::size_of::<VhostUserMsgHeader<FrontendReq>>()) as u32);
         assert!(hdr.is_valid());
         hdr.set_size(0x0);
         assert!(hdr.is_valid());
@@ -1388,19 +1388,19 @@ mod tests {
     }
 
     #[test]
-    fn test_vhost_user_fs_slave() {
-        let mut fs_slave = VhostUserFSSlaveMsg::default();
+    fn test_vhost_user_fs_backend() {
+        let mut fs_backend = VhostUserFSBackendMsg::default();
 
-        assert!(fs_slave.is_valid());
+        assert!(fs_backend.is_valid());
 
-        fs_slave.fd_offset[0] = 0xffff_ffff_ffff_ffff;
-        fs_slave.len[0] = 0x1;
-        assert!(!fs_slave.is_valid());
+        fs_backend.fd_offset[0] = 0xffff_ffff_ffff_ffff;
+        fs_backend.len[0] = 0x1;
+        assert!(!fs_backend.is_valid());
 
         assert_ne!(
-            VhostUserFSSlaveMsgFlags::MAP_R,
-            VhostUserFSSlaveMsgFlags::MAP_W
+            VhostUserFSBackendMsgFlags::MAP_R,
+            VhostUserFSBackendMsgFlags::MAP_W
         );
-        assert_eq!(VhostUserFSSlaveMsgFlags::EMPTY.bits(), 0);
+        assert_eq!(VhostUserFSBackendMsgFlags::EMPTY.bits(), 0);
     }
 }

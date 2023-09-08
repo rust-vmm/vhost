@@ -11,45 +11,45 @@ use super::connection::Endpoint;
 use super::message::*;
 use super::{Error, HandlerResult, Result};
 
-/// Define services provided by masters for the slave communication channel.
+/// Define services provided by frontends for the backend communication channel.
 ///
-/// The vhost-user specification defines a slave communication channel, by which slaves could
-/// request services from masters. The [VhostUserMasterReqHandler] trait defines services provided
-/// by masters, and it's used both on the master side and slave side.
-/// - on the slave side, a stub forwarder implementing [VhostUserMasterReqHandler] will proxy
-///   service requests to masters. The [Slave] is an example stub forwarder.
-/// - on the master side, the [MasterReqHandler] will forward service requests to a handler
-///   implementing [VhostUserMasterReqHandler].
+/// The vhost-user specification defines a backend communication channel, by which backends could
+/// request services from frontends. The [VhostUserFrontendReqHandler] trait defines services provided
+/// by frontends, and it's used both on the frontend side and backend side.
+/// - on the backend side, a stub forwarder implementing [VhostUserFrontendReqHandler] will proxy
+///   service requests to frontends. The [Backend] is an example stub forwarder.
+/// - on the frontend side, the [FrontendReqHandler] will forward service requests to a handler
+///   implementing [VhostUserFrontendReqHandler].
 ///
-/// The [VhostUserMasterReqHandler] trait is design with interior mutability to improve performance
+/// The [VhostUserFrontendReqHandler] trait is design with interior mutability to improve performance
 /// for multi-threading.
 ///
-/// [VhostUserMasterReqHandler]: trait.VhostUserMasterReqHandler.html
-/// [MasterReqHandler]: struct.MasterReqHandler.html
-/// [Slave]: struct.Slave.html
-pub trait VhostUserMasterReqHandler {
+/// [VhostUserFrontendReqHandler]: trait.VhostUserFrontendReqHandler.html
+/// [FrontendReqHandler]: struct.FrontendReqHandler.html
+/// [Backend]: struct.Backend.html
+pub trait VhostUserFrontendReqHandler {
     /// Handle device configuration change notifications.
     fn handle_config_change(&self) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle virtio-fs map file requests.
-    fn fs_slave_map(&self, _fs: &VhostUserFSSlaveMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
+    fn fs_backend_map(&self, _fs: &VhostUserFSBackendMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle virtio-fs unmap file requests.
-    fn fs_slave_unmap(&self, _fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
+    fn fs_backend_unmap(&self, _fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle virtio-fs sync file requests.
-    fn fs_slave_sync(&self, _fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
+    fn fs_backend_sync(&self, _fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle virtio-fs file IO requests.
-    fn fs_slave_io(&self, _fs: &VhostUserFSSlaveMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
+    fn fs_backend_io(&self, _fs: &VhostUserFSBackendMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
@@ -57,32 +57,40 @@ pub trait VhostUserMasterReqHandler {
     // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: &dyn AsRawFd);
 }
 
-/// A helper trait mirroring [VhostUserMasterReqHandler] but without interior mutability.
+/// A helper trait mirroring [VhostUserFrontendReqHandler] but without interior mutability.
 ///
-/// [VhostUserMasterReqHandler]: trait.VhostUserMasterReqHandler.html
-pub trait VhostUserMasterReqHandlerMut {
+/// [VhostUserFrontendReqHandler]: trait.VhostUserFrontendReqHandler.html
+pub trait VhostUserFrontendReqHandlerMut {
     /// Handle device configuration change notifications.
     fn handle_config_change(&mut self) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle virtio-fs map file requests.
-    fn fs_slave_map(&mut self, _fs: &VhostUserFSSlaveMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
+    fn fs_backend_map(
+        &mut self,
+        _fs: &VhostUserFSBackendMsg,
+        _fd: &dyn AsRawFd,
+    ) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle virtio-fs unmap file requests.
-    fn fs_slave_unmap(&mut self, _fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
+    fn fs_backend_unmap(&mut self, _fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle virtio-fs sync file requests.
-    fn fs_slave_sync(&mut self, _fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
+    fn fs_backend_sync(&mut self, _fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle virtio-fs file IO requests.
-    fn fs_slave_io(&mut self, _fs: &VhostUserFSSlaveMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
+    fn fs_backend_io(
+        &mut self,
+        _fs: &VhostUserFSBackendMsg,
+        _fd: &dyn AsRawFd,
+    ) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
@@ -90,39 +98,39 @@ pub trait VhostUserMasterReqHandlerMut {
     // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: RawFd);
 }
 
-impl<S: VhostUserMasterReqHandlerMut> VhostUserMasterReqHandler for Mutex<S> {
+impl<S: VhostUserFrontendReqHandlerMut> VhostUserFrontendReqHandler for Mutex<S> {
     fn handle_config_change(&self) -> HandlerResult<u64> {
         self.lock().unwrap().handle_config_change()
     }
 
-    fn fs_slave_map(&self, fs: &VhostUserFSSlaveMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
-        self.lock().unwrap().fs_slave_map(fs, fd)
+    fn fs_backend_map(&self, fs: &VhostUserFSBackendMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
+        self.lock().unwrap().fs_backend_map(fs, fd)
     }
 
-    fn fs_slave_unmap(&self, fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
-        self.lock().unwrap().fs_slave_unmap(fs)
+    fn fs_backend_unmap(&self, fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
+        self.lock().unwrap().fs_backend_unmap(fs)
     }
 
-    fn fs_slave_sync(&self, fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
-        self.lock().unwrap().fs_slave_sync(fs)
+    fn fs_backend_sync(&self, fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
+        self.lock().unwrap().fs_backend_sync(fs)
     }
 
-    fn fs_slave_io(&self, fs: &VhostUserFSSlaveMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
-        self.lock().unwrap().fs_slave_io(fs, fd)
+    fn fs_backend_io(&self, fs: &VhostUserFSBackendMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
+        self.lock().unwrap().fs_backend_io(fs, fd)
     }
 }
 
-/// Server to handle service requests from slaves from the slave communication channel.
+/// Server to handle service requests from backends from the backend communication channel.
 ///
-/// The [MasterReqHandler] acts as a server on the master side, to handle service requests from
-/// slaves on the slave communication channel. It's actually a proxy invoking the registered
-/// handler implementing [VhostUserMasterReqHandler] to do the real work.
+/// The [FrontendReqHandler] acts as a server on the frontend side, to handle service requests from
+/// backends on the backend communication channel. It's actually a proxy invoking the registered
+/// handler implementing [VhostUserFrontendReqHandler] to do the real work.
 ///
-/// [MasterReqHandler]: struct.MasterReqHandler.html
-/// [VhostUserMasterReqHandler]: trait.VhostUserMasterReqHandler.html
-pub struct MasterReqHandler<S: VhostUserMasterReqHandler> {
+/// [FrontendReqHandler]: struct.FrontendReqHandler.html
+/// [VhostUserFrontendReqHandler]: trait.VhostUserFrontendReqHandler.html
+pub struct FrontendReqHandler<S: VhostUserFrontendReqHandler> {
     // underlying Unix domain socket for communication
-    sub_sock: Endpoint<SlaveReq>,
+    sub_sock: Endpoint<BackendReq>,
     tx_sock: UnixStream,
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     reply_ack_negotiated: bool,
@@ -132,20 +140,20 @@ pub struct MasterReqHandler<S: VhostUserMasterReqHandler> {
     error: Option<i32>,
 }
 
-impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
-    /// Create a server to handle service requests from slaves on the slave communication channel.
+impl<S: VhostUserFrontendReqHandler> FrontendReqHandler<S> {
+    /// Create a server to handle service requests from backends on the backend communication channel.
     ///
-    /// This opens a pair of connected anonymous sockets to form the slave communication channel.
-    /// The socket fd returned by [Self::get_tx_raw_fd()] should be sent to the slave by
-    /// [VhostUserMaster::set_slave_request_fd()].
+    /// This opens a pair of connected anonymous sockets to form the backend communication channel.
+    /// The socket fd returned by [Self::get_tx_raw_fd()] should be sent to the backend by
+    /// [VhostUserFrontend::set_backend_request_fd()].
     ///
-    /// [Self::get_tx_raw_fd()]: struct.MasterReqHandler.html#method.get_tx_raw_fd
-    /// [VhostUserMaster::set_slave_request_fd()]: trait.VhostUserMaster.html#tymethod.set_slave_request_fd
+    /// [Self::get_tx_raw_fd()]: struct.FrontendReqHandler.html#method.get_tx_raw_fd
+    /// [VhostUserFrontend::set_backend_request_fd()]: trait.VhostUserFrontend.html#tymethod.set_backend_request_fd
     pub fn new(backend: Arc<S>) -> Result<Self> {
         let (tx, rx) = UnixStream::pair().map_err(Error::SocketError)?;
 
-        Ok(MasterReqHandler {
-            sub_sock: Endpoint::<SlaveReq>::from_stream(rx),
+        Ok(FrontendReqHandler {
+            sub_sock: Endpoint::<BackendReq>::from_stream(rx),
             tx_sock: tx,
             reply_ack_negotiated: false,
             backend,
@@ -153,11 +161,11 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         })
     }
 
-    /// Get the socket fd for the slave to communication with the master.
+    /// Get the socket fd for the backend to communication with the frontend.
     ///
-    /// The returned fd should be sent to the slave by [VhostUserMaster::set_slave_request_fd()].
+    /// The returned fd should be sent to the backend by [VhostUserFrontend::set_backend_request_fd()].
     ///
-    /// [VhostUserMaster::set_slave_request_fd()]: trait.VhostUserMaster.html#tymethod.set_slave_request_fd
+    /// [VhostUserFrontend::set_backend_request_fd()]: trait.VhostUserFrontend.html#tymethod.set_backend_request_fd
     pub fn get_tx_raw_fd(&self) -> RawFd {
         self.tx_sock.as_raw_fd()
     }
@@ -165,7 +173,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature.
     ///
     /// When the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature has been negotiated,
-    /// the "REPLY_ACK" flag will be set in the message header for every slave to master request
+    /// the "REPLY_ACK" flag will be set in the message header for every backend to frontend request
     /// message.
     pub fn set_reply_ack_flag(&mut self, enable: bool) {
         self.reply_ack_negotiated = enable;
@@ -180,7 +188,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         }
     }
 
-    /// Main entrance to server slave request from the slave communication channel.
+    /// Main entrance to server backend request from the backend communication channel.
     ///
     /// The caller needs to:
     /// - serialize calls to this function
@@ -216,36 +224,36 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         };
 
         let res = match hdr.get_code() {
-            Ok(SlaveReq::CONFIG_CHANGE_MSG) => {
+            Ok(BackendReq::CONFIG_CHANGE_MSG) => {
                 self.check_msg_size(&hdr, size, 0)?;
                 self.backend
                     .handle_config_change()
                     .map_err(Error::ReqHandlerError)
             }
-            Ok(SlaveReq::FS_MAP) => {
-                let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
+            Ok(BackendReq::FS_MAP) => {
+                let msg = self.extract_msg_body::<VhostUserFSBackendMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
                 self.backend
-                    .fs_slave_map(&msg, &files.unwrap()[0])
+                    .fs_backend_map(&msg, &files.unwrap()[0])
                     .map_err(Error::ReqHandlerError)
             }
-            Ok(SlaveReq::FS_UNMAP) => {
-                let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
+            Ok(BackendReq::FS_UNMAP) => {
+                let msg = self.extract_msg_body::<VhostUserFSBackendMsg>(&hdr, size, &buf)?;
                 self.backend
-                    .fs_slave_unmap(&msg)
+                    .fs_backend_unmap(&msg)
                     .map_err(Error::ReqHandlerError)
             }
-            Ok(SlaveReq::FS_SYNC) => {
-                let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
+            Ok(BackendReq::FS_SYNC) => {
+                let msg = self.extract_msg_body::<VhostUserFSBackendMsg>(&hdr, size, &buf)?;
                 self.backend
-                    .fs_slave_sync(&msg)
+                    .fs_backend_sync(&msg)
                     .map_err(Error::ReqHandlerError)
             }
-            Ok(SlaveReq::FS_IO) => {
-                let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
+            Ok(BackendReq::FS_IO) => {
+                let msg = self.extract_msg_body::<VhostUserFSBackendMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
                 self.backend
-                    .fs_slave_io(&msg, &files.unwrap()[0])
+                    .fs_backend_io(&msg, &files.unwrap()[0])
                     .map_err(Error::ReqHandlerError)
             }
             _ => Err(Error::InvalidMessage),
@@ -265,7 +273,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
 
     fn check_msg_size(
         &self,
-        hdr: &VhostUserMsgHeader<SlaveReq>,
+        hdr: &VhostUserMsgHeader<BackendReq>,
         size: usize,
         expected: usize,
     ) -> Result<()> {
@@ -281,11 +289,11 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
 
     fn check_attached_files(
         &self,
-        hdr: &VhostUserMsgHeader<SlaveReq>,
+        hdr: &VhostUserMsgHeader<BackendReq>,
         files: &Option<Vec<File>>,
     ) -> Result<()> {
         match hdr.get_code() {
-            Ok(SlaveReq::FS_MAP | SlaveReq::FS_IO) => {
+            Ok(BackendReq::FS_MAP | BackendReq::FS_IO) => {
                 // Expect a single file is passed.
                 match files {
                     Some(files) if files.len() == 1 => Ok(()),
@@ -299,7 +307,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
 
     fn extract_msg_body<T: Sized + VhostUserMsgValidator>(
         &self,
-        hdr: &VhostUserMsgHeader<SlaveReq>,
+        hdr: &VhostUserMsgHeader<BackendReq>,
         size: usize,
         buf: &[u8],
     ) -> Result<T> {
@@ -314,8 +322,8 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
 
     fn new_reply_header<T: Sized>(
         &self,
-        req: &VhostUserMsgHeader<SlaveReq>,
-    ) -> Result<VhostUserMsgHeader<SlaveReq>> {
+        req: &VhostUserMsgHeader<BackendReq>,
+    ) -> Result<VhostUserMsgHeader<BackendReq>> {
         if mem::size_of::<T>() > MAX_MSG_SIZE {
             return Err(Error::InvalidParam);
         }
@@ -329,7 +337,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
 
     fn send_ack_message(
         &mut self,
-        req: &VhostUserMsgHeader<SlaveReq>,
+        req: &VhostUserMsgHeader<BackendReq>,
         res: &Result<u64>,
     ) -> Result<()> {
         if self.reply_ack_negotiated && req.is_need_reply() {
@@ -352,7 +360,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     }
 }
 
-impl<S: VhostUserMasterReqHandler> AsRawFd for MasterReqHandler<S> {
+impl<S: VhostUserFrontendReqHandler> AsRawFd for FrontendReqHandler<S> {
     fn as_raw_fd(&self) -> RawFd {
         self.sub_sock.as_raw_fd()
     }
@@ -362,33 +370,33 @@ impl<S: VhostUserMasterReqHandler> AsRawFd for MasterReqHandler<S> {
 mod tests {
     use super::*;
 
-    #[cfg(feature = "vhost-user-slave")]
-    use crate::vhost_user::Slave;
-    #[cfg(feature = "vhost-user-slave")]
+    #[cfg(feature = "vhost-user-backend")]
+    use crate::vhost_user::Backend;
+    #[cfg(feature = "vhost-user-backend")]
     use std::os::unix::io::FromRawFd;
 
-    struct MockMasterReqHandler {}
+    struct MockFrontendReqHandler {}
 
-    impl VhostUserMasterReqHandlerMut for MockMasterReqHandler {
-        /// Handle virtio-fs map file requests from the slave.
-        fn fs_slave_map(
+    impl VhostUserFrontendReqHandlerMut for MockFrontendReqHandler {
+        /// Handle virtio-fs map file requests from the backend.
+        fn fs_backend_map(
             &mut self,
-            _fs: &VhostUserFSSlaveMsg,
+            _fs: &VhostUserFSBackendMsg,
             _fd: &dyn AsRawFd,
         ) -> HandlerResult<u64> {
             Ok(0)
         }
 
-        /// Handle virtio-fs unmap file requests from the slave.
-        fn fs_slave_unmap(&mut self, _fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
+        /// Handle virtio-fs unmap file requests from the backend.
+        fn fs_backend_unmap(&mut self, _fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
             Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
         }
     }
 
     #[test]
-    fn test_new_master_req_handler() {
-        let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));
-        let mut handler = MasterReqHandler::new(backend).unwrap();
+    fn test_new_frontend_req_handler() {
+        let backend = Arc::new(Mutex::new(MockFrontendReqHandler {}));
+        let mut handler = FrontendReqHandler::new(backend).unwrap();
 
         assert!(handler.get_tx_raw_fd() >= 0);
         assert!(handler.as_raw_fd() >= 0);
@@ -400,11 +408,11 @@ mod tests {
         handler.check_state().unwrap_err();
     }
 
-    #[cfg(feature = "vhost-user-slave")]
+    #[cfg(feature = "vhost-user-backend")]
     #[test]
-    fn test_master_slave_req_handler() {
-        let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));
-        let mut handler = MasterReqHandler::new(backend).unwrap();
+    fn test_frontend_backend_req_handler() {
+        let backend = Arc::new(Mutex::new(MockFrontendReqHandler {}));
+        let mut handler = FrontendReqHandler::new(backend).unwrap();
 
         // SAFETY: Safe because `handler` contains valid fds, and we are
         // checking if `dup` returns a valid fd.
@@ -414,7 +422,7 @@ mod tests {
         }
         // SAFETY: Safe because we checked if fd is valid.
         let stream = unsafe { UnixStream::from_raw_fd(fd) };
-        let slave = Slave::from_stream(stream);
+        let backend = Backend::from_stream(stream);
 
         std::thread::spawn(move || {
             let res = handler.handle_request().unwrap();
@@ -422,21 +430,21 @@ mod tests {
             handler.handle_request().unwrap_err();
         });
 
-        slave
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &fd)
+        backend
+            .fs_backend_map(&VhostUserFSBackendMsg::default(), &fd)
             .unwrap();
-        // When REPLY_ACK has not been negotiated, the master has no way to detect failure from
-        // slave side.
-        slave
-            .fs_slave_unmap(&VhostUserFSSlaveMsg::default())
+        // When REPLY_ACK has not been negotiated, the frontend has no way to detect failure from
+        // backend side.
+        backend
+            .fs_backend_unmap(&VhostUserFSBackendMsg::default())
             .unwrap();
     }
 
-    #[cfg(feature = "vhost-user-slave")]
+    #[cfg(feature = "vhost-user-backend")]
     #[test]
-    fn test_master_slave_req_handler_with_ack() {
-        let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));
-        let mut handler = MasterReqHandler::new(backend).unwrap();
+    fn test_frontend_backend_req_handler_with_ack() {
+        let backend = Arc::new(Mutex::new(MockFrontendReqHandler {}));
+        let mut handler = FrontendReqHandler::new(backend).unwrap();
         handler.set_reply_ack_flag(true);
 
         // SAFETY: Safe because `handler` contains valid fds, and we are
@@ -447,7 +455,7 @@ mod tests {
         }
         // SAFETY: Safe because we checked if fd is valid.
         let stream = unsafe { UnixStream::from_raw_fd(fd) };
-        let slave = Slave::from_stream(stream);
+        let backend = Backend::from_stream(stream);
 
         std::thread::spawn(move || {
             let res = handler.handle_request().unwrap();
@@ -455,12 +463,12 @@ mod tests {
             handler.handle_request().unwrap_err();
         });
 
-        slave.set_reply_ack_flag(true);
-        slave
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &fd)
+        backend.set_reply_ack_flag(true);
+        backend
+            .fs_backend_map(&VhostUserFSBackendMsg::default(), &fd)
             .unwrap();
-        slave
-            .fs_slave_unmap(&VhostUserFSSlaveMsg::default())
+        backend
+            .fs_backend_unmap(&VhostUserFSBackendMsg::default())
             .unwrap_err();
     }
 }

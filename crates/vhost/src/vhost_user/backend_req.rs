@@ -9,12 +9,12 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::connection::Endpoint;
 use super::message::*;
-use super::{Error, HandlerResult, Result, VhostUserMasterReqHandler};
+use super::{Error, HandlerResult, Result, VhostUserFrontendReqHandler};
 
 use vm_memory::ByteValued;
 
-struct SlaveInternal {
-    sock: Endpoint<SlaveReq>,
+struct BackendInternal {
+    sock: Endpoint<BackendReq>,
 
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     reply_ack_negotiated: bool,
@@ -23,7 +23,7 @@ struct SlaveInternal {
     error: Option<i32>,
 }
 
-impl SlaveInternal {
+impl BackendInternal {
     fn check_state(&self) -> Result<u64> {
         match self.error {
             Some(e) => Err(Error::SocketBroken(std::io::Error::from_raw_os_error(e))),
@@ -33,7 +33,7 @@ impl SlaveInternal {
 
     fn send_message<T: ByteValued>(
         &mut self,
-        request: SlaveReq,
+        request: BackendReq,
         body: &T,
         fds: Option<&[RawFd]>,
     ) -> Result<u64> {
@@ -49,7 +49,7 @@ impl SlaveInternal {
         self.wait_for_ack(&hdr)
     }
 
-    fn wait_for_ack(&mut self, hdr: &VhostUserMsgHeader<SlaveReq>) -> Result<u64> {
+    fn wait_for_ack(&mut self, hdr: &VhostUserMsgHeader<BackendReq>) -> Result<u64> {
         self.check_state()?;
         if !self.reply_ack_negotiated {
             return Ok(0);
@@ -60,32 +60,32 @@ impl SlaveInternal {
             return Err(Error::InvalidMessage);
         }
         if body.value != 0 {
-            return Err(Error::MasterInternalError);
+            return Err(Error::FrontendInternalError);
         }
 
         Ok(body.value)
     }
 }
 
-/// Request proxy to send vhost-user slave requests to the master through the slave
+/// Request proxy to send vhost-user backend requests to the frontend through the backend
 /// communication channel.
 ///
-/// The [Slave] acts as a message proxy to forward vhost-user slave requests to the
-/// master through the vhost-user slave communication channel. The forwarded messages will be
-/// handled by the [MasterReqHandler] server.
+/// The [Backend] acts as a message proxy to forward vhost-user backend requests to the
+/// frontend through the vhost-user backend communication channel. The forwarded messages will be
+/// handled by the [FrontendReqHandler] server.
 ///
-/// [Slave]: struct.Slave.html
-/// [MasterReqHandler]: struct.MasterReqHandler.html
+/// [Backend]: struct.Backend.html
+/// [FrontendReqHandler]: struct.FrontendReqHandler.html
 #[derive(Clone)]
-pub struct Slave {
+pub struct Backend {
     // underlying Unix domain socket for communication
-    node: Arc<Mutex<SlaveInternal>>,
+    node: Arc<Mutex<BackendInternal>>,
 }
 
-impl Slave {
-    fn new(ep: Endpoint<SlaveReq>) -> Self {
-        Slave {
-            node: Arc::new(Mutex::new(SlaveInternal {
+impl Backend {
+    fn new(ep: Endpoint<BackendReq>) -> Self {
+        Backend {
+            node: Arc::new(Mutex::new(BackendInternal {
                 sock: ep,
                 reply_ack_negotiated: false,
                 error: None,
@@ -93,13 +93,13 @@ impl Slave {
         }
     }
 
-    fn node(&self) -> MutexGuard<SlaveInternal> {
+    fn node(&self) -> MutexGuard<BackendInternal> {
         self.node.lock().unwrap()
     }
 
     fn send_message<T: ByteValued>(
         &self,
-        request: SlaveReq,
+        request: BackendReq,
         body: &T,
         fds: Option<&[RawFd]>,
     ) -> io::Result<u64> {
@@ -110,13 +110,13 @@ impl Slave {
 
     /// Create a new instance from a `UnixStream` object.
     pub fn from_stream(sock: UnixStream) -> Self {
-        Self::new(Endpoint::<SlaveReq>::from_stream(sock))
+        Self::new(Endpoint::<BackendReq>::from_stream(sock))
     }
 
     /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature.
     ///
     /// When the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature has been negotiated,
-    /// the "REPLY_ACK" flag will be set in the message header for every slave to master request
+    /// the "REPLY_ACK" flag will be set in the message header for every backend to frontend request
     /// message.
     pub fn set_reply_ack_flag(&self, enable: bool) {
         self.node().reply_ack_negotiated = enable;
@@ -128,15 +128,15 @@ impl Slave {
     }
 }
 
-impl VhostUserMasterReqHandler for Slave {
-    /// Forward vhost-user-fs map file requests to the slave.
-    fn fs_slave_map(&self, fs: &VhostUserFSSlaveMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
-        self.send_message(SlaveReq::FS_MAP, fs, Some(&[fd.as_raw_fd()]))
+impl VhostUserFrontendReqHandler for Backend {
+    /// Forward vhost-user-fs map file requests to the backend.
+    fn fs_backend_map(&self, fs: &VhostUserFSBackendMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
+        self.send_message(BackendReq::FS_MAP, fs, Some(&[fd.as_raw_fd()]))
     }
 
-    /// Forward vhost-user-fs unmap file requests to the master.
-    fn fs_slave_unmap(&self, fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
-        self.send_message(SlaveReq::FS_UNMAP, fs, None)
+    /// Forward vhost-user-fs unmap file requests to the frontend.
+    fn fs_backend_unmap(&self, fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
+        self.send_message(BackendReq::FS_UNMAP, fs, None)
     }
 }
 
@@ -147,73 +147,73 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_slave_req_set_failed() {
+    fn test_backend_req_set_failed() {
         let (p1, _p2) = UnixStream::pair().unwrap();
-        let slave = Slave::from_stream(p1);
+        let backend = Backend::from_stream(p1);
 
-        assert!(slave.node().error.is_none());
-        slave.set_failed(libc::EAGAIN);
-        assert_eq!(slave.node().error, Some(libc::EAGAIN));
+        assert!(backend.node().error.is_none());
+        backend.set_failed(libc::EAGAIN);
+        assert_eq!(backend.node().error, Some(libc::EAGAIN));
     }
 
     #[test]
-    fn test_slave_req_send_failure() {
+    fn test_backend_req_send_failure() {
         let (p1, p2) = UnixStream::pair().unwrap();
-        let slave = Slave::from_stream(p1);
+        let backend = Backend::from_stream(p1);
 
-        slave.set_failed(libc::ECONNRESET);
-        slave
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &p2)
+        backend.set_failed(libc::ECONNRESET);
+        backend
+            .fs_backend_map(&VhostUserFSBackendMsg::default(), &p2)
             .unwrap_err();
-        slave
-            .fs_slave_unmap(&VhostUserFSSlaveMsg::default())
+        backend
+            .fs_backend_unmap(&VhostUserFSBackendMsg::default())
             .unwrap_err();
-        slave.node().error = None;
+        backend.node().error = None;
     }
 
     #[test]
-    fn test_slave_req_recv_negative() {
+    fn test_backend_req_recv_negative() {
         let (p1, p2) = UnixStream::pair().unwrap();
-        let slave = Slave::from_stream(p1);
-        let mut master = Endpoint::<SlaveReq>::from_stream(p2);
+        let backend = Backend::from_stream(p1);
+        let mut frontend = Endpoint::<BackendReq>::from_stream(p2);
 
-        let len = mem::size_of::<VhostUserFSSlaveMsg>();
+        let len = mem::size_of::<VhostUserFSBackendMsg>();
         let mut hdr = VhostUserMsgHeader::new(
-            SlaveReq::FS_MAP,
+            BackendReq::FS_MAP,
             VhostUserHeaderFlag::REPLY.bits(),
             len as u32,
         );
         let body = VhostUserU64::new(0);
 
-        master
-            .send_message(&hdr, &body, Some(&[master.as_raw_fd()]))
+        frontend
+            .send_message(&hdr, &body, Some(&[frontend.as_raw_fd()]))
             .unwrap();
-        slave
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
+        backend
+            .fs_backend_map(&VhostUserFSBackendMsg::default(), &frontend)
             .unwrap();
 
-        slave.set_reply_ack_flag(true);
-        slave
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
+        backend.set_reply_ack_flag(true);
+        backend
+            .fs_backend_map(&VhostUserFSBackendMsg::default(), &frontend)
             .unwrap_err();
 
-        hdr.set_code(SlaveReq::FS_UNMAP);
-        master.send_message(&hdr, &body, None).unwrap();
-        slave
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
+        hdr.set_code(BackendReq::FS_UNMAP);
+        frontend.send_message(&hdr, &body, None).unwrap();
+        backend
+            .fs_backend_map(&VhostUserFSBackendMsg::default(), &frontend)
             .unwrap_err();
-        hdr.set_code(SlaveReq::FS_MAP);
+        hdr.set_code(BackendReq::FS_MAP);
 
         let body = VhostUserU64::new(1);
-        master.send_message(&hdr, &body, None).unwrap();
-        slave
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
+        frontend.send_message(&hdr, &body, None).unwrap();
+        backend
+            .fs_backend_map(&VhostUserFSBackendMsg::default(), &frontend)
             .unwrap_err();
 
         let body = VhostUserU64::new(0);
-        master.send_message(&hdr, &body, None).unwrap();
-        slave
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)
+        frontend.send_message(&hdr, &body, None).unwrap();
+        backend
+            .fs_backend_map(&VhostUserFSBackendMsg::default(), &frontend)
             .unwrap();
     }
 }

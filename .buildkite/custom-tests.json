@@ -8,15 +8,15 @@
             ]
         },
         {
-            "test_name": "build-vhost-user-master",
-            "command": "cargo build --features=vhost-user-master",
+            "test_name": "build-vhost-user-frontend",
+            "command": "cargo build --features=vhost-user-frontend",
             "platform": [
                 "x86_64"
             ]
         },
         {
-            "test_name": "build-vhost-user-slave",
-            "command": "cargo build --features=vhost-user-slave",
+            "test_name": "build-vhost-user-backend",
+            "command": "cargo build --features=vhost-user-backend",
             "platform": [
                 "x86_64"
             ]
