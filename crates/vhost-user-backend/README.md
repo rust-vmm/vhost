@@ -29,14 +29,14 @@ where
 ### Create a `VhostUserDaemon` Instance
 The `VhostUserDaemon::new()` creates an instance of `VhostUserDaemon` object. The client needs to
 pass in an `VhostUserBackend` object, which will be used to configure the `VhostUserDaemon`
-instance, handle control messages from the vhost-user master and handle virtio requests from
+instance, handle control messages from the vhost-user frontend and handle virtio requests from
 virtio queues. A group of working threads will be created to handle virtio requests from configured
 virtio queues.
 
 ### Start the `VhostUserDaemon`
-The `VhostUserDaemon::start()` method waits for an incoming connection from the vhost-user masters
+The `VhostUserDaemon::start()` method waits for an incoming connection from the vhost-user frontends
 on the `listener`. Once a connection is ready, a main thread will be created to handle vhost-user
-messages from the vhost-user master.
+messages from the vhost-user frontend.
 
 ### Stop the `VhostUserDaemon`
 The `VhostUserDaemon::stop()` method waits for the main thread to exit. An exit event must be sent

@@ -12,7 +12,7 @@ use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use vhost::vhost_user::{Error as VhostUserError, Listener, SlaveListener, SlaveReqHandler};
+use vhost::vhost_user::{BackendListener, BackendReqHandler, Error as VhostUserError, Listener};
 use vm_memory::bitmap::Bitmap;
 use vm_memory::mmap::NewBitmap;
 use vm_memory::{GuestMemoryAtomic, GuestMemoryMmap};
@@ -41,10 +41,10 @@ type GM<B> = GuestMemoryAtomic<GuestMemoryMmap<B>>;
 pub enum Error {
     /// Failed to create a new vhost-user handler.
     NewVhostUserHandler(VhostUserHandlerError),
-    /// Failed creating vhost-user slave listener.
-    CreateSlaveListener(VhostUserError),
-    /// Failed creating vhost-user slave handler.
-    CreateSlaveReqHandler(VhostUserError),
+    /// Failed creating vhost-user backend listener.
+    CreateBackendListener(VhostUserError),
+    /// Failed creating vhost-user backend handler.
+    CreateBackendReqHandler(VhostUserError),
     /// Failed starting daemon thread.
     StartDaemon(std::io::Error),
     /// Failed waiting for daemon thread.
@@ -57,8 +57,10 @@ impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match self {
             Error::NewVhostUserHandler(e) => write!(f, "cannot create vhost user handler: {}", e),
-            Error::CreateSlaveListener(e) => write!(f, "cannot create slave listener: {}", e),
-            Error::CreateSlaveReqHandler(e) => write!(f, "cannot create slave req handler: {}", e),
+            Error::CreateBackendListener(e) => write!(f, "cannot create backend listener: {}", e),
+            Error::CreateBackendReqHandler(e) => {
+                write!(f, "cannot create backend req handler: {}", e)
+            }
             Error::StartDaemon(e) => write!(f, "failed to start daemon: {}", e),
             Error::WaitDaemon(_e) => write!(f, "failed to wait for daemon exit"),
             Error::HandleRequest(e) => write!(f, "failed to handle request: {}", e),
@@ -114,7 +116,7 @@ where
     /// it acts as a client or a server.
     fn start_daemon(
         &mut self,
-        mut handler: SlaveReqHandler<Mutex<VhostUserHandler<S, V, B>>>,
+        mut handler: BackendReqHandler<Mutex<VhostUserHandler<S, V, B>>>,
     ) -> Result<()> {
         let handle = thread::Builder::new()
             .name(self.name.clone())
@@ -133,9 +135,9 @@ where
     /// that should be terminating once the other end of the socket (the VMM)
     /// hangs up.
     pub fn start_client(&mut self, socket_path: &str) -> Result<()> {
-        let slave_handler = SlaveReqHandler::connect(socket_path, self.handler.clone())
-            .map_err(Error::CreateSlaveReqHandler)?;
-        self.start_daemon(slave_handler)
+        let backend_handler = BackendReqHandler::connect(socket_path, self.handler.clone())
+            .map_err(Error::CreateBackendReqHandler)?;
+        self.start_daemon(backend_handler)
     }
 
     /// Listen to the vhost-user socket and run a dedicated thread handling all requests coming
@@ -146,19 +148,19 @@ where
     // TODO: the current implementation has limitations that only one incoming connection will be
     // handled from the listener. Should it be enhanced to support reconnection?
     pub fn start(&mut self, listener: Listener) -> Result<()> {
-        let mut slave_listener = SlaveListener::new(listener, self.handler.clone())
-            .map_err(Error::CreateSlaveListener)?;
-        let slave_handler = self.accept(&mut slave_listener)?;
-        self.start_daemon(slave_handler)
+        let mut backend_listener = BackendListener::new(listener, self.handler.clone())
+            .map_err(Error::CreateBackendListener)?;
+        let backend_handler = self.accept(&mut backend_listener)?;
+        self.start_daemon(backend_handler)
     }
 
     fn accept(
         &self,
-        slave_listener: &mut SlaveListener<Mutex<VhostUserHandler<S, V, B>>>,
-    ) -> Result<SlaveReqHandler<Mutex<VhostUserHandler<S, V, B>>>> {
+        backend_listener: &mut BackendListener<Mutex<VhostUserHandler<S, V, B>>>,
+    ) -> Result<BackendReqHandler<Mutex<VhostUserHandler<S, V, B>>>> {
         loop {
-            match slave_listener.accept() {
-                Err(e) => return Err(Error::CreateSlaveListener(e)),
+            match backend_listener.accept() {
+                Err(e) => return Err(Error::CreateBackendListener(e)),
                 Ok(Some(v)) => return Ok(v),
                 Ok(None) => continue,
             }
