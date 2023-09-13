@@ -736,14 +736,10 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
     fn update_reply_ack_flag(&mut self) {
         let vflag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let pflag = VhostUserProtocolFeatures::REPLY_ACK;
-        if (self.virtio_features & vflag) != 0
+
+        self.reply_ack_enabled = (self.virtio_features & vflag) != 0
             && self.protocol_features.contains(pflag)
-            && (self.acked_protocol_features & pflag.bits()) != 0
-        {
-            self.reply_ack_enabled = true;
-        } else {
-            self.reply_ack_enabled = false;
-        }
+            && (self.acked_protocol_features & pflag.bits()) != 0;
     }
 
     fn new_reply_header<T: Sized>(
