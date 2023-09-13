@@ -673,7 +673,7 @@ mod tests {
         let sock = listener.accept().unwrap().unwrap();
         let mut backend = Endpoint::<FrontendReq>::from_stream(sock);
 
-        let buf1 = vec![0x1, 0x2, 0x3, 0x4];
+        let buf1 = [0x1, 0x2, 0x3, 0x4];
         let mut len = frontend.send_slice(&buf1[..], None).unwrap();
         assert_eq!(len, 4);
         let (bytes, buf2, _) = backend.recv_into_buf(0x1000).unwrap();
@@ -703,7 +703,7 @@ mod tests {
         write!(fd, "test").unwrap();
 
         // Normal case for sending/receiving file descriptors
-        let buf1 = vec![0x1, 0x2, 0x3, 0x4];
+        let buf1 = [0x1, 0x2, 0x3, 0x4];
         let len = frontend
             .send_slice(&buf1[..], Some(&[fd.as_raw_fd()]))
             .unwrap();
