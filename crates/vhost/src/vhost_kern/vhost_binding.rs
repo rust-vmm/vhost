@@ -132,7 +132,7 @@ impl<T> ::std::fmt::Debug for __IncompleteArrayField<T> {
 impl<T> ::std::clone::Clone for __IncompleteArrayField<T> {
     #[inline]
     fn clone(&self) -> Self {
-        Self::new()
+        *self
     }
 }
 
