@@ -938,8 +938,8 @@ mod tests {
         frontend
             .set_config(
                 0x100,
-                // SAFETY: This is a negative test, so we are setting unexpected flags.
-                unsafe { VhostUserConfigFlags::from_bits_unchecked(0xffff_ffff) },
+                // This is a negative test, so we are setting unexpected flags.
+                VhostUserConfigFlags::from_bits_retain(0xffff_ffff),
                 &buf[0..4],
             )
             .unwrap_err();

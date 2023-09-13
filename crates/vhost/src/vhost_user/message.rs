@@ -382,6 +382,7 @@ impl<T: Req> VhostUserMsgValidator for VhostUserMsgHeader<T> {
 
 // Bit mask for transport specific flags in VirtIO feature set defined by vhost-user.
 bitflags! {
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
     /// Transport specific flags in VirtIO feature set defined by vhost-user.
     pub struct VhostUserVirtioFeatures: u64 {
         /// Feature flag for the protocol feature.
@@ -391,6 +392,7 @@ bitflags! {
 
 // Bit mask for vhost-user protocol feature flags.
 bitflags! {
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
     /// Vhost-user protocol feature flags.
     pub struct VhostUserProtocolFeatures: u64 {
         /// Support multiple queues.
@@ -776,6 +778,7 @@ impl VhostUserMsgValidator for VhostUserVringAddr {
 
 // Bit mask for the vhost-user device configuration message.
 bitflags! {
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
     /// Flags for the device configuration message.
     pub struct VhostUserConfigFlags: u32 {
         /// Vhost frontend messages used for writeable fields.
@@ -929,7 +932,7 @@ pub struct VhostUserIotlb {
 
 // Bit mask for flags in virtio-fs backend messages
 bitflags! {
-    #[derive(Default)]
+    #[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
     /// Flags for virtio-fs backend messages.
     pub struct VhostUserFSBackendMsgFlags: u64 {
         /// Empty permission.
@@ -1316,7 +1319,7 @@ mod tests {
         let config = VringConfigData {
             queue_max_size: 256,
             queue_size: 128,
-            flags: VhostUserVringAddrFlags::VHOST_VRING_F_LOG.bits,
+            flags: VhostUserVringAddrFlags::VHOST_VRING_F_LOG.bits(),
             desc_table_addr: 0x1000,
             used_ring_addr: 0x2000,
             avail_ring_addr: 0x3000,
