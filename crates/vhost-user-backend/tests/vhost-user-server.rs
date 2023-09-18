@@ -1,7 +1,7 @@
 use std::ffi::CString;
 use std::fs::File;
 use std::io::Result;
-use std::os::unix::io::{AsRawFd, FromRawFd};
+use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::{Arc, Barrier, Mutex};
@@ -153,8 +153,7 @@ fn vhost_user_client(path: &Path, barrier: Arc<Barrier>) {
         nix::sys::memfd::MemFdCreateFlag::empty(),
     )
     .unwrap();
-    // SAFETY: Safe because we panic before if memfd is not valid.
-    let file = unsafe { File::from_raw_fd(memfd) };
+    let file = File::from(memfd);
     file.set_len(0x100000).unwrap();
     let file_offset = FileOffset::new(file, 0);
     let mem = GuestMemoryMmap::<()>::from_ranges_with_files(&[(
