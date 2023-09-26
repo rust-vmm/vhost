@@ -2,6 +2,6 @@
 resolver = "2"
 
 members = [
-    "crates/vhost",
-    "crates/vhost-user-backend",
+    "vhost",
+    "vhost-user-backend",
 ]
