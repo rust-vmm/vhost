@@ -211,7 +211,9 @@ where
 
         self.backend
             .handle_event(device_event, evset, &self.vrings, self.thread_id)
-            .map_err(VringEpollError::HandleEventBackendHandling)
+            .map_err(VringEpollError::HandleEventBackendHandling)?;
+
+        Ok(false)
     }
 }
 

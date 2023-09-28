@@ -110,7 +110,7 @@ where
         evset: EventSet,
         vrings: &[V],
         thread_id: usize,
-    ) -> Result<bool>;
+    ) -> Result<()>;
 }
 
 /// Trait without interior mutability for vhost user backend servers to implement concrete services.
@@ -191,7 +191,7 @@ where
         evset: EventSet,
         vrings: &[V],
         thread_id: usize,
-    ) -> Result<bool>;
+    ) -> Result<()>;
 }
 
 impl<T: VhostUserBackend<V, B>, V, B> VhostUserBackend<V, B> for Arc<T>
@@ -253,7 +253,7 @@ where
         evset: EventSet,
         vrings: &[V],
         thread_id: usize,
-    ) -> Result<bool> {
+    ) -> Result<()> {
         self.deref()
             .handle_event(device_event, evset, vrings, thread_id)
     }
@@ -318,7 +318,7 @@ where
         evset: EventSet,
         vrings: &[V],
         thread_id: usize,
-    ) -> Result<bool> {
+    ) -> Result<()> {
         self.lock()
             .unwrap()
             .handle_event(device_event, evset, vrings, thread_id)
@@ -384,7 +384,7 @@ where
         evset: EventSet,
         vrings: &[V],
         thread_id: usize,
-    ) -> Result<bool> {
+    ) -> Result<()> {
         self.write()
             .unwrap()
             .handle_event(device_event, evset, vrings, thread_id)
@@ -491,10 +491,10 @@ pub mod tests {
             _evset: EventSet,
             _vrings: &[VringRwLock],
             _thread_id: usize,
-        ) -> Result<bool> {
+        ) -> Result<()> {
             self.events += 1;
 
-            Ok(false)
+            Ok(())
         }
     }
 
