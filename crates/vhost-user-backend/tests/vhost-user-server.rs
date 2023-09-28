@@ -99,10 +99,10 @@ impl VhostUserBackendMut<VringRwLock, ()> for MockVhostBackend {
         _evset: EventSet,
         _vrings: &[VringRwLock],
         _thread_id: usize,
-    ) -> Result<bool> {
+    ) -> Result<()> {
         self.events += 1;
 
-        Ok(false)
+        Ok(())
     }
 }
 
