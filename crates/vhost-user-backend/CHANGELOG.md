@@ -2,17 +2,25 @@
 ## [Unreleased]
 
 ### Added
-- [[#173]](https://github.com/rust-vmm/vhost/pull/173) vhost-user-backend: Added convenience function `serve`
 
 ### Changed
-- Change uses of master/slave for frontend/backend in the codebase.
-- [[#192]](https://github.com/rust-vmm/vhost/pull/192) vhost-user-backend: remove return value from handle_event
-- [[#155]](https://github.com/rust-vmm/vhost/pull/155) Converted generic type
-  parameters of VhostUserBackend into associated types.
 
 ### Fixed
 
 ### Deprecated
+
+## v0.11.0
+
+### Added
+- [[#173]](https://github.com/rust-vmm/vhost/pull/173) vhost-user-backend: Added convenience function `serve`
+
+### Changed
+- [[#187]](https://github.com/rust-vmm/vhost/pull/187) Clean master slave
+  - Replaced master/slave with frontend/backend in the codebase and public API.
+- [[#192]](https://github.com/rust-vmm/vhost/pull/192) vhost-user-backend: remove return value from handle_event
+- [[#155]](https://github.com/rust-vmm/vhost/pull/155) Converted generic type
+  parameters of VhostUserBackend into associated types.
+- [[#116]](https://github.com/rust-vmm/vhost/pull/116) Upgrade to 2021 edition
 
 ## v0.10.1
 
