@@ -4,11 +4,23 @@
 ### Added
 
 ### Changed
-- Change uses of master/slave for frontend/backend in the codebase.
 
 ### Fixed
 
 ### Deprecated
+
+## [0.9.0]
+
+### Changed
+- [[#187]](https://github.com/rust-vmm/vhost/pull/187) Clean master slave
+  - Replaced master/slave with frontend/backend in the codebase and public API.
+  - Replaced master/slave with frontend/backend in the crate features.
+- Updated dependency bitflags from 1.0 to 2.4
+- [[#116]](https://github.com/rust-vmm/vhost/pull/116) Upgrade to 2021 edition
+
+### Fixed
+- [[#184]](https://github.com/rust-vmm/vhost/pull/184) Safety fixes
+- [[#186]](https://github.com/rust-vmm/vhost/pull/186) vhost: Fix clippy warnings.
 
 ## [0.8.1]
 
