@@ -9,6 +9,9 @@
 - [[#192]](https://github.com/rust-vmm/vhost/pull/192) vhost-user-backend: remove return value from handle_event
 - [[#155]](https://github.com/rust-vmm/vhost/pull/155) Converted generic type
   parameters of VhostUserBackend into associated types.
+- `name` field of VhostUserDaemon is now a `std::borrow::Cow<'static, str>`
+  instead of `String` to prevent allocating in the heap for static names, which
+  is the majority of uses of this API.
 
 ### Fixed
 

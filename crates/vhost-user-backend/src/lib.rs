@@ -8,6 +8,7 @@
 #[macro_use]
 extern crate log;
 
+use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -81,7 +82,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// This structure is the public API the backend is allowed to interact with in order to run
 /// a fully functional vhost-user daemon.
 pub struct VhostUserDaemon<T: VhostUserBackend> {
-    name: String,
+    name: Cow<'static, str>,
     handler: Arc<Mutex<VhostUserHandler<T>>>,
     main_thread: Option<thread::JoinHandle<Result<()>>>,
 }
@@ -98,7 +99,7 @@ where
     /// registered event. Those events can be vring events or custom events from the backend,
     /// but they get to be registered later during the sequence.
     pub fn new(
-        name: String,
+        name: Cow<'static, str>,
         backend: T,
         atomic_mem: GuestMemoryAtomic<GuestMemoryMmap<T::Bitmap>>,
     ) -> Result<Self> {
@@ -124,7 +125,7 @@ where
         mut handler: BackendReqHandler<Mutex<VhostUserHandler<T>>>,
     ) -> Result<()> {
         let handle = thread::Builder::new()
-            .name(self.name.clone())
+            .name(self.name.to_string())
             .spawn(move || loop {
                 handler.handle_request().map_err(Error::HandleRequest)?;
             })
@@ -253,7 +254,7 @@ mod tests {
             GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
         );
         let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
-        let mut daemon = VhostUserDaemon::new("test".to_owned(), backend, mem).unwrap();
+        let mut daemon = VhostUserDaemon::new("test".into(), backend, mem).unwrap();
 
         let handlers = daemon.get_epoll_handlers();
         assert_eq!(handlers.len(), 2);
@@ -286,7 +287,7 @@ mod tests {
             GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
         );
         let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
-        let mut daemon = VhostUserDaemon::new("test".to_owned(), backend, mem).unwrap();
+        let mut daemon = VhostUserDaemon::new("test".into(), backend, mem).unwrap();
 
         let handlers = daemon.get_epoll_handlers();
         assert_eq!(handlers.len(), 2);
@@ -321,7 +322,7 @@ mod tests {
             GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
         );
         let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
-        let mut daemon = VhostUserDaemon::new("test".to_owned(), backend.clone(), mem).unwrap();
+        let mut daemon = VhostUserDaemon::new("test".into(), backend.clone(), mem).unwrap();
         let tmpdir = tempfile::tempdir().unwrap();
         let socket_path = tmpdir.path().join("socket");
 
