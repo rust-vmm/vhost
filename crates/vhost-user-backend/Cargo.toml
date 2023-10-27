@@ -16,12 +16,12 @@ libc = "0.2.39"
 log = "0.4.17"
 vhost = { path = "../vhost", version = "0.8", features = ["vhost-user-backend"] }
 virtio-bindings = "0.2.1"
-virtio-queue = "0.9.0"
-vm-memory = { version = "0.12.0", features = ["backend-mmap", "backend-atomic"] }
+virtio-queue = "0.10.0"
+vm-memory = { version = "0.13.1", features = ["backend-mmap", "backend-atomic"] }
 vmm-sys-util = "0.11.0"
 
 [dev-dependencies]
 nix = { version = "0.27", features = ["fs"] }
 vhost = { path = "../vhost", version = "0.8", features = ["test-utils", "vhost-user-frontend", "vhost-user-backend"] }
-vm-memory = { version = "0.12.0", features = ["backend-mmap", "backend-atomic", "backend-bitmap"] }
+vm-memory = { version = "0.13.1", features = ["backend-mmap", "backend-atomic", "backend-bitmap"] }
 tempfile = "3.2.0"
