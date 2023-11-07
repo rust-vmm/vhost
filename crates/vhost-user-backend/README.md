@@ -19,7 +19,7 @@ where
     V: VringT<GM<B>> + Clone + Send + Sync + 'static,
     B: Bitmap + 'static,
 {
-    pub fn new(name: String, backend: S, atomic_mem: GuestMemoryAtomic<GuestMemoryMmap<B>>) -> Result<Self>;
+    pub fn new(name: Cow<'static, str>, backend: S, atomic_mem: GuestMemoryAtomic<GuestMemoryMmap<B>>) -> Result<Self>;
     pub fn start(&mut self, listener: Listener) -> Result<()>;
     pub fn wait(&mut self) -> Result<()>;
     pub fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<S, V, B>>>;

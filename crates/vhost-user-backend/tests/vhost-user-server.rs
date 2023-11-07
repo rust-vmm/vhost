@@ -220,7 +220,7 @@ fn vhost_user_client(path: &Path, barrier: Arc<Barrier>) {
 fn vhost_user_server(cb: fn(&Path, Arc<Barrier>)) {
     let mem = GuestMemoryAtomic::new(GuestMemoryMmap::<()>::new());
     let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
-    let mut daemon = VhostUserDaemon::new("test".to_owned(), backend, mem).unwrap();
+    let mut daemon = VhostUserDaemon::new("test".into(), backend, mem).unwrap();
 
     let barrier = Arc::new(Barrier::new(2));
     let tmpdir = tempfile::tempdir().unwrap();
