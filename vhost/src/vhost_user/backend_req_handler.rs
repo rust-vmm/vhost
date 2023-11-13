@@ -70,6 +70,13 @@ pub trait VhostUserBackendReqHandler {
     fn get_max_mem_slots(&self) -> Result<u64>;
     fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
     fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
+    fn set_device_state_fd(
+        &self,
+        direction: VhostTransferStateDirection,
+        phase: VhostTransferStatePhase,
+        fd: File,
+    ) -> Result<Option<File>>;
+    fn check_device_state(&self) -> Result<()>;
 }
 
 /// Services provided to the frontend by the backend without interior mutability.
@@ -118,6 +125,13 @@ pub trait VhostUserBackendReqHandlerMut {
     fn get_max_mem_slots(&mut self) -> Result<u64>;
     fn add_mem_region(&mut self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
     fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
+    fn set_device_state_fd(
+        &mut self,
+        direction: VhostTransferStateDirection,
+        phase: VhostTransferStatePhase,
+        fd: File,
+    ) -> Result<Option<File>>;
+    fn check_device_state(&mut self) -> Result<()>;
 }
 
 impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
@@ -225,6 +239,21 @@ impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
 
     fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()> {
         self.lock().unwrap().remove_mem_region(region)
+    }
+
+    fn set_device_state_fd(
+        &self,
+        direction: VhostTransferStateDirection,
+        phase: VhostTransferStatePhase,
+        fd: File,
+    ) -> Result<Option<File>> {
+        self.lock()
+            .unwrap()
+            .set_device_state_fd(direction, phase, fd)
+    }
+
+    fn check_device_state(&self) -> Result<()> {
+        self.lock().unwrap().check_device_state()
     }
 }
 
@@ -519,6 +548,51 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
                 let res = self.backend.remove_mem_region(&msg);
                 self.send_ack_message(&hdr, res)?;
             }
+            Ok(FrontendReq::SET_DEVICE_STATE_FD) => {
+                let file = take_single_file(files).ok_or(Error::IncorrectFds)?;
+                let msg =
+                    self.extract_request_body::<VhostUserTransferDeviceState>(&hdr, size, &buf)?;
+                let reply_hdr = self.new_reply_header::<VhostUserU64>(&hdr, 0)?;
+
+                let direction: VhostTransferStateDirection = msg
+                    .direction
+                    .try_into()
+                    .map_err(|_| Error::InvalidMessage)?;
+                let phase: VhostTransferStatePhase =
+                    msg.phase.try_into().map_err(|_| Error::InvalidMessage)?;
+                let res = self.backend.set_device_state_fd(direction, phase, file);
+
+                // The value returned is both an indication for success, and whether a file
+                // descriptor for a back-end-provided channel is returned: Bits 0–7 are 0 on
+                // success, and non-zero on error. Bit 8 is the invalid FD flag; this flag is
+                // set when there is no file descriptor returned.
+                match res {
+                    Ok(None) => {
+                        let msg = VhostUserU64::new(0x100); // set invalid FD flag
+                        self.main_sock.send_message(&reply_hdr, &msg, None)?;
+                    }
+                    Ok(Some(file)) => {
+                        let msg = VhostUserU64::new(0);
+                        self.main_sock
+                            .send_message(&reply_hdr, &msg, Some(&[file.as_raw_fd()]))?;
+                    }
+                    Err(_) => {
+                        let msg = VhostUserU64::new(0x101);
+                        self.main_sock.send_message(&reply_hdr, &msg, None)?;
+                    }
+                }
+            }
+            Ok(FrontendReq::CHECK_DEVICE_STATE) => {
+                let res = self.backend.check_device_state();
+
+                // We must return a value in the payload to indicate success or error:
+                // 0 is success, any non-zero value is an error.
+                let msg = match res {
+                    Ok(_) => VhostUserU64::new(0),
+                    Err(_) => VhostUserU64::new(1),
+                };
+                self.send_reply_message(&hdr, &msg)?;
+            }
             _ => {
                 return Err(Error::InvalidMessage);
             }
@@ -711,7 +785,8 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
                 | FrontendReq::SET_LOG_FD
                 | FrontendReq::SET_BACKEND_REQ_FD
                 | FrontendReq::SET_INFLIGHT_FD
-                | FrontendReq::ADD_MEM_REG,
+                | FrontendReq::ADD_MEM_REG
+                | FrontendReq::SET_DEVICE_STATE_FD,
             ) => Ok(()),
             _ if files.is_some() => Err(Error::InvalidMessage),
             _ => Ok(()),

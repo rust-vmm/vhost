@@ -440,6 +440,8 @@ bitflags! {
         const STATUS = 0x0001_0000;
         /// Support Xen mmap.
         const XEN_MMAP = 0x0002_0000;
+        /// Support transferring internal device state.
+        const DEVICE_STATE = 0x0008_0000;
     }
 }
 
