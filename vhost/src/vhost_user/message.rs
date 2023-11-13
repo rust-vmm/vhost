@@ -178,6 +178,12 @@ enum_value! {
         /// Query the backend for its device status as defined in the VIRTIO
         /// specification.
         GET_STATUS = 40,
+        /// Begin transfer of internal state to/from the backend for migration
+        /// purposes.
+        SET_DEVICE_STATE_FD = 42,
+        /// After transferring state, check the backend for any errors that may have
+        /// occurred during the transfer
+        CHECK_DEVICE_STATE = 43,
     }
 }
 
@@ -907,6 +913,61 @@ impl VhostUserMsgValidator for VhostUserLog {
     }
 }
 
+enum_value! {
+    /// Direction of state transfer for migration
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum VhostTransferStateDirection: u32 {
+        /// Outgoing migration: Transfer state from back-end to front-end
+        SAVE = 0,
+        /// Incoming migration: Transfer state from front-end to back-end
+        LOAD = 1,
+    }
+}
+
+enum_value! {
+    /// Migration phases during which state transfer can occur
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum VhostTransferStatePhase: u32 {
+        /// The device (and all its vrings) are stopped
+        STOPPED = 0,
+    }
+}
+
+/// Query/send virtio-fs migration state
+// Note: this struct is not defined as `packed` in the SPEC and although
+// it is not necessary, since the struct has no padding, it simplifies
+// reviewing it because it is a requirement for implementing `ByteValued`.
+#[repr(C, packed)]
+#[derive(Clone, Copy, Default)]
+pub struct VhostUserTransferDeviceState {
+    /// Direction of state transfer (save/load)
+    pub direction: u32,
+    /// Migration phase during which the transfer takes place
+    pub phase: u32,
+}
+
+// SAFETY: Safe because VhostUserTransferDeviceState is a POD
+// (i.e., none of its fields are references or raw pointers),
+// and there is no compiler-inserted padding.
+unsafe impl ByteValued for VhostUserTransferDeviceState {}
+
+impl VhostUserTransferDeviceState {
+    /// Create a new instance.
+    pub fn new(direction: VhostTransferStateDirection, phase: VhostTransferStatePhase) -> Self {
+        VhostUserTransferDeviceState {
+            direction: direction as u32,
+            phase: phase as u32,
+        }
+    }
+}
+
+impl VhostUserMsgValidator for VhostUserTransferDeviceState {
+    fn is_valid(&self) -> bool {
+        VhostTransferStateDirection::try_from(self.direction).is_ok()
+            && VhostTransferStatePhase::try_from(self.phase).is_ok()
+    }
+}
+
 // Bit mask for flags in virtio-fs backend messages
 bitflags! {
     #[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
@@ -1103,6 +1164,28 @@ mod tests {
                 0,
             )
         }
+    }
+
+    #[test]
+    fn check_transfer_state_direction_code() {
+        let load_code: u32 = VhostTransferStateDirection::LOAD.into();
+        assert!(VhostTransferStateDirection::try_from(load_code).is_ok());
+        assert_eq!(load_code, load_code.clone());
+
+        let save_code: u32 = VhostTransferStateDirection::SAVE.into();
+        assert!(VhostTransferStateDirection::try_from(save_code).is_ok());
+        assert_eq!(save_code, save_code.clone());
+
+        assert!(VhostTransferStateDirection::try_from(3).is_err());
+    }
+
+    #[test]
+    fn check_transfer_state_phase_code() {
+        let code: u32 = VhostTransferStatePhase::STOPPED.into();
+        assert!(VhostTransferStatePhase::try_from(code).is_ok());
+        assert_eq!(code, code.clone());
+
+        assert!(VhostTransferStatePhase::try_from(1).is_err());
     }
 
     #[test]
