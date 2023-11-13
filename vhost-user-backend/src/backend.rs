@@ -18,11 +18,14 @@
 //! [VhostUserBackend]: trait.VhostUserBackend.html
 //! [VhostUserBackendMut]: trait.VhostUserBackendMut.html
 
+use std::fs::File;
 use std::io::Result;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, RwLock};
 
-use vhost::vhost_user::message::VhostUserProtocolFeatures;
+use vhost::vhost_user::message::{
+    VhostTransferStateDirection, VhostTransferStatePhase, VhostUserProtocolFeatures,
+};
 use vhost::vhost_user::Backend;
 use vm_memory::bitmap::Bitmap;
 use vmm_sys_util::epoll::EventSet;
@@ -110,6 +113,37 @@ pub trait VhostUserBackend: Send + Sync {
         vrings: &[Self::Vring],
         thread_id: usize,
     ) -> Result<()>;
+
+    /// Initiate transfer of internal state for the purpose of migration to/from the back-end.
+    ///
+    /// Depending on `direction`, the state should either be saved (i.e. serialized and written to
+    /// `file`) or loaded (i.e. read from `file` and deserialized). The back-end can choose to use
+    /// a different channel than file. If so, it must return a File that the front-end can use.
+    /// Note that this function must not block during transfer, i.e. I/O to/from `file` must be
+    /// done outside of this function.
+    fn set_device_state_fd(
+        &self,
+        _direction: VhostTransferStateDirection,
+        _phase: VhostTransferStatePhase,
+        _file: File,
+    ) -> Result<Option<File>> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "back end does not support state transfer",
+        ))
+    }
+
+    /// After transferring internal state, check for any resulting errors, including potential
+    /// deserialization errors when loading state.
+    ///
+    /// Although this function return a `Result`, the front-end will not receive any details about
+    /// this error.
+    fn check_device_state(&self) -> Result<()> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "back end does not support state transfer",
+        ))
+    }
 }
 
 /// Trait without interior mutability for vhost user backend servers to implement concrete services.
@@ -190,6 +224,35 @@ pub trait VhostUserBackendMut: Send + Sync {
         vrings: &[Self::Vring],
         thread_id: usize,
     ) -> Result<()>;
+
+    /// Initiate transfer of internal state for the purpose of migration to/from the back-end.
+    ///
+    /// Depending on `direction`, the state should either be saved (i.e. serialized and written to
+    /// `file`) or loaded (i.e. read from `file` and deserialized).  Note that this function must
+    /// not block during transfer, i.e. I/O to/from `file` must be done outside of this function.
+    fn set_device_state_fd(
+        &mut self,
+        _direction: VhostTransferStateDirection,
+        _phase: VhostTransferStatePhase,
+        _file: File,
+    ) -> Result<Option<File>> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "back end does not support state transfer",
+        ))
+    }
+
+    /// After transferring internal state, check for any resulting errors, including potential
+    /// deserialization errors when loading state.
+    ///
+    /// Although this function return a `Result`, the front-end will not receive any details about
+    /// this error.
+    fn check_device_state(&self) -> Result<()> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "back end does not support state transfer",
+        ))
+    }
 }
 
 impl<T: VhostUserBackend> VhostUserBackend for Arc<T> {
@@ -253,6 +316,19 @@ impl<T: VhostUserBackend> VhostUserBackend for Arc<T> {
     ) -> Result<()> {
         self.deref()
             .handle_event(device_event, evset, vrings, thread_id)
+    }
+
+    fn set_device_state_fd(
+        &self,
+        direction: VhostTransferStateDirection,
+        phase: VhostTransferStatePhase,
+        file: File,
+    ) -> Result<Option<File>> {
+        self.deref().set_device_state_fd(direction, phase, file)
+    }
+
+    fn check_device_state(&self) -> Result<()> {
+        self.deref().check_device_state()
     }
 }
 
@@ -319,6 +395,21 @@ impl<T: VhostUserBackendMut> VhostUserBackend for Mutex<T> {
             .unwrap()
             .handle_event(device_event, evset, vrings, thread_id)
     }
+
+    fn set_device_state_fd(
+        &self,
+        direction: VhostTransferStateDirection,
+        phase: VhostTransferStatePhase,
+        file: File,
+    ) -> Result<Option<File>> {
+        self.lock()
+            .unwrap()
+            .set_device_state_fd(direction, phase, file)
+    }
+
+    fn check_device_state(&self) -> Result<()> {
+        self.lock().unwrap().check_device_state()
+    }
 }
 
 impl<T: VhostUserBackendMut> VhostUserBackend for RwLock<T> {
@@ -383,6 +474,21 @@ impl<T: VhostUserBackendMut> VhostUserBackend for RwLock<T> {
         self.write()
             .unwrap()
             .handle_event(device_event, evset, vrings, thread_id)
+    }
+
+    fn set_device_state_fd(
+        &self,
+        direction: VhostTransferStateDirection,
+        phase: VhostTransferStatePhase,
+        file: File,
+    ) -> Result<Option<File>> {
+        self.write()
+            .unwrap()
+            .set_device_state_fd(direction, phase, file)
+    }
+
+    fn check_device_state(&self) -> Result<()> {
+        self.read().unwrap().check_device_state()
     }
 }
 
