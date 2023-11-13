@@ -291,4 +291,23 @@ impl VhostUserBackendReqHandlerMut for DummyBackendReqHandler {
     fn remove_mem_region(&mut self, _region: &VhostUserSingleMemoryRegion) -> Result<()> {
         Ok(())
     }
+
+    fn set_device_state_fd(
+        &mut self,
+        _direction: VhostTransferStateDirection,
+        _phase: VhostTransferStatePhase,
+        _fd: File,
+    ) -> Result<Option<File>> {
+        Err(Error::ReqHandlerError(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "dummy back end does not support state transfer",
+        )))
+    }
+
+    fn check_device_state(&mut self) -> Result<()> {
+        Err(Error::ReqHandlerError(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "dummy back end does not support state transfer",
+        )))
+    }
 }

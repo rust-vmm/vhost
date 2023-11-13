@@ -11,9 +11,9 @@ use std::sync::Arc;
 use std::thread;
 
 use vhost::vhost_user::message::{
-    VhostUserConfigFlags, VhostUserMemoryRegion, VhostUserProtocolFeatures,
-    VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
-    VhostUserVringState,
+    VhostTransferStateDirection, VhostTransferStatePhase, VhostUserConfigFlags,
+    VhostUserMemoryRegion, VhostUserProtocolFeatures, VhostUserSingleMemoryRegion,
+    VhostUserVirtioFeatures, VhostUserVringAddrFlags, VhostUserVringState,
 };
 use vhost::vhost_user::{
     Backend, Error as VhostUserError, Result as VhostUserResult, VhostUserBackendReqHandlerMut,
@@ -616,6 +616,23 @@ where
             .retain(|mapping| mapping.gpa_base != region.guest_phys_addr);
 
         Ok(())
+    }
+
+    fn set_device_state_fd(
+        &mut self,
+        direction: VhostTransferStateDirection,
+        phase: VhostTransferStatePhase,
+        file: File,
+    ) -> VhostUserResult<Option<File>> {
+        self.backend
+            .set_device_state_fd(direction, phase, file)
+            .map_err(VhostUserError::ReqHandlerError)
+    }
+
+    fn check_device_state(&mut self) -> VhostUserResult<()> {
+        self.backend
+            .check_device_state()
+            .map_err(VhostUserError::ReqHandlerError)
     }
 }
 
