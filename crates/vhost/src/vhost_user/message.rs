@@ -55,150 +55,167 @@ pub(super) trait Req:
     fn is_valid(value: u32) -> bool;
 }
 
-/// Type of requests sending from frontends to backends.
-#[repr(u32)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum FrontendReq {
-    /// Null operation.
-    NOOP = 0,
-    /// Get from the underlying vhost implementation the features bit mask.
-    GET_FEATURES = 1,
-    /// Enable features in the underlying vhost implementation using a bit mask.
-    SET_FEATURES = 2,
-    /// Set the current Frontend as an owner of the session.
-    SET_OWNER = 3,
-    /// No longer used.
-    RESET_OWNER = 4,
-    /// Set the memory map regions on the backend so it can translate the vring addresses.
-    SET_MEM_TABLE = 5,
-    /// Set logging shared memory space.
-    SET_LOG_BASE = 6,
-    /// Set the logging file descriptor, which is passed as ancillary data.
-    SET_LOG_FD = 7,
-    /// Set the size of the queue.
-    SET_VRING_NUM = 8,
-    /// Set the addresses of the different aspects of the vring.
-    SET_VRING_ADDR = 9,
-    /// Set the base offset in the available vring.
-    SET_VRING_BASE = 10,
-    /// Get the available vring base offset.
-    GET_VRING_BASE = 11,
-    /// Set the event file descriptor for adding buffers to the vring.
-    SET_VRING_KICK = 12,
-    /// Set the event file descriptor to signal when buffers are used.
-    SET_VRING_CALL = 13,
-    /// Set the event file descriptor to signal when error occurs.
-    SET_VRING_ERR = 14,
-    /// Get the protocol feature bit mask from the underlying vhost implementation.
-    GET_PROTOCOL_FEATURES = 15,
-    /// Enable protocol features in the underlying vhost implementation.
-    SET_PROTOCOL_FEATURES = 16,
-    /// Query how many queues the backend supports.
-    GET_QUEUE_NUM = 17,
-    /// Signal backend to enable or disable corresponding vring.
-    SET_VRING_ENABLE = 18,
-    /// Ask vhost user backend to broadcast a fake RARP to notify the migration is terminated
-    /// for guest that does not support GUEST_ANNOUNCE.
-    SEND_RARP = 19,
-    /// Set host MTU value exposed to the guest.
-    NET_SET_MTU = 20,
-    /// Set the socket file descriptor for backend initiated requests.
-    SET_BACKEND_REQ_FD = 21,
-    /// Send IOTLB messages with struct vhost_iotlb_msg as payload.
-    IOTLB_MSG = 22,
-    /// Set the endianness of a VQ for legacy devices.
-    SET_VRING_ENDIAN = 23,
-    /// Fetch the contents of the virtio device configuration space.
-    GET_CONFIG = 24,
-    /// Change the contents of the virtio device configuration space.
-    SET_CONFIG = 25,
-    /// Create a session for crypto operation.
-    CREATE_CRYPTO_SESSION = 26,
-    /// Close a session for crypto operation.
-    CLOSE_CRYPTO_SESSION = 27,
-    /// Advise backend that a migration with postcopy enabled is underway.
-    POSTCOPY_ADVISE = 28,
-    /// Advise backend that a transition to postcopy mode has happened.
-    POSTCOPY_LISTEN = 29,
-    /// Advise that postcopy migration has now completed.
-    POSTCOPY_END = 30,
-    /// Get a shared buffer from backend.
-    GET_INFLIGHT_FD = 31,
-    /// Send the shared inflight buffer back to backend.
-    SET_INFLIGHT_FD = 32,
-    /// Sets the GPU protocol socket file descriptor.
-    GPU_SET_SOCKET = 33,
-    /// Ask the vhost user backend to disable all rings and reset all internal
-    /// device state to the initial state.
-    RESET_DEVICE = 34,
-    /// Indicate that a buffer was added to the vring instead of signalling it
-    /// using the vring’s kick file descriptor.
-    VRING_KICK = 35,
-    /// Return a u64 payload containing the maximum number of memory slots.
-    GET_MAX_MEM_SLOTS = 36,
-    /// Update the memory tables by adding the region described.
-    ADD_MEM_REG = 37,
-    /// Update the memory tables by removing the region described.
-    REM_MEM_REG = 38,
-    /// Notify the backend with updated device status as defined in the VIRTIO
-    /// specification.
-    SET_STATUS = 39,
-    /// Query the backend for its device status as defined in the VIRTIO
-    /// specification.
-    GET_STATUS = 40,
-    /// Upper bound of valid commands.
-    MAX_CMD = 41,
+macro_rules! enum_value {
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $enum:ident: $T:tt {
+            $(
+                $(#[$variant_meta:meta])*
+                $variant:ident $(= $val:expr)?,
+            )*
+        }
+    ) => {
+        #[repr($T)]
+        $(#[$meta])*
+        $vis enum $enum {
+            $($(#[$variant_meta])* $variant $(= $val)?,)*
+        }
+
+        impl std::convert::TryFrom<$T> for $enum {
+            type Error = ();
+
+            fn try_from(v: $T) -> std::result::Result<Self, Self::Error> {
+                match v {
+                    $(v if v == $enum::$variant as $T => Ok($enum::$variant),)*
+                    _ => Err(()),
+                }
+            }
+        }
+
+        impl std::convert::From<$enum> for $T {
+            fn from(v: $enum) -> $T {
+                v as $T
+            }
+        }
+    }
 }
 
-impl From<FrontendReq> for u32 {
-    fn from(req: FrontendReq) -> u32 {
-        req as u32
+enum_value! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    /// Type of requests sending from frontends to backends.
+    pub enum FrontendReq: u32 {
+        /// Get from the underlying vhost implementation the features bit mask.
+        GET_FEATURES = 1,
+        /// Enable features in the underlying vhost implementation using a bit mask.
+        SET_FEATURES = 2,
+        /// Set the current Frontend as an owner of the session.
+        SET_OWNER = 3,
+        /// No longer used.
+        RESET_OWNER = 4,
+        /// Set the memory map regions on the backend so it can translate the vring addresses.
+        SET_MEM_TABLE = 5,
+        /// Set logging shared memory space.
+        SET_LOG_BASE = 6,
+        /// Set the logging file descriptor, which is passed as ancillary data.
+        SET_LOG_FD = 7,
+        /// Set the size of the queue.
+        SET_VRING_NUM = 8,
+        /// Set the addresses of the different aspects of the vring.
+        SET_VRING_ADDR = 9,
+        /// Set the base offset in the available vring.
+        SET_VRING_BASE = 10,
+        /// Get the available vring base offset.
+        GET_VRING_BASE = 11,
+        /// Set the event file descriptor for adding buffers to the vring.
+        SET_VRING_KICK = 12,
+        /// Set the event file descriptor to signal when buffers are used.
+        SET_VRING_CALL = 13,
+        /// Set the event file descriptor to signal when error occurs.
+        SET_VRING_ERR = 14,
+        /// Get the protocol feature bit mask from the underlying vhost implementation.
+        GET_PROTOCOL_FEATURES = 15,
+        /// Enable protocol features in the underlying vhost implementation.
+        SET_PROTOCOL_FEATURES = 16,
+        /// Query how many queues the backend supports.
+        GET_QUEUE_NUM = 17,
+        /// Signal backend to enable or disable corresponding vring.
+        SET_VRING_ENABLE = 18,
+        /// Ask vhost user backend to broadcast a fake RARP to notify the migration is terminated
+        /// for guest that does not support GUEST_ANNOUNCE.
+        SEND_RARP = 19,
+        /// Set host MTU value exposed to the guest.
+        NET_SET_MTU = 20,
+        /// Set the socket file descriptor for backend initiated requests.
+        SET_BACKEND_REQ_FD = 21,
+        /// Send IOTLB messages with struct vhost_iotlb_msg as payload.
+        IOTLB_MSG = 22,
+        /// Set the endianness of a VQ for legacy devices.
+        SET_VRING_ENDIAN = 23,
+        /// Fetch the contents of the virtio device configuration space.
+        GET_CONFIG = 24,
+        /// Change the contents of the virtio device configuration space.
+        SET_CONFIG = 25,
+        /// Create a session for crypto operation.
+        CREATE_CRYPTO_SESSION = 26,
+        /// Close a session for crypto operation.
+        CLOSE_CRYPTO_SESSION = 27,
+        /// Advise backend that a migration with postcopy enabled is underway.
+        POSTCOPY_ADVISE = 28,
+        /// Advise backend that a transition to postcopy mode has happened.
+        POSTCOPY_LISTEN = 29,
+        /// Advise that postcopy migration has now completed.
+        POSTCOPY_END = 30,
+        /// Get a shared buffer from backend.
+        GET_INFLIGHT_FD = 31,
+        /// Send the shared inflight buffer back to backend.
+        SET_INFLIGHT_FD = 32,
+        /// Sets the GPU protocol socket file descriptor.
+        GPU_SET_SOCKET = 33,
+        /// Ask the vhost user backend to disable all rings and reset all internal
+        /// device state to the initial state.
+        RESET_DEVICE = 34,
+        /// Indicate that a buffer was added to the vring instead of signalling it
+        /// using the vring’s kick file descriptor.
+        VRING_KICK = 35,
+        /// Return a u64 payload containing the maximum number of memory slots.
+        GET_MAX_MEM_SLOTS = 36,
+        /// Update the memory tables by adding the region described.
+        ADD_MEM_REG = 37,
+        /// Update the memory tables by removing the region described.
+        REM_MEM_REG = 38,
+        /// Notify the backend with updated device status as defined in the VIRTIO
+        /// specification.
+        SET_STATUS = 39,
+        /// Query the backend for its device status as defined in the VIRTIO
+        /// specification.
+        GET_STATUS = 40,
     }
 }
 
 impl Req for FrontendReq {
     fn is_valid(value: u32) -> bool {
-        (value > FrontendReq::NOOP as u32) && (value < FrontendReq::MAX_CMD as u32)
+        FrontendReq::try_from(value).is_ok()
     }
 }
 
-/// Type of requests sending from backends to frontends.
-#[repr(u32)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum BackendReq {
-    /// Null operation.
-    NOOP = 0,
-    /// Send IOTLB messages with struct vhost_iotlb_msg as payload.
-    IOTLB_MSG = 1,
-    /// Notify that the virtio device's configuration space has changed.
-    CONFIG_CHANGE_MSG = 2,
-    /// Set host notifier for a specified queue.
-    VRING_HOST_NOTIFIER_MSG = 3,
-    /// Indicate that a buffer was used from the vring.
-    VRING_CALL = 4,
-    /// Indicate that an error occurred on the specific vring.
-    VRING_ERR = 5,
-    /// Virtio-fs draft: map file content into the window.
-    FS_MAP = 6,
-    /// Virtio-fs draft: unmap file content from the window.
-    FS_UNMAP = 7,
-    /// Virtio-fs draft: sync file content.
-    FS_SYNC = 8,
-    /// Virtio-fs draft: perform a read/write from an fd directly to GPA.
-    FS_IO = 9,
-    /// Upper bound of valid commands.
-    MAX_CMD = 10,
-}
-
-impl From<BackendReq> for u32 {
-    fn from(req: BackendReq) -> u32 {
-        req as u32
+enum_value! {
+    /// Type of requests sending from backends to frontends.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum BackendReq: u32 {
+        /// Send IOTLB messages with struct vhost_iotlb_msg as payload.
+        IOTLB_MSG = 1,
+        /// Notify that the virtio device's configuration space has changed.
+        CONFIG_CHANGE_MSG = 2,
+        /// Set host notifier for a specified queue.
+        VRING_HOST_NOTIFIER_MSG = 3,
+        /// Indicate that a buffer was used from the vring.
+        VRING_CALL = 4,
+        /// Indicate that an error occurred on the specific vring.
+        VRING_ERR = 5,
+        /// Virtio-fs draft: map file content into the window.
+        FS_MAP = 6,
+        /// Virtio-fs draft: unmap file content from the window.
+        FS_UNMAP = 7,
+        /// Virtio-fs draft: sync file content.
+        FS_SYNC = 8,
+        /// Virtio-fs draft: perform a read/write from an fd directly to GPA.
+        FS_IO = 9,
     }
 }
 
 impl Req for BackendReq {
     fn is_valid(value: u32) -> bool {
-        (value > BackendReq::NOOP as u32) && (value < BackendReq::MAX_CMD as u32)
+        BackendReq::try_from(value).is_ok()
     }
 }
 
@@ -1130,9 +1147,6 @@ mod tests {
 
     #[test]
     fn check_frontend_request_code() {
-        assert!(!FrontendReq::is_valid(FrontendReq::NOOP as _));
-        assert!(!FrontendReq::is_valid(FrontendReq::MAX_CMD as _));
-        assert!(FrontendReq::MAX_CMD > FrontendReq::NOOP);
         let code = FrontendReq::GET_FEATURES;
         assert!(FrontendReq::is_valid(code as _));
         assert_eq!(code, code.clone());
@@ -1141,9 +1155,6 @@ mod tests {
 
     #[test]
     fn check_backend_request_code() {
-        assert!(!BackendReq::is_valid(BackendReq::NOOP as _));
-        assert!(!BackendReq::is_valid(BackendReq::MAX_CMD as _));
-        assert!(BackendReq::MAX_CMD > BackendReq::NOOP);
         let code = BackendReq::CONFIG_CHANGE_MSG;
         assert!(BackendReq::is_valid(code as _));
         assert_eq!(code, code.clone());
