@@ -50,7 +50,7 @@ pub const VHOST_USER_CONFIG_SIZE: u32 = 0x1000;
 pub const VHOST_USER_MAX_VRINGS: u64 = 0x8000u64;
 
 pub(super) trait Req:
-    Clone + Copy + Debug + PartialEq + Eq + PartialOrd + Ord + Send + Sync + Into<u32>
+    Clone + Copy + Debug + PartialEq + Eq + PartialOrd + Ord + Send + Sync + Into<u32> + TryFrom<u32>
 {
     fn is_valid(value: u32) -> bool;
 }
@@ -295,12 +295,7 @@ impl<R: Req> VhostUserMsgHeader<R> {
 
     /// Get message type.
     pub fn get_code(&self) -> Result<R> {
-        if R::is_valid(self.request) {
-            // SAFETY: It's safe because R is marked as repr(u32), and the value is valid.
-            Ok(unsafe { std::mem::transmute_copy::<u32, R>(&{ self.request }) })
-        } else {
-            Err(Error::InvalidMessage)
-        }
+        R::try_from(self.request).map_err(|_| Error::InvalidMessage)
     }
 
     /// Set message type.
