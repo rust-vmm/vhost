@@ -52,7 +52,6 @@ pub const VHOST_USER_MAX_VRINGS: u64 = 0x8000u64;
 pub(super) trait Req:
     Clone + Copy + Debug + PartialEq + Eq + PartialOrd + Ord + Send + Sync + Into<u32> + TryFrom<u32>
 {
-    fn is_valid(value: u32) -> bool;
 }
 
 macro_rules! enum_value {
@@ -182,11 +181,7 @@ enum_value! {
     }
 }
 
-impl Req for FrontendReq {
-    fn is_valid(value: u32) -> bool {
-        FrontendReq::try_from(value).is_ok()
-    }
-}
+impl Req for FrontendReq {}
 
 enum_value! {
     /// Type of requests sending from backends to frontends.
@@ -213,11 +208,7 @@ enum_value! {
     }
 }
 
-impl Req for BackendReq {
-    fn is_valid(value: u32) -> bool {
-        BackendReq::try_from(value).is_ok()
-    }
-}
+impl Req for BackendReq {}
 
 /// Vhost message Validator.
 pub trait VhostUserMsgValidator: ByteValued {
@@ -1142,18 +1133,18 @@ mod tests {
 
     #[test]
     fn check_frontend_request_code() {
-        let code = FrontendReq::GET_FEATURES;
-        assert!(FrontendReq::is_valid(code as _));
+        let code: u32 = FrontendReq::GET_FEATURES.into();
+        assert!(FrontendReq::try_from(code).is_ok());
         assert_eq!(code, code.clone());
-        assert!(!FrontendReq::is_valid(10000));
+        assert!(FrontendReq::try_from(10000).is_err());
     }
 
     #[test]
     fn check_backend_request_code() {
-        let code = BackendReq::CONFIG_CHANGE_MSG;
-        assert!(BackendReq::is_valid(code as _));
+        let code: u32 = BackendReq::CONFIG_CHANGE_MSG.into();
+        assert!(BackendReq::try_from(code).is_ok());
         assert_eq!(code, code.clone());
-        assert!(!BackendReq::is_valid(10000));
+        assert!(BackendReq::try_from(10000).is_err());
     }
 
     #[test]
