@@ -907,32 +907,6 @@ impl VhostUserMsgValidator for VhostUserLog {
     }
 }
 
-/*
- * TODO: support dirty log, live migration and IOTLB operations.
-#[repr(packed)]
-pub struct VhostUserVringArea {
-    pub index: u32,
-    pub flags: u32,
-    pub size: u64,
-    pub offset: u64,
-}
-
-#[repr(packed)]
-pub struct VhostUserLog {
-    pub size: u64,
-    pub offset: u64,
-}
-
-#[repr(packed)]
-pub struct VhostUserIotlb {
-    pub iova: u64,
-    pub size: u64,
-    pub user_addr: u64,
-    pub permission: u8,
-    pub optype: u8,
-}
-*/
-
 // Bit mask for flags in virtio-fs backend messages
 bitflags! {
     #[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
