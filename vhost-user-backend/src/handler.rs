@@ -6,17 +6,18 @@
 use std::error;
 use std::fs::File;
 use std::io;
+use std::os::fd::AsFd;
 #[cfg(feature = "postcopy")]
 use std::os::fd::FromRawFd;
 use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 use std::thread;
 
-use crate::bitmap::BitmapReplace;
+use crate::bitmap::{BitmapReplace, MemRegionBitmap, MmapLogReg};
 #[cfg(feature = "postcopy")]
 use userfaultfd::{Uffd, UffdBuilder};
 use vhost::vhost_user::message::{
-    VhostTransferStateDirection, VhostTransferStatePhase, VhostUserConfigFlags,
+    VhostTransferStateDirection, VhostTransferStatePhase, VhostUserConfigFlags, VhostUserLog,
     VhostUserMemoryRegion, VhostUserProtocolFeatures, VhostUserSingleMemoryRegion,
     VhostUserVirtioFeatures, VhostUserVringAddrFlags, VhostUserVringState,
 };
@@ -26,7 +27,10 @@ use vhost::vhost_user::{
 use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use virtio_queue::{Error as VirtQueError, QueueT};
 use vm_memory::mmap::NewBitmap;
-use vm_memory::{GuestAddress, GuestAddressSpace, GuestMemoryMmap, GuestRegionMmap};
+use vm_memory::{
+    GuestAddress, GuestAddressSpace, GuestMemory, GuestMemoryMmap, GuestMemoryRegion,
+    GuestRegionMmap,
+};
 use vmm_sys_util::epoll::EventSet;
 
 use super::backend::VhostUserBackend;
@@ -710,6 +714,47 @@ where
     #[cfg(feature = "postcopy")]
     fn postcopy_end(&mut self) -> VhostUserResult<()> {
         self.uffd = None;
+        Ok(())
+    }
+
+    // Sets logging (i.e., bitmap) shared memory space.
+    //
+    // During live migration, the front-end may need to track the modifications the back-end
+    // makes to the memory mapped regions. The front-end should mark the dirty pages in a log.
+    // Once it complies to this logging, it may declare the `VHOST_F_LOG_ALL` vhost feature.
+    //
+    // If the backend has the `VHOST_USER_PROTOCOL_F_LOG_SHMFD` protocol feature it may receive
+    // the `VHOST_USER_SET_LOG_BASE` message. The log memory file descriptor is provided in `file`,
+    // the size and offset of shared memory area are provided in the `VhostUserLog` message.
+    //
+    // See https://qemu-project.gitlab.io/qemu/interop/vhost-user.html#migration.
+    // TODO: We ignore the `LOG_ALL` flag on `SET_FEATURES`, so we will continue marking pages as
+    // dirty even if the migration fails. We need to disable the logging after receiving  a
+    // `SET_FEATURE` without the `LOG_ALL` flag.
+    fn set_log_base(&mut self, log: &VhostUserLog, file: File) -> VhostUserResult<()> {
+        let mem = self.atomic_mem.memory();
+
+        let logmem = Arc::new(
+            MmapLogReg::from_file(file.as_fd(), log.mmap_offset, log.mmap_size)
+                .map_err(VhostUserError::ReqHandlerError)?,
+        );
+
+        // Let's create all bitmaps first before replacing them, in case any of them fails
+        let mut bitmaps = Vec::new();
+        for region in mem.iter() {
+            let bitmap = <<T as VhostUserBackend>::Bitmap as BitmapReplace>::InnerBitmap::new(
+                region,
+                Arc::clone(&logmem),
+            )
+            .map_err(VhostUserError::ReqHandlerError)?;
+
+            bitmaps.push((region, bitmap));
+        }
+
+        for (region, bitmap) in bitmaps {
+            region.bitmap().replace(bitmap);
+        }
+
         Ok(())
     }
 }

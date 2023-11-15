@@ -394,6 +394,8 @@ bitflags! {
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
     /// Transport specific flags in VirtIO feature set defined by vhost-user.
     pub struct VhostUserVirtioFeatures: u64 {
+        /// Log dirtied shared memory pages.
+        const LOG_ALL = 0x400_0000;
         /// Feature flag for the protocol feature.
         const PROTOCOL_FEATURES = 0x4000_0000;
     }

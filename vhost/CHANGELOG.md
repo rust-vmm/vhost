@@ -2,6 +2,7 @@
 ## [Unreleased]
 
 ### Added
+[#206](https://github.com/rust-vmm/vhost/pull/206) Add bitmap support for tracking dirty pages during migration
 
 ### Changed
 
