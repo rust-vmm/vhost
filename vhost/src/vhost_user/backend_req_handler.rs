@@ -83,6 +83,7 @@ pub trait VhostUserBackendReqHandler {
     fn postcopy_listen(&self) -> Result<()>;
     #[cfg(feature = "postcopy")]
     fn postcopy_end(&self) -> Result<()>;
+    fn set_log_base(&self, log: &VhostUserLog, file: File) -> Result<()>;
 }
 
 /// Services provided to the frontend by the backend without interior mutability.
@@ -144,6 +145,7 @@ pub trait VhostUserBackendReqHandlerMut {
     fn postcopy_listen(&mut self) -> Result<()>;
     #[cfg(feature = "postcopy")]
     fn postcopy_end(&mut self) -> Result<()>;
+    fn set_log_base(&mut self, log: &VhostUserLog, file: File) -> Result<()>;
 }
 
 impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
@@ -281,6 +283,9 @@ impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
     #[cfg(feature = "postcopy")]
     fn postcopy_end(&self) -> Result<()> {
         self.lock().unwrap().postcopy_end()
+    }
+    fn set_log_base(&self, log: &VhostUserLog, file: File) -> Result<()> {
+        self.lock().unwrap().set_log_base(log, file)
     }
 }
 
@@ -648,6 +653,18 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
                 self.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
                 let res = self.backend.postcopy_end();
                 self.send_ack_message(&hdr, res)?;
+            }
+            // Sets logging shared memory space.
+            // When the back-end has `VHOST_USER_PROTOCOL_F_LOG_SHMFD` protocol feature, the log
+            // memory `fd` is provided in the ancillary data of `VHOST_USER_SET_LOG_BASE` message,
+            // the size and offset of shared memory area provided in the message.
+            // See https://qemu-project.gitlab.io/qemu/interop/vhost-user.html#migration.
+            Ok(FrontendReq::SET_LOG_BASE) => {
+                self.check_proto_feature(VhostUserProtocolFeatures::LOG_SHMFD)?;
+                let file = take_single_file(files).ok_or(Error::IncorrectFds)?;
+                let msg = self.extract_request_body::<VhostUserLog>(&hdr, size, &buf)?;
+                self.backend.set_log_base(&msg, file)?;
+                self.send_reply_message(&hdr, &msg)?;
             }
             _ => {
                 return Err(Error::InvalidMessage);

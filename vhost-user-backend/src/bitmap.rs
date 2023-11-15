@@ -223,7 +223,6 @@ unsafe impl Send for MmapLogReg {}
 unsafe impl Sync for MmapLogReg {}
 
 impl MmapLogReg {
-    #![allow(dead_code)]
     // Note: We could try to adjust the mapping area to only cover the memory region, but
     // the region's starting address is not guarantee to be LOG_WORD_SIZE-page aligned
     // which makes the implementation needlessly cumbersome.
