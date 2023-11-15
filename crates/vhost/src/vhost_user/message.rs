@@ -240,7 +240,7 @@ bitflags! {
 /// Common message header for vhost-user requests and replies.
 /// A vhost-user message consists of 3 header fields and an optional payload. All numbers are in the
 /// machine native byte order.
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub(super) struct VhostUserMsgHeader<R: Req> {
     request: u32,
@@ -438,7 +438,7 @@ bitflags! {
 }
 
 /// A generic message to encapsulate a 64-bit value.
-#[repr(packed)]
+#[repr(transparent)]
 #[derive(Copy, Clone, Default)]
 pub struct VhostUserU64 {
     /// The encapsulated 64-bit common value.
@@ -458,7 +458,7 @@ unsafe impl ByteValued for VhostUserU64 {}
 impl VhostUserMsgValidator for VhostUserU64 {}
 
 /// Memory region descriptor for the SET_MEM_TABLE request.
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Copy, Clone, Default)]
 pub struct VhostUserMemory {
     /// Number of memory regions in the payload.
@@ -493,7 +493,7 @@ impl VhostUserMsgValidator for VhostUserMemory {
 }
 
 /// Memory region descriptors as payload for the SET_MEM_TABLE request.
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Default, Clone, Copy)]
 pub struct VhostUserMemoryRegion {
     /// Guest physical address of the memory region.
@@ -676,7 +676,7 @@ unsafe impl ByteValued for VhostUserSingleMemoryRegion {}
 impl VhostUserMsgValidator for VhostUserSingleMemoryRegion {}
 
 /// Vring state descriptor.
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Copy, Clone, Default)]
 pub struct VhostUserVringState {
     /// Vring index.
@@ -708,7 +708,7 @@ bitflags! {
 }
 
 /// Vring address descriptor.
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Copy, Clone, Default)]
 pub struct VhostUserVringAddr {
     /// Vring index.
@@ -792,7 +792,7 @@ bitflags! {
 }
 
 /// Message to read/write device configuration space.
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Copy, Clone, Default)]
 pub struct VhostUserConfig {
     /// Offset of virtio device's configuration space.
@@ -925,7 +925,7 @@ bitflags! {
 pub const VHOST_USER_FS_BACKEND_ENTRIES: usize = 8;
 
 /// Backend request message to update the MMIO window.
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Copy, Clone, Default)]
 pub struct VhostUserFSBackendMsg {
     /// File offset.
@@ -956,7 +956,7 @@ impl VhostUserMsgValidator for VhostUserFSBackendMsg {
 }
 
 /// Inflight I/O descriptor state for split virtqueues
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Clone, Copy, Default)]
 pub struct DescStateSplit {
     /// Indicate whether this descriptor (only head) is inflight or not.
@@ -977,7 +977,7 @@ impl DescStateSplit {
 }
 
 /// Inflight I/O queue region for split virtqueues
-#[repr(packed)]
+#[repr(C, packed)]
 pub struct QueueRegionSplit {
     /// Features flags of this region
     pub features: u64,
@@ -1008,7 +1008,7 @@ impl QueueRegionSplit {
 }
 
 /// Inflight I/O descriptor state for packed virtqueues
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Clone, Copy, Default)]
 pub struct DescStatePacked {
     /// Indicate whether this descriptor (only head) is inflight or not.
@@ -1041,7 +1041,7 @@ impl DescStatePacked {
 }
 
 /// Inflight I/O queue region for packed virtqueues
-#[repr(packed)]
+#[repr(C, packed)]
 pub struct QueueRegionPacked {
     /// Features flags of this region
     pub features: u64,
