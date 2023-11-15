@@ -29,6 +29,7 @@ mod handler;
 pub use self::handler::VhostUserHandlerError;
 
 pub mod bitmap;
+use crate::bitmap::BitmapReplace;
 
 mod vring;
 pub use self::vring::{
@@ -97,7 +98,7 @@ pub struct VhostUserDaemon<T: VhostUserBackend> {
 impl<T> VhostUserDaemon<T>
 where
     T: VhostUserBackend + Clone + 'static,
-    T::Bitmap: NewBitmap + Clone + Send + Sync,
+    T::Bitmap: BitmapReplace + NewBitmap + Clone + Send + Sync,
     T::Vring: Clone + Send + Sync,
 {
     /// Create the daemon instance, providing the backend implementation of `VhostUserBackend`.
