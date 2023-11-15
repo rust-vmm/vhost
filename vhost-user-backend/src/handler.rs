@@ -12,6 +12,7 @@ use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 use std::thread;
 
+use crate::bitmap::BitmapReplace;
 #[cfg(feature = "postcopy")]
 use userfaultfd::{Uffd, UffdBuilder};
 use vhost::vhost_user::message::{
@@ -230,7 +231,7 @@ where
 
 impl<T: VhostUserBackend> VhostUserBackendReqHandlerMut for VhostUserHandler<T>
 where
-    T::Bitmap: NewBitmap + Clone,
+    T::Bitmap: BitmapReplace + NewBitmap + Clone,
 {
     fn set_owner(&mut self) -> VhostUserResult<()> {
         if self.owned {
