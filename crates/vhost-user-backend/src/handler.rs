@@ -200,6 +200,7 @@ where
             }
         }
 
+        self.vrings[index as usize].set_enabled(false);
         self.vrings[index as usize].set_queue_ready(true);
 
         Ok(())
@@ -247,17 +248,18 @@ where
         self.acked_features = features;
         self.features_acked = true;
 
-        // If VHOST_USER_F_PROTOCOL_FEATURES has not been negotiated,
-        // the ring is initialized in an enabled state.
-        // If VHOST_USER_F_PROTOCOL_FEATURES has been negotiated,
-        // the ring is initialized in a disabled state. Client must not
-        // pass data to/from the backend until ring is enabled by
-        // VHOST_USER_SET_VRING_ENABLE with parameter 1, or after it has
-        // been disabled by VHOST_USER_SET_VRING_ENABLE with parameter 0.
-        let vring_enabled =
-            self.acked_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() == 0;
-        for vring in self.vrings.iter_mut() {
-            vring.set_enabled(vring_enabled);
+        // Upon receiving a `VHOST_USER_SET_FEATURES` message from the front-end without
+        // `VHOST_USER_F_PROTOCOL_FEATURES` set, the back-end must enable all rings immediately.
+        // While processing the rings (whether they are enabled or not), the back-end must support
+        // changing some configuration aspects on the fly.
+        // (see https://qemu-project.gitlab.io/qemu/interop/vhost-user.html#ring-states)
+        //
+        // Note: If `VHOST_USER_F_PROTOCOL_FEATURES` has not been negotiated we must leave
+        // the vrings in their current state.
+        if self.acked_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() == 0 {
+            for vring in self.vrings.iter_mut() {
+                vring.set_enabled(true);
+            }
         }
 
         self.backend.acked_features(self.acked_features);
