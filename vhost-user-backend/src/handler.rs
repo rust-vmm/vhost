@@ -200,8 +200,8 @@ where
             }
         }
 
-        self.vrings[index as usize].set_enabled(false);
-        self.vrings[index as usize].set_queue_ready(true);
+        vring.set_enabled(false);
+        vring.set_queue_ready(true);
 
         Ok(())
     }
@@ -313,10 +313,15 @@ where
     }
 
     fn set_vring_num(&mut self, index: u32, num: u32) -> VhostUserResult<()> {
-        if index as usize >= self.num_queues || num == 0 || num as usize > self.max_queue_size {
+        let vring = self
+            .vrings
+            .get(index as usize)
+            .ok_or_else(|| VhostUserError::InvalidParam)?;
+
+        if num == 0 || num as usize > self.max_queue_size {
             return Err(VhostUserError::InvalidParam);
         }
-        self.vrings[index as usize].set_queue_size(num as u16);
+        vring.set_queue_size(num as u16);
         Ok(())
     }
 
@@ -329,9 +334,10 @@ where
         available: u64,
         _log: u64,
     ) -> VhostUserResult<()> {
-        if index as usize >= self.num_queues {
-            return Err(VhostUserError::InvalidParam);
-        }
+        let vring = self
+            .vrings
+            .get(index as usize)
+            .ok_or_else(|| VhostUserError::InvalidParam)?;
 
         if !self.mappings.is_empty() {
             let desc_table = self.vmm_va_to_gpa(descriptor).map_err(|e| {
@@ -343,7 +349,7 @@ where
             let used_ring = self.vmm_va_to_gpa(used).map_err(|e| {
                 VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
             })?;
-            self.vrings[index as usize]
+            vring
                 .set_queue_info(desc_table, avail_ring, used_ring)
                 .map_err(|_| VhostUserError::InvalidParam)?;
 
@@ -357,10 +363,10 @@ where
             // Note: I'm not sure why QEMU's vhost-user library sets the 'user' index here,
             // _probably_ to make sure that the VQ is already configured. A better solution would
             // be to receive the 'used' index in SET_VRING_BASE, as is done when using packed VQs.
-            let idx = self.vrings[index as usize]
+            let idx = vring
                 .queue_used_idx()
                 .map_err(|_| VhostUserError::BackendInternalError)?;
-            self.vrings[index as usize].set_queue_next_used(idx);
+            vring.set_queue_next_used(idx);
 
             Ok(())
         } else {
@@ -369,32 +375,34 @@ where
     }
 
     fn set_vring_base(&mut self, index: u32, base: u32) -> VhostUserResult<()> {
-        if index as usize >= self.num_queues {
-            return Err(VhostUserError::InvalidParam);
-        }
+        let vring = self
+            .vrings
+            .get(index as usize)
+            .ok_or_else(|| VhostUserError::InvalidParam)?;
 
         let event_idx: bool = (self.acked_features & (1 << VIRTIO_RING_F_EVENT_IDX)) != 0;
 
-        self.vrings[index as usize].set_queue_next_avail(base as u16);
-        self.vrings[index as usize].set_queue_event_idx(event_idx);
+        vring.set_queue_next_avail(base as u16);
+        vring.set_queue_event_idx(event_idx);
         self.backend.set_event_idx(event_idx);
 
         Ok(())
     }
 
     fn get_vring_base(&mut self, index: u32) -> VhostUserResult<VhostUserVringState> {
-        if index as usize >= self.num_queues {
-            return Err(VhostUserError::InvalidParam);
-        }
+        let vring = self
+            .vrings
+            .get(index as usize)
+            .ok_or_else(|| VhostUserError::InvalidParam)?;
 
         // Quote from vhost-user specification:
         // Client must start ring upon receiving a kick (that is, detecting
         // that file descriptor is readable) on the descriptor specified by
         // VHOST_USER_SET_VRING_KICK, and stop ring upon receiving
         // VHOST_USER_GET_VRING_BASE.
-        self.vrings[index as usize].set_queue_ready(false);
+        vring.set_queue_ready(false);
 
-        if let Some(fd) = self.vrings[index as usize].get_ref().get_kick() {
+        if let Some(fd) = vring.get_ref().get_kick() {
             for (thread_index, queues_mask) in self.queues_per_thread.iter().enumerate() {
                 let shifted_queues_mask = queues_mask >> index;
                 if shifted_queues_mask & 1u64 == 1u64 {
@@ -407,52 +415,55 @@ where
             }
         }
 
-        let next_avail = self.vrings[index as usize].queue_next_avail();
+        let next_avail = vring.queue_next_avail();
 
-        self.vrings[index as usize].set_kick(None);
-        self.vrings[index as usize].set_call(None);
+        vring.set_kick(None);
+        vring.set_call(None);
 
         Ok(VhostUserVringState::new(index, u32::from(next_avail)))
     }
 
     fn set_vring_kick(&mut self, index: u8, file: Option<File>) -> VhostUserResult<()> {
-        if index as usize >= self.num_queues {
-            return Err(VhostUserError::InvalidParam);
-        }
+        let vring = self
+            .vrings
+            .get(index as usize)
+            .ok_or_else(|| VhostUserError::InvalidParam)?;
 
         // SAFETY: EventFd requires that it has sole ownership of its fd. So
         // does File, so this is safe.
         // Ideally, we'd have a generic way to refer to a uniquely-owned fd,
         // such as that proposed by Rust RFC #3128.
-        self.vrings[index as usize].set_kick(file);
+        vring.set_kick(file);
 
-        if self.vring_needs_init(&self.vrings[index as usize]) {
-            self.initialize_vring(&self.vrings[index as usize], index)?;
+        if self.vring_needs_init(vring) {
+            self.initialize_vring(vring, index)?;
         }
 
         Ok(())
     }
 
     fn set_vring_call(&mut self, index: u8, file: Option<File>) -> VhostUserResult<()> {
-        if index as usize >= self.num_queues {
-            return Err(VhostUserError::InvalidParam);
-        }
+        let vring = self
+            .vrings
+            .get(index as usize)
+            .ok_or_else(|| VhostUserError::InvalidParam)?;
 
-        self.vrings[index as usize].set_call(file);
+        vring.set_call(file);
 
-        if self.vring_needs_init(&self.vrings[index as usize]) {
-            self.initialize_vring(&self.vrings[index as usize], index)?;
+        if self.vring_needs_init(vring) {
+            self.initialize_vring(vring, index)?;
         }
 
         Ok(())
     }
 
     fn set_vring_err(&mut self, index: u8, file: Option<File>) -> VhostUserResult<()> {
-        if index as usize >= self.num_queues {
-            return Err(VhostUserError::InvalidParam);
-        }
+        let vring = self
+            .vrings
+            .get(index as usize)
+            .ok_or_else(|| VhostUserError::InvalidParam)?;
 
-        self.vrings[index as usize].set_err(file);
+        vring.set_err(file);
 
         Ok(())
     }
@@ -478,15 +489,16 @@ where
         // has been negotiated.
         self.check_feature(VhostUserVirtioFeatures::PROTOCOL_FEATURES)?;
 
-        if index as usize >= self.num_queues {
-            return Err(VhostUserError::InvalidParam);
-        }
+        let vring = self
+            .vrings
+            .get(index as usize)
+            .ok_or_else(|| VhostUserError::InvalidParam)?;
 
         // Backend must not pass data to/from the backend until ring is
         // enabled by VHOST_USER_SET_VRING_ENABLE with parameter 1,
         // or after it has been disabled by VHOST_USER_SET_VRING_ENABLE
         // with parameter 0.
-        self.vrings[index as usize].set_enabled(enable);
+        vring.set_enabled(enable);
 
         Ok(())
     }
