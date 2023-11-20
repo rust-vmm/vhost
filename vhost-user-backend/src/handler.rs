@@ -369,6 +369,10 @@ where
     }
 
     fn set_vring_base(&mut self, index: u32, base: u32) -> VhostUserResult<()> {
+        if index as usize >= self.num_queues {
+            return Err(VhostUserError::InvalidParam);
+        }
+
         let event_idx: bool = (self.acked_features & (1 << VIRTIO_RING_F_EVENT_IDX)) != 0;
 
         self.vrings[index as usize].set_queue_next_avail(base as u16);
