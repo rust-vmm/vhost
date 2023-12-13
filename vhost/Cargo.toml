@@ -24,6 +24,7 @@ vhost-user = []
 vhost-user-frontend = ["vhost-user"]
 vhost-user-backend = ["vhost-user"]
 xen = ["vm-memory/xen"]
+postcopy = []
 
 [dependencies]
 bitflags = "2.4"

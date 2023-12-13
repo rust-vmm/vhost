@@ -445,6 +445,15 @@ bitflags! {
     }
 }
 
+/// An empty message.
+#[derive(Copy, Clone, Default)]
+pub struct VhostUserEmpty;
+
+// SAFETY: Safe because type is zero size.
+unsafe impl ByteValued for VhostUserEmpty {}
+
+impl VhostUserMsgValidator for VhostUserEmpty {}
+
 /// A generic message to encapsulate a 64-bit value.
 #[repr(transparent)]
 #[derive(Copy, Clone, Default)]

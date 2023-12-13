@@ -72,6 +72,26 @@ pub trait VhostUserFrontend: VhostBackend {
 
     /// Remove a guest memory mapping from vhost.
     fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()>;
+
+    /// Sends VHOST_USER_POSTCOPY_ADVISE msg to the backend
+    /// initiating the beginning of the postcopy process.
+    /// Backend will return a userfaultfd.
+    #[cfg(feature = "postcopy")]
+    fn postcopy_advise(&mut self) -> Result<File>;
+
+    /// Sends VHOST_USER_POSTCOPY_LISTEN msg to the backend
+    /// telling it to register its memory regions with
+    /// userfaultfd previously received through the
+    /// [`VhostUserFrontend::postcopy_advise`] call.
+    #[cfg(feature = "postcopy")]
+    fn postcopy_listen(&mut self) -> Result<()>;
+
+    /// Sends VHOST_USER_POSTCOPY_END msg to the backend
+    /// indicating the end of the postcopy process.
+    /// Backend will destroy the userfaultfd object previously
+    /// sent by [`VhostUserFrontend::postcopy_advise`].
+    #[cfg(feature = "postcopy")]
+    fn postcopy_end(&mut self) -> Result<()>;
 }
 
 fn error_code<T>(err: VhostUserError) -> Result<T> {
@@ -515,6 +535,36 @@ impl VhostUserFrontend for Frontend {
 
         let body = region.to_single_region();
         let hdr = node.send_request_with_body(FrontendReq::REM_MEM_REG, &body, None)?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
+    }
+
+    #[cfg(feature = "postcopy")]
+    fn postcopy_advise(&mut self) -> Result<File> {
+        let mut node = self.node();
+        node.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
+
+        let hdr = node.send_request_header(FrontendReq::POSTCOPY_ADVISE, None)?;
+        let (_, files) = node.recv_reply_with_files::<VhostUserEmpty>(&hdr)?;
+
+        match take_single_file(files) {
+            Some(file) => Ok(file),
+            None => error_code(VhostUserError::IncorrectFds),
+        }
+    }
+
+    #[cfg(feature = "postcopy")]
+    fn postcopy_listen(&mut self) -> Result<()> {
+        let mut node = self.node();
+        node.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
+        let hdr = node.send_request_header(FrontendReq::POSTCOPY_LISTEN, None)?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
+    }
+
+    #[cfg(feature = "postcopy")]
+    fn postcopy_end(&mut self) -> Result<()> {
+        let mut node = self.node();
+        node.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
+        let hdr = node.send_request_header(FrontendReq::POSTCOPY_END, None)?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 }
