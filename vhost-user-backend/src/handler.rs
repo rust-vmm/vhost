@@ -6,10 +6,14 @@
 use std::error;
 use std::fs::File;
 use std::io;
+#[cfg(feature = "postcopy")]
+use std::os::fd::FromRawFd;
 use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 use std::thread;
 
+#[cfg(feature = "postcopy")]
+use userfaultfd::{Uffd, UffdBuilder};
 use vhost::vhost_user::message::{
     VhostTransferStateDirection, VhostTransferStatePhase, VhostUserConfigFlags,
     VhostUserMemoryRegion, VhostUserProtocolFeatures, VhostUserSingleMemoryRegion,
@@ -71,6 +75,8 @@ impl error::Error for VhostUserHandlerError {}
 pub type VhostUserHandlerResult<T> = std::result::Result<T, VhostUserHandlerError>;
 
 struct AddrMapping {
+    #[cfg(feature = "postcopy")]
+    local_addr: u64,
     vmm_addr: u64,
     size: u64,
     gpa_base: u64,
@@ -89,6 +95,8 @@ pub struct VhostUserHandler<T: VhostUserBackend> {
     mappings: Vec<AddrMapping>,
     atomic_mem: GM<T::Bitmap>,
     vrings: Vec<T::Vring>,
+    #[cfg(feature = "postcopy")]
+    uffd: Option<Uffd>,
     worker_threads: Vec<thread::JoinHandle<VringEpollResult<()>>>,
 }
 
@@ -148,6 +156,8 @@ where
             mappings: Vec::new(),
             atomic_mem,
             vrings,
+            #[cfg(feature = "postcopy")]
+            uffd: None,
             worker_threads,
         })
     }
@@ -280,20 +290,21 @@ where
         let mut mappings: Vec<AddrMapping> = Vec::new();
 
         for (region, file) in ctx.iter().zip(files) {
-            regions.push(
-                GuestRegionMmap::new(
-                    region.mmap_region(file)?,
-                    GuestAddress(region.guest_phys_addr),
-                )
-                .map_err(|e| {
-                    VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
-                })?,
-            );
+            let guest_region = GuestRegionMmap::new(
+                region.mmap_region(file)?,
+                GuestAddress(region.guest_phys_addr),
+            )
+            .map_err(|e| {
+                VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
+            })?;
             mappings.push(AddrMapping {
+                #[cfg(feature = "postcopy")]
+                local_addr: guest_region.as_ptr() as u64,
                 vmm_addr: region.user_addr,
                 size: region.memory_size,
                 gpa_base: region.guest_phys_addr,
             });
+            regions.push(guest_region);
         }
 
         let mem = GuestMemoryMmap::from_regions(regions).map_err(|e| {
@@ -570,6 +581,14 @@ where
             })?,
         );
 
+        let addr_mapping = AddrMapping {
+            #[cfg(feature = "postcopy")]
+            local_addr: guest_region.as_ptr() as u64,
+            vmm_addr: region.user_addr,
+            size: region.memory_size,
+            gpa_base: region.guest_phys_addr,
+        };
+
         let mem = self
             .atomic_mem
             .memory()
@@ -586,11 +605,7 @@ where
                 VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
             })?;
 
-        self.mappings.push(AddrMapping {
-            vmm_addr: region.user_addr,
-            size: region.memory_size,
-            gpa_base: region.guest_phys_addr,
-        });
+        self.mappings.push(addr_mapping);
 
         Ok(())
     }
@@ -633,6 +648,68 @@ where
         self.backend
             .check_device_state()
             .map_err(VhostUserError::ReqHandlerError)
+    }
+
+    #[cfg(feature = "postcopy")]
+    fn postcopy_advice(&mut self) -> VhostUserResult<File> {
+        let mut uffd_builder = UffdBuilder::new();
+
+        let uffd = uffd_builder
+            .close_on_exec(true)
+            .non_blocking(true)
+            .user_mode_only(false)
+            .create()
+            .map_err(|e| {
+                VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
+            })?;
+
+        // We need to duplicate the uffd fd because we need both
+        // to return File with fd and store fd inside uffd.
+        //
+        // SAFETY:
+        // We know that uffd is correctly created.
+        // This means fd inside uffd is also a valid fd.
+        // Duplicating a valid fd is safe.
+        let uffd_dup = unsafe { libc::dup(uffd.as_raw_fd()) };
+        if uffd_dup < 0 {
+            return Err(VhostUserError::ReqHandlerError(io::Error::last_os_error()));
+        }
+
+        // SAFETY:
+        // We know that uffd_dup is a valid fd.
+        let uffd_file = unsafe { File::from_raw_fd(uffd_dup) };
+
+        self.uffd = Some(uffd);
+
+        Ok(uffd_file)
+    }
+
+    #[cfg(feature = "postcopy")]
+    fn postcopy_listen(&mut self) -> VhostUserResult<()> {
+        let Some(ref uffd) = self.uffd else {
+            return Err(VhostUserError::ReqHandlerError(io::Error::new(
+                io::ErrorKind::Other,
+                "No registered UFFD handler",
+            )));
+        };
+
+        for mapping in self.mappings.iter() {
+            uffd.register(
+                mapping.local_addr as *mut libc::c_void,
+                mapping.size as usize,
+            )
+            .map_err(|e| {
+                VhostUserError::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e))
+            })?;
+        }
+
+        Ok(())
+    }
+
+    #[cfg(feature = "postcopy")]
+    fn postcopy_end(&mut self) -> VhostUserResult<()> {
+        self.uffd = None;
+        Ok(())
     }
 }
 
