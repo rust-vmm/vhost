@@ -77,6 +77,12 @@ pub trait VhostUserBackendReqHandler {
         fd: File,
     ) -> Result<Option<File>>;
     fn check_device_state(&self) -> Result<()>;
+    #[cfg(feature = "postcopy")]
+    fn postcopy_advice(&self) -> Result<File>;
+    #[cfg(feature = "postcopy")]
+    fn postcopy_listen(&self) -> Result<()>;
+    #[cfg(feature = "postcopy")]
+    fn postcopy_end(&self) -> Result<()>;
 }
 
 /// Services provided to the frontend by the backend without interior mutability.
@@ -132,6 +138,12 @@ pub trait VhostUserBackendReqHandlerMut {
         fd: File,
     ) -> Result<Option<File>>;
     fn check_device_state(&mut self) -> Result<()>;
+    #[cfg(feature = "postcopy")]
+    fn postcopy_advice(&mut self) -> Result<File>;
+    #[cfg(feature = "postcopy")]
+    fn postcopy_listen(&mut self) -> Result<()>;
+    #[cfg(feature = "postcopy")]
+    fn postcopy_end(&mut self) -> Result<()>;
 }
 
 impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
@@ -254,6 +266,21 @@ impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
 
     fn check_device_state(&self) -> Result<()> {
         self.lock().unwrap().check_device_state()
+    }
+
+    #[cfg(feature = "postcopy")]
+    fn postcopy_advice(&self) -> Result<File> {
+        self.lock().unwrap().postcopy_advice()
+    }
+
+    #[cfg(feature = "postcopy")]
+    fn postcopy_listen(&self) -> Result<()> {
+        self.lock().unwrap().postcopy_listen()
+    }
+
+    #[cfg(feature = "postcopy")]
+    fn postcopy_end(&self) -> Result<()> {
+        self.lock().unwrap().postcopy_end()
     }
 }
 
@@ -592,6 +619,35 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
                     Err(_) => VhostUserU64::new(1),
                 };
                 self.send_reply_message(&hdr, &msg)?;
+            }
+            #[cfg(feature = "postcopy")]
+            Ok(FrontendReq::POSTCOPY_ADVISE) => {
+                self.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
+
+                let res = self.backend.postcopy_advice();
+                match res {
+                    Ok(uffd_file) => {
+                        let hdr = self.new_reply_header::<VhostUserEmpty>(&hdr, 0)?;
+                        self.main_sock.send_message(
+                            &hdr,
+                            &VhostUserEmpty,
+                            Some(&[uffd_file.as_raw_fd()]),
+                        )?
+                    }
+                    Err(_) => self.main_sock.send_message(&hdr, &VhostUserEmpty, None)?,
+                }
+            }
+            #[cfg(feature = "postcopy")]
+            Ok(FrontendReq::POSTCOPY_LISTEN) => {
+                self.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
+                let res = self.backend.postcopy_listen();
+                self.send_ack_message(&hdr, res)?;
+            }
+            #[cfg(feature = "postcopy")]
+            Ok(FrontendReq::POSTCOPY_END) => {
+                self.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
+                let res = self.backend.postcopy_end();
+                self.send_ack_message(&hdr, res)?;
             }
             _ => {
                 return Err(Error::InvalidMessage);

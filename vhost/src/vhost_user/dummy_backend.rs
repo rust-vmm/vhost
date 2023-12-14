@@ -310,4 +310,20 @@ impl VhostUserBackendReqHandlerMut for DummyBackendReqHandler {
             "dummy back end does not support state transfer",
         )))
     }
+
+    #[cfg(feature = "postcopy")]
+    fn postcopy_advice(&mut self) -> Result<File> {
+        let file = tempfile::tempfile().unwrap();
+        Ok(file)
+    }
+
+    #[cfg(feature = "postcopy")]
+    fn postcopy_listen(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    #[cfg(feature = "postcopy")]
+    fn postcopy_end(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
