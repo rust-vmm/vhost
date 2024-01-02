@@ -121,7 +121,10 @@ impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
         let mut config = VhostVdpaConfig::new(buffer.len())
             .map_err(|_| Error::IoctlError(IOError::from_raw_os_error(libc::ENOMEM)))?;
 
-        config.as_mut_fam_struct().off = offset;
+        // SAFETY: We are not modifying the `len` field of the vhost-vdpa fam-struct
+        unsafe {
+            config.as_mut_fam_struct().off = offset;
+        }
 
         // SAFETY: This ioctl is called on a valid vhost-vdpa fd and has its
         // return value checked.
@@ -142,7 +145,10 @@ impl<AS: GuestAddressSpace> VhostVdpa for VhostKernVdpa<AS> {
         let mut config = VhostVdpaConfig::new(buffer.len())
             .map_err(|_| Error::IoctlError(IOError::from_raw_os_error(libc::ENOMEM)))?;
 
-        config.as_mut_fam_struct().off = offset;
+        // SAFETY: We are not modifying the `len` field of the vhost-vdpa fam-struct
+        unsafe {
+            config.as_mut_fam_struct().off = offset;
+        }
         config.as_mut_slice().copy_from_slice(buffer);
 
         let ret =

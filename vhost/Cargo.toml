@@ -29,7 +29,7 @@ xen = ["vm-memory/xen"]
 bitflags = "2.4"
 libc = "0.2.39"
 
-vmm-sys-util = "0.11.0"
+vmm-sys-util = "0.12.1"
 vm-memory = { version = "0.13.1", features=["backend-mmap"] }
 
 [dev-dependencies]
