@@ -9,6 +9,18 @@
 
 ### Deprecated
 
+## [0.10.0]
+
+### Changed
+- [[#219]](https://github.com/rust-vmm/vhost/pull/219) Update vmm-sys-util dependency to 0.12.1.
+
+### Remove
+- [[#202](https://github.com/rust-vmm/vhost/pull/202)] Do not expose for internal-usage-only `NOOP` and `MAX_CMD` requests.
+- [[#205](https://github.com/rust-vmm/vhost/pull/205)] Remove some commented out code.
+
+### Fixed
+- [[#208](https://github.com/rust-vmm/vhost/pull/208)] Fix various message structs being `repr(Rust)` instead of `repr(C)`.
+
 ## [0.9.0]
 
 ### Changed
