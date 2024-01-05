@@ -17,11 +17,11 @@ log = "0.4.17"
 vhost = { path = "../vhost", version = "0.9", features = ["vhost-user-backend"] }
 virtio-bindings = "0.2.1"
 virtio-queue = "0.10.0"
-vm-memory = { version = "0.13.1", features = ["backend-mmap", "backend-atomic"] }
+vm-memory = { version = "0.14.0", features = ["backend-mmap", "backend-atomic"] }
 vmm-sys-util = "0.12.1"
 
 [dev-dependencies]
 nix = { version = "0.27", features = ["fs"] }
 vhost = { path = "../vhost", version = "0.9", features = ["test-utils", "vhost-user-frontend", "vhost-user-backend"] }
-vm-memory = { version = "0.13.1", features = ["backend-mmap", "backend-atomic", "backend-bitmap"] }
+vm-memory = { version = "0.14.0", features = ["backend-mmap", "backend-atomic", "backend-bitmap"] }
 tempfile = "3.2.0"
