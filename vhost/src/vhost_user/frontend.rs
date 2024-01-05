@@ -641,7 +641,7 @@ impl FrontendInternal {
         Ok(hdr)
     }
 
-    fn recv_reply<T: ByteValued + Sized + VhostUserMsgValidator>(
+    fn recv_reply<T: ByteValued + Sized + VhostUserMsgValidator + Default>(
         &mut self,
         hdr: &VhostUserMsgHeader<FrontendReq>,
     ) -> VhostUserResult<T> {
@@ -657,7 +657,7 @@ impl FrontendInternal {
         Ok(body)
     }
 
-    fn recv_reply_with_files<T: ByteValued + Sized + VhostUserMsgValidator>(
+    fn recv_reply_with_files<T: ByteValued + Sized + VhostUserMsgValidator + Default>(
         &mut self,
         hdr: &VhostUserMsgHeader<FrontendReq>,
     ) -> VhostUserResult<(T, Option<Vec<File>>)> {
@@ -673,7 +673,7 @@ impl FrontendInternal {
         Ok((body, files))
     }
 
-    fn recv_reply_with_payload<T: ByteValued + Sized + VhostUserMsgValidator>(
+    fn recv_reply_with_payload<T: ByteValued + Sized + VhostUserMsgValidator + Default>(
         &mut self,
         hdr: &VhostUserMsgHeader<FrontendReq>,
     ) -> VhostUserResult<(T, Vec<u8>, Option<Vec<File>>)> {
