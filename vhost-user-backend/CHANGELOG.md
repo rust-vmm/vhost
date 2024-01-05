@@ -9,6 +9,19 @@
 
 ### Deprecated
 
+## v0.12.0
+
+### Fixed
+- [[#210](https://github.com/rust-vmm/vhost/pull/210)] Enable all vrings upon receipt of `VHOST_USER_SET_FEATURES`
+  message.
+- [[#212](https://github.com/rust-vmm/vhost/pull/212)] Validate queue index in `VhostUserHandler::set_vring_base`
+  to avoid potential out-of-bounds panic.
+
+### Changed
+- [[#214](https://github.com/rust-vmm/vhost/pull/214)] Avoid indexing the same Vec multiple times by locally caching the
+  result of `Vec:get`.
+- [[#219]](https://github.com/rust-vmm/vhost/pull/219) Update vmm-sys-util dependency to 0.12.1 and vm-memory dependency to 0.14.0.
+
 ## v0.11.0
 
 ### Added
