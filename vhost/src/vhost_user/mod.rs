@@ -490,7 +490,7 @@ mod tests {
         frontend.set_vring_err(0, &eventfd).unwrap();
 
         let max_mem_slots = frontend.get_max_mem_slots().unwrap();
-        assert_eq!(max_mem_slots, 32);
+        assert_eq!(max_mem_slots, 509);
 
         let region_file: File = TempFile::new().unwrap().into_file();
         let region =

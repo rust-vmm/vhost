@@ -30,7 +30,10 @@ use super::event_loop::{VringEpollError, VringEpollResult};
 use super::vring::VringT;
 use super::GM;
 
-const MAX_MEM_SLOTS: u64 = 32;
+// vhost in the kernel usually supports 509 mem slots.
+// The 509 used to be the KVM limit, it supported 512, but 3 were used
+// for internal purposes (nowadays, it supports more than that).
+const MAX_MEM_SLOTS: u64 = 509;
 
 #[derive(Debug)]
 /// Errors related to vhost-user handler.

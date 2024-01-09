@@ -211,7 +211,7 @@ fn vhost_user_client(path: &Path, barrier: Arc<Barrier>) {
     let state = frontend.get_vring_base(0).unwrap();
     frontend.set_vring_base(0, state as u16).unwrap();
 
-    assert_eq!(frontend.get_max_mem_slots().unwrap(), 32);
+    assert_eq!(frontend.get_max_mem_slots().unwrap(), 509);
     let region = VhostUserMemoryRegionInfo::new(0x800000, 0x100000, addr, 0, fd.file().as_raw_fd());
     frontend.add_mem_region(&region).unwrap();
     frontend.remove_mem_region(&region).unwrap();
