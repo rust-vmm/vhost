@@ -8,7 +8,7 @@ The `vhost` crate aims to help implementing dataplane for virtio backend drivers
 
 The main relationship among Traits and Structs exported by the `vhost` crate is as below:
 
-![vhost Architecture](/docs/vhost_architecture.png)
+![vhost Architecture](/vhost/docs/vhost_architecture.png)
 ## Kernel-based vHost Backend Drivers
 The vhost drivers in Linux provide in-kernel virtio device emulation. Normally
 the hypervisor userspace process emulates I/O accesses from the guest.
