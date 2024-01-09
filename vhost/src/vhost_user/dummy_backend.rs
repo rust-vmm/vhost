@@ -8,7 +8,7 @@ use super::*;
 
 pub const MAX_QUEUE_NUM: usize = 2;
 pub const MAX_VRING_NUM: usize = 256;
-pub const MAX_MEM_SLOTS: usize = 32;
+pub const MAX_MEM_SLOTS: usize = 509;
 pub const VIRTIO_FEATURES: u64 = 0x40000003;
 
 #[derive(Default)]
