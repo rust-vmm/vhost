@@ -9,6 +9,11 @@
 
 ### Deprecated
 
+## v0.13.0
+
+### Changed
+- [[#224]](https://github.com/rust-vmm/vhost/pull/224) vhost-user-backend: bump up MAX_MEM_SLOTS to 509
+
 ## v0.12.0
 
 ### Fixed
