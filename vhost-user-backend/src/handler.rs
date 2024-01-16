@@ -257,7 +257,7 @@ where
         // changing some configuration aspects on the fly.
         // (see https://qemu-project.gitlab.io/qemu/interop/vhost-user.html#ring-states)
         //
-        // Note: If `VHOST_USER_F_PROTOCOL_FEATURES` has not been negotiated we must leave
+        // Note: If `VHOST_USER_F_PROTOCOL_FEATURES` has been negotiated we must leave
         // the vrings in their current state.
         if self.acked_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() == 0 {
             for vring in self.vrings.iter_mut() {
