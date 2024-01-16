@@ -9,6 +9,12 @@
 
 ### Deprecated
 
+## v0.13.1
+
+### Fixed
+
+- [[#227]](https://github.com/rust-vmm/vhost/pull/227) vhost-user-backend: Fix SET_VRING_KICK should not disable the vring
+
 ## v0.13.0
 
 ### Changed
