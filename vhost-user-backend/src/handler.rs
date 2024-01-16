@@ -203,7 +203,6 @@ where
             }
         }
 
-        vring.set_enabled(false);
         vring.set_queue_ready(true);
 
         Ok(())
