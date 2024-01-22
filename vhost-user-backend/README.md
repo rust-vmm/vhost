@@ -98,6 +98,16 @@ impl VhostUserBackendMut for VhostUserService {
 }
 ```
 
+## Postcopy support
+
+To enabled POSTCOPY_* messages support there is a `postcopy` feature.
+Due to how Xen handles memory mappings the `postcopy` feature is not compatible
+with `xen` feature. Enabling both at the same time will result in a compilation error.
+
+`postcopy` feature enables optional `userfaultfd` dependency in order to create and
+interact with `userfaultfd` object. This requires access permission to `/dev/userfaultfd`
+file from the backend.
+
 ## Xen support
 
 Supporting Xen requires special handling while mapping the guest memory. The
