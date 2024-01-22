@@ -31,6 +31,12 @@ Frontend is the application that shares its virtqueues, backend is the consumer
 of the virtqueues. Frontend and backend can be either a client (i.e. connecting)
 or server (listening) in the socket communication.
 
+## Postcopy support
+
+To enabled POSTCOPY_* messages support there is a `postcopy` feature.
+Due to how Xen handles memory mappings the `postcopy` feature is not compatible
+with `xen` feature. Enabling both at the same time will result in a compilation error.
+
 ## Xen support
 
 Supporting Xen requires special handling while mapping the guest memory. The
