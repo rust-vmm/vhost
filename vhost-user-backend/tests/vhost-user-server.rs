@@ -292,3 +292,34 @@ fn vhost_user_get_inflight(path: &Path, barrier: Arc<Barrier>) {
 fn test_vhost_user_get_inflight() {
     vhost_user_server(vhost_user_get_inflight);
 }
+
+#[cfg(feature = "postcopy")]
+fn vhost_user_postcopy_advise(path: &Path, barrier: Arc<Barrier>) {
+    let mut frontend = setup_frontend(path, barrier);
+    let _uffd_file = frontend.postcopy_advise().unwrap();
+}
+
+#[cfg(feature = "postcopy")]
+fn vhost_user_postcopy_listen(path: &Path, barrier: Arc<Barrier>) {
+    let mut frontend = setup_frontend(path, barrier);
+    let _uffd_file = frontend.postcopy_advise().unwrap();
+    frontend.postcopy_listen().unwrap();
+}
+
+#[cfg(feature = "postcopy")]
+fn vhost_user_postcopy_end(path: &Path, barrier: Arc<Barrier>) {
+    let mut frontend = setup_frontend(path, barrier);
+    let _uffd_file = frontend.postcopy_advise().unwrap();
+    frontend.postcopy_listen().unwrap();
+    frontend.postcopy_end().unwrap();
+}
+
+// These tests need an access to the `/dev/userfaultfd`
+// in order to pass.
+#[cfg(feature = "postcopy")]
+#[test]
+fn test_vhost_user_postcopy() {
+    vhost_user_server(vhost_user_postcopy_advise);
+    vhost_user_server(vhost_user_postcopy_listen);
+    vhost_user_server(vhost_user_postcopy_end);
+}
