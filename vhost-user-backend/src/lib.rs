@@ -28,6 +28,8 @@ pub use self::event_loop::VringEpollHandler;
 mod handler;
 pub use self::handler::VhostUserHandlerError;
 
+pub mod bitmap;
+
 mod vring;
 pub use self::vring::{
     VringMutex, VringRwLock, VringState, VringStateGuard, VringStateMutGuard, VringT,
