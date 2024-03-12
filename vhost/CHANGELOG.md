@@ -2,13 +2,19 @@
 ## [Unreleased]
 
 ### Added
-[#206](https://github.com/rust-vmm/vhost/pull/206) Add bitmap support for tracking dirty pages during migration
 
 ### Changed
 
 ### Fixed
 
 ### Deprecated
+
+## [0.11.0]
+
+### Added
+- [[#203]](https://github.com/rust-vmm/vhost/pull/203) Add back-end's internal state migration support
+- [[#218]](https://github.com/rust-vmm/vhost/pull/218) Adding POSTCOPY support
+- [[#206]](https://github.com/rust-vmm/vhost/pull/206) Add bitmap support for tracking dirty pages during migration
 
 ## [0.10.0]
 
