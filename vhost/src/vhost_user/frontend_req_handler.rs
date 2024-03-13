@@ -123,7 +123,7 @@ impl<S: VhostUserFrontendReqHandlerMut> VhostUserFrontendReqHandler for Mutex<S>
 /// [VhostUserFrontendReqHandler]: trait.VhostUserFrontendReqHandler.html
 pub struct FrontendReqHandler<S: VhostUserFrontendReqHandler> {
     // underlying Unix domain socket for communication
-    sub_sock: Endpoint<BackendReq>,
+    sub_sock: Endpoint<VhostUserMsgHeader<BackendReq>>,
     tx_sock: UnixStream,
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     reply_ack_negotiated: bool,
@@ -146,7 +146,7 @@ impl<S: VhostUserFrontendReqHandler> FrontendReqHandler<S> {
         let (tx, rx) = UnixStream::pair().map_err(Error::SocketError)?;
 
         Ok(FrontendReqHandler {
-            sub_sock: Endpoint::<BackendReq>::from_stream(rx),
+            sub_sock: Endpoint::<VhostUserMsgHeader<BackendReq>>::from_stream(rx),
             tx_sock: tx,
             reply_ack_negotiated: false,
             backend,
