@@ -302,7 +302,7 @@ impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
 /// [BackendReqHandler]: struct.BackendReqHandler.html
 pub struct BackendReqHandler<S: VhostUserBackendReqHandler> {
     // underlying Unix domain socket for communication
-    main_sock: Endpoint<FrontendReq>,
+    main_sock: Endpoint<VhostUserMsgHeader<FrontendReq>>,
     // the vhost-user backend device object
     backend: Arc<S>,
 
@@ -319,7 +319,10 @@ pub struct BackendReqHandler<S: VhostUserBackendReqHandler> {
 
 impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
     /// Create a vhost-user backend endpoint.
-    pub(super) fn new(main_sock: Endpoint<FrontendReq>, backend: Arc<S>) -> Self {
+    pub(super) fn new(
+        main_sock: Endpoint<VhostUserMsgHeader<FrontendReq>>,
+        backend: Arc<S>,
+    ) -> Self {
         BackendReqHandler {
             main_sock,
             backend,
@@ -359,7 +362,10 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
     /// * - `path` - path of Unix domain socket listener to connect to
     /// * - `backend` - handler for requests from the frontend to the backend
     pub fn connect(path: &str, backend: Arc<S>) -> Result<Self> {
-        Ok(Self::new(Endpoint::<FrontendReq>::connect(path)?, backend))
+        Ok(Self::new(
+            Endpoint::<VhostUserMsgHeader<FrontendReq>>::connect(path)?,
+            backend,
+        ))
     }
 
     /// Mark endpoint as failed with specified error code.
@@ -965,7 +971,7 @@ mod tests {
     #[test]
     fn test_backend_req_handler_new() {
         let (p1, _p2) = UnixStream::pair().unwrap();
-        let endpoint = Endpoint::<FrontendReq>::from_stream(p1);
+        let endpoint = Endpoint::<VhostUserMsgHeader<FrontendReq>>::from_stream(p1);
         let backend = Arc::new(Mutex::new(DummyBackendReqHandler::new()));
         let mut handler = BackendReqHandler::new(endpoint, backend);
 
