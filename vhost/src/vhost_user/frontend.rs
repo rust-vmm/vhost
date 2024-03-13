@@ -106,7 +106,7 @@ pub struct Frontend {
 
 impl Frontend {
     /// Create a new instance.
-    fn new(ep: Endpoint<FrontendReq>, max_queue_num: u64) -> Self {
+    fn new(ep: Endpoint<VhostUserMsgHeader<FrontendReq>>, max_queue_num: u64) -> Self {
         Frontend {
             node: Arc::new(Mutex::new(FrontendInternal {
                 main_sock: ep,
@@ -128,7 +128,10 @@ impl Frontend {
 
     /// Create a new instance from a Unix stream socket.
     pub fn from_stream(sock: UnixStream, max_queue_num: u64) -> Self {
-        Self::new(Endpoint::<FrontendReq>::from_stream(sock), max_queue_num)
+        Self::new(
+            Endpoint::<VhostUserMsgHeader<FrontendReq>>::from_stream(sock),
+            max_queue_num,
+        )
     }
 
     /// Create a new vhost-user frontend endpoint.
@@ -140,7 +143,7 @@ impl Frontend {
     pub fn connect<P: AsRef<Path>>(path: P, max_queue_num: u64) -> Result<Self> {
         let mut retry_count = 5;
         let endpoint = loop {
-            match Endpoint::<FrontendReq>::connect(&path) {
+            match Endpoint::<VhostUserMsgHeader<FrontendReq>>::connect(&path) {
                 Ok(endpoint) => break Ok(endpoint),
                 Err(e) => match &e {
                     VhostUserError::SocketConnect(why) => {
@@ -600,7 +603,7 @@ impl VhostUserMemoryContext {
 
 struct FrontendInternal {
     // Used to send requests to the backend.
-    main_sock: Endpoint<FrontendReq>,
+    main_sock: Endpoint<VhostUserMsgHeader<FrontendReq>>,
     // Cached virtio features from the backend.
     virtio_features: u64,
     // Cached acked virtio features from the driver.
@@ -818,7 +821,9 @@ mod tests {
         ))
     }
 
-    fn create_pair<P: AsRef<Path>>(path: P) -> (Frontend, Endpoint<FrontendReq>) {
+    fn create_pair<P: AsRef<Path>>(
+        path: P,
+    ) -> (Frontend, Endpoint<VhostUserMsgHeader<FrontendReq>>) {
         let listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let frontend = Frontend::connect(path, 2).unwrap();
@@ -833,7 +838,9 @@ mod tests {
         listener.set_nonblocking(true).unwrap();
 
         let frontend = Frontend::connect(&path, 1).unwrap();
-        let mut backend = Endpoint::<FrontendReq>::from_stream(listener.accept().unwrap().unwrap());
+        let mut backend = Endpoint::<VhostUserMsgHeader<FrontendReq>>::from_stream(
+            listener.accept().unwrap().unwrap(),
+        );
 
         assert!(frontend.as_raw_fd() > 0);
         // Send two messages continuously
@@ -1001,7 +1008,7 @@ mod tests {
             .unwrap_err();
     }
 
-    fn create_pair2() -> (Frontend, Endpoint<FrontendReq>) {
+    fn create_pair2() -> (Frontend, Endpoint<VhostUserMsgHeader<FrontendReq>>) {
         let path = temp_path();
         let (frontend, peer) = create_pair(path);
 
