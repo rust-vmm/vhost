@@ -23,6 +23,7 @@ vhost-net = ["vhost-kern"]
 vhost-user = []
 vhost-user-frontend = ["vhost-user"]
 vhost-user-backend = ["vhost-user"]
+gpu-socket = ["vhost-user"]
 xen = ["vm-memory/xen"]
 postcopy = []
 

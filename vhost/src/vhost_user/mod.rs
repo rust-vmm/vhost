@@ -52,6 +52,8 @@ pub use self::backend_req_handler::{
 mod backend_req;
 #[cfg(feature = "vhost-user-backend")]
 pub use self::backend_req::Backend;
+#[cfg(feature = "gpu-socket")]
+pub mod gpu_message;
 
 /// Errors for vhost-user operations
 #[derive(Debug)]
