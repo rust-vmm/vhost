@@ -10,6 +10,8 @@ use std::thread;
 use vhost::vhost_user::message::{
     VhostUserConfigFlags, VhostUserHeaderFlag, VhostUserInflight, VhostUserProtocolFeatures,
 };
+#[cfg(feature = "gpu-socket")]
+use vhost::vhost_user::GpuBackend;
 use vhost::vhost_user::{Backend, Frontend, Listener, VhostUserFrontend};
 use vhost::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
 use vhost_user_backend::{VhostUserBackendMut, VhostUserDaemon, VringRwLock};
@@ -76,6 +78,9 @@ impl VhostUserBackendMut for MockVhostBackend {
 
         Ok(())
     }
+
+    #[cfg(feature = "gpu-socket")]
+    fn set_gpu_socket(&mut self, _gpu_backend: GpuBackend) {}
 
     fn update_memory(&mut self, atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>) -> Result<()> {
         let mem = atomic_mem.memory();

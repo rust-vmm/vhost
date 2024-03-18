@@ -259,6 +259,9 @@ impl VhostUserBackendReqHandlerMut for DummyBackendReqHandler {
         Ok(())
     }
 
+    #[cfg(feature = "gpu-socket")]
+    fn set_gpu_socket(&mut self, _gpu_backend: GpuBackend) {}
+
     fn get_inflight_fd(
         &mut self,
         inflight: &VhostUserInflight,

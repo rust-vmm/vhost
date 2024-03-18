@@ -31,6 +31,9 @@ use vm_memory::bitmap::Bitmap;
 use vmm_sys_util::epoll::EventSet;
 use vmm_sys_util::eventfd::EventFd;
 
+#[cfg(feature = "gpu-socket")]
+use vhost::vhost_user::GpuBackend;
+
 use super::vring::VringT;
 use super::GM;
 
@@ -83,6 +86,14 @@ pub trait VhostUserBackend: Send + Sync {
     /// A default implementation is provided as we cannot expect all backends to implement this
     /// function.
     fn set_backend_req_fd(&self, _backend: Backend) {}
+
+    #[cfg(feature = "gpu-socket")]
+    /// Set handler for communicating with the frontend by the gpu specific backend communication
+    /// channel.
+    ///
+    /// This method only exits when the crate feature gpu-socket is enabled, because this is only
+    /// useful for a gpu device.
+    fn set_gpu_socket(&self, _gpu_backend: GpuBackend);
 
     /// Get the map to map queue index to worker thread index.
     ///
@@ -194,6 +205,14 @@ pub trait VhostUserBackendMut: Send + Sync {
     /// function.
     fn set_backend_req_fd(&mut self, _backend: Backend) {}
 
+    #[cfg(feature = "gpu-socket")]
+    /// Set handler for communicating with the frontend by the gpu specific backend communication
+    /// channel.
+    ///
+    /// This method only exits when the crate feature gpu-socket is enabled, because this is only
+    /// useful for a gpu device.
+    fn set_gpu_socket(&mut self, gpu_backend: GpuBackend);
+
     /// Get the map to map queue index to worker thread index.
     ///
     /// A return value of [2, 2, 4] means: the first two queues will be handled by worker thread 0,
@@ -299,6 +318,11 @@ impl<T: VhostUserBackend> VhostUserBackend for Arc<T> {
         self.deref().set_backend_req_fd(backend)
     }
 
+    #[cfg(feature = "gpu-socket")]
+    fn set_gpu_socket(&self, gpu_backend: GpuBackend) {
+        self.deref().set_gpu_socket(gpu_backend)
+    }
+
     fn queues_per_thread(&self) -> Vec<u64> {
         self.deref().queues_per_thread()
     }
@@ -374,6 +398,11 @@ impl<T: VhostUserBackendMut> VhostUserBackend for Mutex<T> {
 
     fn set_backend_req_fd(&self, backend: Backend) {
         self.lock().unwrap().set_backend_req_fd(backend)
+    }
+
+    #[cfg(feature = "gpu-socket")]
+    fn set_gpu_socket(&self, gpu_backend: GpuBackend) {
+        self.lock().unwrap().set_gpu_socket(gpu_backend)
     }
 
     fn queues_per_thread(&self) -> Vec<u64> {
@@ -454,6 +483,11 @@ impl<T: VhostUserBackendMut> VhostUserBackend for RwLock<T> {
 
     fn set_backend_req_fd(&self, backend: Backend) {
         self.write().unwrap().set_backend_req_fd(backend)
+    }
+
+    #[cfg(feature = "gpu-socket")]
+    fn set_gpu_socket(&self, gpu_backend: GpuBackend) {
+        self.write().unwrap().set_gpu_socket(gpu_backend)
     }
 
     fn queues_per_thread(&self) -> Vec<u64> {
@@ -575,6 +609,9 @@ pub mod tests {
         }
 
         fn set_backend_req_fd(&mut self, _backend: Backend) {}
+
+        #[cfg(feature = "gpu-socket")]
+        fn set_gpu_socket(&mut self, _gpu_backend: GpuBackend) {}
 
         fn queues_per_thread(&self) -> Vec<u64> {
             vec![1, 1]
