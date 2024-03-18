@@ -11,6 +11,7 @@ license = "Apache-2.0"
 [features]
 xen = ["vm-memory/xen", "vhost/xen"]
 postcopy = ["vhost/postcopy", "userfaultfd"]
+gpu-socket = ["vhost/gpu-socket"]
 
 [dependencies]
 libc = "0.2.39"
