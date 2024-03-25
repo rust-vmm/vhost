@@ -248,3 +248,46 @@ pub struct VirtioGpuRespDisplayInfo {
 unsafe impl ByteValued for VirtioGpuRespDisplayInfo {}
 
 impl VhostUserMsgValidator for VirtioGpuRespDisplayInfo {}
+
+/// The VhostUserGpuEdidRequest from the vhost-user-gpu specification.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+#[repr(C)]
+pub struct VhostUserGpuEdidRequest {
+    /// The id of the scanout to retrieve EDID data for
+    pub scanout_id: u32,
+}
+
+// SAFETY: Safe because all fields are POD.
+unsafe impl ByteValued for VhostUserGpuEdidRequest {}
+
+impl VhostUserMsgValidator for VhostUserGpuEdidRequest {}
+
+/// The virtio_gpu_resp_edid struct from the virtio specification.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(C)]
+pub struct VirtioGpuRespGetEdid {
+    /// The fixed header struct
+    pub hdr: VirtioGpuCtrlHdr,
+    /// The actual size of the `edid` field.
+    pub size: u32,
+    /// Padding of the structure
+    pub padding: u32,
+    /// The EDID display data blob (as specified by VESA) for the scanout.
+    pub edid: [u8; 1024],
+}
+
+// SAFETY: Safe because all fields are POD.
+unsafe impl ByteValued for VirtioGpuRespGetEdid {}
+
+impl Default for VirtioGpuRespGetEdid {
+    fn default() -> Self {
+        VirtioGpuRespGetEdid {
+            hdr: VirtioGpuCtrlHdr::default(),
+            size: u32::default(),
+            padding: u32::default(),
+            edid: [0; 1024], // Default value for the edid array (filled with zeros)
+        }
+    }
+}
+
+impl VhostUserMsgValidator for VirtioGpuRespGetEdid {}
