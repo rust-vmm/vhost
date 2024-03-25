@@ -1,10 +1,10 @@
 // Copyright (C) 2024 Red Hat, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::io;
 use std::os::fd::RawFd;
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::{io, mem};
 
 use vm_memory::ByteValued;
 
@@ -44,6 +44,22 @@ impl BackendInternal {
         self.sock
             .send_header(&hdr, fds)
             .map_err(io_err_convert_fn("send_header"))?;
+        Ok(hdr)
+    }
+
+    fn send_message<T: ByteValued>(
+        &mut self,
+        request: GpuBackendReq,
+        body: &T,
+        fds: Option<&[RawFd]>,
+    ) -> io::Result<VhostUserGpuMsgHeader<GpuBackendReq>> {
+        self.check_state()?;
+
+        let len = mem::size_of::<T>();
+        let hdr = VhostUserGpuMsgHeader::new(request, 0, len as u32);
+        self.sock
+            .send_message(&hdr, body, fds)
+            .map_err(io_err_convert_fn("send_message"))?;
         Ok(hdr)
     }
 
@@ -97,6 +113,16 @@ impl GpuBackend {
         node.recv_reply(&hdr)
     }
 
+    /// Send the VHOST_USER_GPU_GET_EDID message to the frontend and wait for a reply.
+    /// Retrieve the EDID data for a given scanout.
+    /// This message requires the VHOST_USER_GPU_PROTOCOL_F_EDID protocol feature to be supported.
+    pub fn get_edid(&self, get_edid: &VhostUserGpuEdidRequest) -> io::Result<VirtioGpuRespGetEdid> {
+        let mut node = self.node();
+
+        let hdr = node.send_message(GpuBackendReq::GET_EDID, get_edid, None)?;
+        node.recv_reply(&hdr)
+    }
+
     /// Create a new instance from a `UnixStream` object.
     pub fn from_stream(sock: UnixStream) -> Self {
         Self::new(Endpoint::<VhostUserGpuMsgHeader<GpuBackendReq>>::from_stream(sock))
@@ -111,7 +137,7 @@ impl GpuBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::mem::size_of;
+    use std::mem::{size_of, size_of_val};
     use std::thread;
     fn frontend_backend_pair() -> (Endpoint<VhostUserGpuMsgHeader<GpuBackendReq>>, GpuBackend) {
         let (backend, frontend) = UnixStream::pair().unwrap();
@@ -127,10 +153,7 @@ mod tests {
         expected_size: usize,
     ) {
         let size: u32 = expected_size.try_into().unwrap();
-        assert_eq!(
-            hdr,
-            &VhostUserGpuMsgHeader::new(GpuBackendReq::GET_DISPLAY_INFO, 0, size)
-        );
+        assert_eq!(hdr, &VhostUserGpuMsgHeader::new(expected_req_code, 0, size));
     }
 
     fn reply_with_msg<R>(
@@ -190,6 +213,32 @@ mod tests {
         let (hdr, fds) = frontend.recv_header().unwrap();
         assert!(fds.is_none());
         assert_hdr(&hdr, GpuBackendReq::GET_DISPLAY_INFO, 0);
+
+        reply_with_msg(&mut frontend, &hdr, &expected_response);
+        sender_thread.join().expect("Failed to send!");
+    }
+
+    #[test]
+    fn test_get_edid_info() {
+        let (mut frontend, backend) = frontend_backend_pair();
+
+        let expected_response = VirtioGpuRespGetEdid {
+            hdr: Default::default(),
+            size: 512,
+            padding: 0,
+            edid: [1u8; 1024],
+        };
+        let request = VhostUserGpuEdidRequest { scanout_id: 1 };
+
+        let sender_thread = thread::spawn(move || {
+            let response = backend.get_edid(&request).unwrap();
+            assert_eq!(response, expected_response);
+        });
+
+        let (hdr, req_body, fds) = frontend.recv_body::<VhostUserGpuEdidRequest>().unwrap();
+        assert!(fds.is_none());
+        assert_hdr(&hdr, GpuBackendReq::GET_EDID, size_of_val(&request));
+        assert_eq!(req_body, request);
 
         reply_with_msg(&mut frontend, &hdr, &expected_response);
         sender_thread.join().expect("Failed to send!");
