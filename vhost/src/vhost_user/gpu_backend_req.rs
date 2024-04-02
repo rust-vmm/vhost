@@ -123,6 +123,15 @@ impl GpuBackend {
         node.recv_reply(&hdr)
     }
 
+    /// Send the VHOST_USER_GPU_SCANOUT message to the frontend. Doesn't wait for a reply.
+    /// Set the scanout resolution. To disable a scanout, the dimensions width/height are set to 0.
+    pub fn set_scanout(&self, scanout: &VhostUserGpuScanout) -> io::Result<()> {
+        let mut node = self.node();
+
+        node.send_message(GpuBackendReq::SCANOUT, scanout, None)?;
+        Ok(())
+    }
+
     /// Create a new instance from a `UnixStream` object.
     pub fn from_stream(sock: UnixStream) -> Self {
         Self::new(Endpoint::<VhostUserGpuMsgHeader<GpuBackendReq>>::from_stream(sock))
@@ -241,6 +250,28 @@ mod tests {
         assert_eq!(req_body, request);
 
         reply_with_msg(&mut frontend, &hdr, &expected_response);
+        sender_thread.join().expect("Failed to send!");
+    }
+
+    #[test]
+    fn test_set_scanout() {
+        let (mut frontend, backend) = frontend_backend_pair();
+
+        let request = VhostUserGpuScanout {
+            scanout_id: 1,
+            width: 1920,
+            height: 1080,
+        };
+
+        let sender_thread = thread::spawn(move || {
+            let _: () = backend.set_scanout(&request).unwrap();
+        });
+
+        let (hdr, req_body, fds) = frontend.recv_body::<VhostUserGpuScanout>().unwrap();
+        assert!(fds.is_none());
+        assert_hdr(&hdr, GpuBackendReq::SCANOUT, size_of_val(&request));
+        assert_eq!(req_body, request);
+
         sender_thread.join().expect("Failed to send!");
     }
 }
