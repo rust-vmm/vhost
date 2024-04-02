@@ -291,3 +291,20 @@ impl Default for VirtioGpuRespGetEdid {
 }
 
 impl VhostUserMsgValidator for VirtioGpuRespGetEdid {}
+
+/// The VhostUserGpuScanout from the vhost-user-gpu specification.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+#[repr(C)]
+pub struct VhostUserGpuScanout {
+    /// The id of the scanout
+    pub scanout_id: u32,
+    /// The scanout width
+    pub width: u32,
+    /// The scanout height
+    pub height: u32,
+}
+
+// SAFETY: Safe because all fields are POD.
+unsafe impl ByteValued for VhostUserGpuScanout {}
+
+impl VhostUserMsgValidator for VhostUserGpuScanout {}
