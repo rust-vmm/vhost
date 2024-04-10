@@ -171,6 +171,18 @@ impl<R: Req> MsgHeader for VhostUserGpuMsgHeader<R> {
     const MAX_MSG_SIZE: usize = u32::MAX as usize;
 }
 
+// Bit mask for vhost-user-gpu protocol feature flags.
+bitflags! {
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+    /// Vhost-user-gpu protocol feature flags from the vhost-user-gpu specification.
+    pub struct VhostUserGpuProtocolFeatures: u64 {
+        /// Frontend support for EDID
+        const EDID = 0;
+        /// Frontend support for DMABUF_SCANOUT2
+        const DMABUF2 = 1;
+    }
+}
+
 /// The virtio_gpu_ctrl_hdr from virtio specification
 /// Defined here because some GpuBackend commands return virtio structs, which contain this header.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
