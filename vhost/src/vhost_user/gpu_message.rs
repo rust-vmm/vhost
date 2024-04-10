@@ -326,6 +326,40 @@ unsafe impl ByteValued for VhostUserGpuDMABUFScanout {}
 
 impl VhostUserMsgValidator for VhostUserGpuDMABUFScanout {}
 
+/// The VhostUserGpuCursorPos from the vhost-user-gpu specification.
+#[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(C)]
+pub struct VhostUserGpuCursorPos {
+    /// The scanout where the cursor is located
+    pub scanout_id: u32,
+    /// The cursor position field x
+    pub x: u32,
+    /// The cursor position field y
+    pub y: u32,
+}
+
+// SAFETY: Safe because all fields are POD.
+unsafe impl ByteValued for VhostUserGpuCursorPos {}
+
+impl VhostUserMsgValidator for VhostUserGpuCursorPos {}
+
+/// The VhostUserGpuCursorUpdate from the vhost-user-gpu specification.
+#[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(C)]
+pub struct VhostUserGpuCursorUpdate {
+    /// The cursor location
+    pub pos: VhostUserGpuCursorPos,
+    /// The cursor hot location x
+    pub hot_x: u32,
+    /// The cursor hot location y
+    pub hot_y: u32,
+}
+
+// SAFETY: Safe because all fields are POD.
+unsafe impl ByteValued for VhostUserGpuCursorUpdate {}
+
+impl VhostUserMsgValidator for VhostUserGpuCursorUpdate {}
+
 /// The virtio_gpu_resp_edid struct from the virtio specification.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(C)]
