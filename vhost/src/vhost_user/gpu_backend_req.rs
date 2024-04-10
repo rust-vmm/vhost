@@ -11,7 +11,7 @@ use vm_memory::ByteValued;
 use crate::vhost_user;
 use crate::vhost_user::connection::Endpoint;
 use crate::vhost_user::gpu_message::*;
-use crate::vhost_user::message::{VhostUserEmpty, VhostUserMsgValidator};
+use crate::vhost_user::message::{VhostUserEmpty, VhostUserMsgValidator, VhostUserU64};
 use crate::vhost_user::Error;
 
 struct BackendInternal {
@@ -119,6 +119,25 @@ impl GpuBackend {
 
     fn node(&self) -> MutexGuard<BackendInternal> {
         self.node.lock().unwrap()
+    }
+
+    /// Send the VHOST_USER_GPU_GET_PROTOCOL_FEATURES message to the frontend and wait for a reply.
+    /// Get the supported protocol features bitmask.
+    pub fn get_protocol_features(&self) -> io::Result<VhostUserU64> {
+        let mut node = self.node();
+
+        let hdr = node.send_header(GpuBackendReq::GET_PROTOCOL_FEATURES, None)?;
+        node.recv_reply(&hdr)
+    }
+
+    /// Send the VHOST_USER_GPU_SET_PROTOCOL_FEATURES message to the frontend. Doesn't wait for
+    /// a reply.
+    /// Enable protocol features using a bitmask.
+    pub fn set_protocol_features(&self, msg: &VhostUserU64) -> io::Result<()> {
+        let mut node = self.node();
+
+        node.send_message(GpuBackendReq::SET_PROTOCOL_FEATURES, msg, None)?;
+        Ok(())
     }
 
     /// Send the VHOST_USER_GPU_GET_DISPLAY_INFO message to the frontend and wait for a reply.
@@ -433,6 +452,51 @@ mod tests {
 
         // send ack
         reply_with_msg(&mut frontend, &hdr, &VhostUserEmpty);
+
+        sender_thread.join().expect("Failed to send!");
+    }
+
+    #[test]
+    fn test_get_protocol_features() {
+        let (mut frontend, backend) = frontend_backend_pair();
+
+        let expected_value = VhostUserU64::new(
+            (VhostUserGpuProtocolFeatures::DMABUF2 | VhostUserGpuProtocolFeatures::EDID).bits(),
+        );
+
+        let sender_thread = thread::spawn(move || {
+            let response: VhostUserU64 = backend.get_protocol_features().unwrap();
+            assert_eq!(response.value, expected_value.value)
+        });
+
+        let (hdr, fds) = frontend.recv_header().unwrap();
+        assert!(fds.is_none());
+        assert_hdr(&hdr, GpuBackendReq::GET_PROTOCOL_FEATURES, 0);
+
+        reply_with_msg(&mut frontend, &hdr, &expected_value);
+        sender_thread.join().expect("Failed to send!");
+    }
+
+    #[test]
+    fn test_set_protocol_features() {
+        let (mut frontend, backend) = frontend_backend_pair();
+
+        let expected_value = VhostUserU64::new(
+            (VhostUserGpuProtocolFeatures::DMABUF2 | VhostUserGpuProtocolFeatures::EDID).bits(),
+        );
+
+        let sender_thread = thread::spawn(move || {
+            let _: () = backend.set_protocol_features(&expected_value).unwrap();
+        });
+
+        let (hdr, req_body, fds) = frontend.recv_body::<VhostUserU64>().unwrap();
+        assert!(fds.is_none());
+        assert_hdr(
+            &hdr,
+            GpuBackendReq::SET_PROTOCOL_FEATURES,
+            size_of_val(&expected_value),
+        );
+        assert_eq!(req_body.value, expected_value.value);
 
         sender_thread.join().expect("Failed to send!");
     }
