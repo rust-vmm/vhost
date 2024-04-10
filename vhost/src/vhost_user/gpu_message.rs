@@ -170,3 +170,81 @@ impl<R: Req> MsgHeader for VhostUserGpuMsgHeader<R> {
     type Request = R;
     const MAX_MSG_SIZE: usize = u32::MAX as usize;
 }
+
+/// The virtio_gpu_ctrl_hdr from virtio specification
+/// Defined here because some GpuBackend commands return virtio structs, which contain this header.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[repr(C)]
+pub struct VirtioGpuCtrlHdr {
+    /// Specifies the type of the driver request (VIRTIO_GPU_CMD_*)
+    /// or device response (VIRTIO_GPU_RESP_*).
+    pub type_: u32,
+    /// Request / response flags.
+    pub flags: u32,
+    /// Set VIRTIO_GPU_FLAG_FENCE bit in the response
+    pub fence_id: u64,
+    /// Rendering context (used in 3D mode only).
+    pub ctx_id: u32,
+    /// ring_idx indicates the value of a context-specific ring index.
+    /// The minimum value is 0 and maximum value is 63 (inclusive).
+    pub ring_idx: u8,
+    /// padding of the structure
+    pub padding: [u8; 3],
+}
+
+// SAFETY: Safe because all fields are POD.
+unsafe impl ByteValued for VirtioGpuCtrlHdr {}
+
+/// The virtio_gpu_rect struct from virtio specification.
+/// Part of the reply for GpuBackend::get_display_info
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[repr(C)]
+pub struct VirtioGpuRect {
+    /// The position field x describes how the displays are arranged
+    pub x: u32,
+    /// The position field y describes how the displays are arranged
+    pub y: u32,
+    /// Display resolution width
+    pub width: u32,
+    /// Display resolution height
+    pub height: u32,
+}
+
+// SAFETY: Safe because all fields are POD.
+unsafe impl ByteValued for VirtioGpuRect {}
+
+/// The virtio_gpu_display_one struct from virtio specification.
+/// Part of the reply for GpuBackend::get_display_info
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[repr(C)]
+pub struct VirtioGpuDisplayOne {
+    /// Preferred display resolutions and display positions relative to each other
+    pub r: VirtioGpuRect,
+    /// The enabled field is set when the user enabled the display.
+    pub enabled: u32,
+    /// The display flags
+    pub flags: u32,
+}
+
+// SAFETY: Safe because all fields are POD.
+unsafe impl ByteValued for VirtioGpuDisplayOne {}
+
+/// Constant for maximum number of scanouts, defined in the virtio specification.
+pub const VIRTIO_GPU_MAX_SCANOUTS: usize = 16;
+
+/// The virtio_gpu_resp_display_info from the virtio specification.
+/// This it the reply from GpuBackend::get_display_info
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[repr(C)]
+pub struct VirtioGpuRespDisplayInfo {
+    /// The fixed header struct
+    pub hdr: VirtioGpuCtrlHdr,
+    /// pmodes contains whether the scanout is enabled and what
+    /// its preferred position and size is
+    pub pmodes: [VirtioGpuDisplayOne; VIRTIO_GPU_MAX_SCANOUTS],
+}
+
+// SAFETY: Safe because all fields are POD.
+unsafe impl ByteValued for VirtioGpuRespDisplayInfo {}
+
+impl VhostUserMsgValidator for VirtioGpuRespDisplayInfo {}
