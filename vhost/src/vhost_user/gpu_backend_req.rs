@@ -206,6 +206,38 @@ impl GpuBackend {
         Ok(())
     }
 
+    /// Send the VHOST_USER_GPU_CURSOR_POS  message to the frontend. Doesn't wait for a reply.
+    /// Set/show the cursor position.
+    pub fn cursor_pos(&self, cursor_pos: &VhostUserGpuCursorPos) -> io::Result<()> {
+        let mut node = self.node();
+
+        node.send_message(GpuBackendReq::CURSOR_POS, cursor_pos, None)?;
+        Ok(())
+    }
+
+    /// Send the VHOST_USER_GPU_CURSOR_POS_HIDE  message to the frontend. Doesn't wait for a reply.
+    /// Set/hide the cursor.
+    pub fn cursor_pos_hide(&self, cursor_pos: &VhostUserGpuCursorPos) -> io::Result<()> {
+        let mut node = self.node();
+
+        node.send_message(GpuBackendReq::CURSOR_POS_HIDE, cursor_pos, None)?;
+        Ok(())
+    }
+
+    /// Send the VHOST_USER_GPU_CURSOR_UPDATE  message to the frontend. Doesn't wait for a reply.
+    /// Update the cursor shape and location.
+    /// `data` represents a 64*64 cursor image (PIXMAN_x8r8g8b8 format).
+    pub fn cursor_update(
+        &self,
+        cursor_update: &VhostUserGpuCursorUpdate,
+        data: &[u8; 4 * 64 * 64],
+    ) -> io::Result<()> {
+        let mut node = self.node();
+
+        node.send_message_with_payload(GpuBackendReq::CURSOR_UPDATE, cursor_update, data, None)?;
+        Ok(())
+    }
+
     /// Create a new instance from a `UnixStream` object.
     pub fn from_stream(sock: UnixStream) -> Self {
         Self::new(Endpoint::<VhostUserGpuMsgHeader<GpuBackendReq>>::from_stream(sock))
@@ -236,6 +268,11 @@ mod tests {
         fd_stride: 0,
         fd_flags: 0,
         fd_drm_fourcc: 0,
+    };
+    const TEST_CURSOR_POS_REQUEST: VhostUserGpuCursorPos = VhostUserGpuCursorPos {
+        scanout_id: 1,
+        x: 31,
+        y: 102,
     };
 
     fn frontend_backend_pair() -> (Endpoint<VhostUserGpuMsgHeader<GpuBackendReq>>, GpuBackend) {
@@ -497,6 +534,78 @@ mod tests {
             size_of_val(&expected_value),
         );
         assert_eq!(req_body.value, expected_value.value);
+
+        sender_thread.join().expect("Failed to send!");
+    }
+
+    #[test]
+    fn test_set_cursor_pos() {
+        let (mut frontend, backend) = frontend_backend_pair();
+
+        let sender_thread = thread::spawn(move || {
+            let _: () = backend.cursor_pos(&TEST_CURSOR_POS_REQUEST).unwrap();
+        });
+
+        let (hdr, req_body, fds) = frontend.recv_body::<VhostUserGpuCursorPos>().unwrap();
+        assert!(fds.is_none());
+        assert_hdr(
+            &hdr,
+            GpuBackendReq::CURSOR_POS,
+            size_of_val(&TEST_CURSOR_POS_REQUEST),
+        );
+        assert_eq!(req_body, TEST_CURSOR_POS_REQUEST);
+
+        sender_thread.join().expect("Failed to send!");
+    }
+
+    #[test]
+    fn test_set_cursor_pos_hide() {
+        let (mut frontend, backend) = frontend_backend_pair();
+
+        let sender_thread = thread::spawn(move || {
+            let _: () = backend.cursor_pos_hide(&TEST_CURSOR_POS_REQUEST).unwrap();
+        });
+
+        let (hdr, req_body, fds) = frontend.recv_body::<VhostUserGpuCursorPos>().unwrap();
+        assert!(fds.is_none());
+        assert_hdr(
+            &hdr,
+            GpuBackendReq::CURSOR_POS_HIDE,
+            size_of_val(&TEST_CURSOR_POS_REQUEST),
+        );
+        assert_eq!(req_body, TEST_CURSOR_POS_REQUEST);
+
+        sender_thread.join().expect("Failed to send!");
+    }
+
+    #[test]
+    fn test_cursor_update() {
+        let (mut frontend, backend) = frontend_backend_pair();
+
+        let request = VhostUserGpuCursorUpdate {
+            pos: TEST_CURSOR_POS_REQUEST,
+            hot_x: 30,
+            hot_y: 30,
+        };
+        let payload = [2u8; 4 * 64 * 64];
+
+        let sender_thread = thread::spawn(move || {
+            let _: () = backend.cursor_update(&request, &payload).unwrap();
+        });
+
+        let mut recv_buf = vec![0u8; 1 + size_of_val(&payload)];
+        let (hdr, req_body, recv_buf_len, fds) = frontend
+            .recv_payload_into_buf::<VhostUserGpuCursorUpdate>(&mut recv_buf)
+            .unwrap();
+        assert!(fds.is_none());
+        assert_hdr(
+            &hdr,
+            GpuBackendReq::CURSOR_UPDATE,
+            size_of_val(&request) + payload.len(),
+        );
+        assert_eq!(req_body, request);
+
+        assert_eq!(&payload[..], &recv_buf[..recv_buf_len]);
 
         sender_thread.join().expect("Failed to send!");
     }
