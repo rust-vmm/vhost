@@ -9,6 +9,11 @@
 
 ### Deprecated
 
+## v0.15.0
+
+### Changed
+- [[#237]](https://github.com/rust-vmm/vhost/pull/237) Update virtio-queue dependency to 0.12.0
+
 ## v0.14.0
 
 ### Added
