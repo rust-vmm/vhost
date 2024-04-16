@@ -283,6 +283,37 @@ unsafe impl ByteValued for VhostUserGpuUpdate {}
 
 impl VhostUserMsgValidator for VhostUserGpuUpdate {}
 
+/// The VhostUserGpuDMABUFScanout from the vhost-user-gpu specification.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+#[repr(C)]
+pub struct VhostUserGpuDMABUFScanout {
+    /// The id of the scanout to update
+    pub scanout_id: u32,
+    /// The position field x of the scanout within the DMABUF
+    pub x: u32,
+    /// The position field y of the scanout within the DMABUF
+    pub y: u32,
+    /// Scanout width size
+    pub width: u32,
+    /// Scanout height size
+    pub height: u32,
+    /// The DMABUF width
+    pub fd_width: u32,
+    /// The DMABUF height
+    pub fd_height: u32,
+    /// The DMABUF stride
+    pub fd_stride: u32,
+    /// The DMABUF flags
+    pub fd_flags: u32,
+    /// The DMABUF fourcc
+    pub fd_drm_fourcc: u32,
+}
+
+// SAFETY: Safe because all fields are POD.
+unsafe impl ByteValued for VhostUserGpuDMABUFScanout {}
+
+impl VhostUserMsgValidator for VhostUserGpuDMABUFScanout {}
+
 /// The virtio_gpu_resp_edid struct from the virtio specification.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(C)]

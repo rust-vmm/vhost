@@ -1,17 +1,17 @@
 // Copyright (C) 2024 Red Hat, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::os::fd::RawFd;
+use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::{io, mem};
+use std::{io, mem, slice};
 
 use vm_memory::ByteValued;
 
 use crate::vhost_user;
 use crate::vhost_user::connection::Endpoint;
 use crate::vhost_user::gpu_message::*;
-use crate::vhost_user::message::VhostUserMsgValidator;
+use crate::vhost_user::message::{VhostUserEmpty, VhostUserMsgValidator};
 use crate::vhost_user::Error;
 
 struct BackendInternal {
@@ -159,6 +159,34 @@ impl GpuBackend {
         Ok(())
     }
 
+    /// Send the VHOST_USER_GPU_DMABUF_SCANOUT  message to the frontend. Doesn't wait for a reply.
+    /// Set the scanout resolution/configuration, and share a DMABUF file descriptor for the scanout
+    /// content, which is passed as ancillary data. To disable a scanout, the dimensions
+    /// width/height are set to 0, there is no file descriptor passed.
+    pub fn set_dmabuf_scanout(
+        &self,
+        scanout: &VhostUserGpuDMABUFScanout,
+        fd: Option<&impl AsRawFd>,
+    ) -> io::Result<()> {
+        let mut node = self.node();
+
+        let fd = fd.map(AsRawFd::as_raw_fd);
+        let fd = fd.as_ref().map(slice::from_ref);
+        node.send_message(GpuBackendReq::DMABUF_SCANOUT, scanout, fd)?;
+        Ok(())
+    }
+
+    /// Send the VHOST_USER_GPU_DMABUF_UPDATE message to the frontend and wait for acknowledgment.
+    /// The display should be flushed and presented according to updated region
+    /// from VhostUserGpuUpdate.
+    pub fn update_dmabuf_scanout(&self, update: &VhostUserGpuUpdate) -> io::Result<()> {
+        let mut node = self.node();
+
+        let hdr = node.send_message(GpuBackendReq::DMABUF_UPDATE, update, None)?;
+        let _: VhostUserEmpty = node.recv_reply(&hdr)?;
+        Ok(())
+    }
+
     /// Create a new instance from a `UnixStream` object.
     pub fn from_stream(sock: UnixStream) -> Self {
         Self::new(Endpoint::<VhostUserGpuMsgHeader<GpuBackendReq>>::from_stream(sock))
@@ -173,8 +201,24 @@ impl GpuBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use libc::STDOUT_FILENO;
     use std::mem::{size_of, size_of_val};
     use std::thread;
+    use std::time::Duration;
+
+    const TEST_DMABUF_SCANOUT_REQUEST: VhostUserGpuDMABUFScanout = VhostUserGpuDMABUFScanout {
+        scanout_id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        fd_width: 1920,
+        fd_height: 1080,
+        fd_stride: 0,
+        fd_flags: 0,
+        fd_drm_fourcc: 0,
+    };
+
     fn frontend_backend_pair() -> (Endpoint<VhostUserGpuMsgHeader<GpuBackendReq>>, GpuBackend) {
         let (backend, frontend) = UnixStream::pair().unwrap();
         let backend = GpuBackend::from_stream(backend);
@@ -332,6 +376,63 @@ mod tests {
         assert_eq!(req_body, request);
 
         assert_eq!(&payload[..], &recv_buf[..recv_buf_len]);
+
+        sender_thread.join().expect("Failed to send!");
+    }
+
+    #[test]
+    fn test_set_dmabuf_scanout() {
+        let (mut frontend, backend) = frontend_backend_pair();
+
+        let request = TEST_DMABUF_SCANOUT_REQUEST;
+
+        let fd: RawFd = STDOUT_FILENO;
+
+        let sender_thread = thread::spawn(move || {
+            let _: () = backend.set_dmabuf_scanout(&request, Some(&fd)).unwrap();
+        });
+
+        let (hdr, req_body, fds) = frontend.recv_body::<VhostUserGpuDMABUFScanout>().unwrap();
+
+        assert!(fds.is_some_and(|fds| fds.len() == 1));
+        assert_hdr(&hdr, GpuBackendReq::DMABUF_SCANOUT, size_of_val(&request));
+        assert_eq!(req_body, request);
+
+        sender_thread.join().expect("Failed to send!");
+    }
+
+    #[test]
+    fn test_update_dmabuf_scanout() {
+        let (mut frontend, backend) = frontend_backend_pair();
+
+        let request = VhostUserGpuUpdate {
+            scanout_id: 1,
+            x: 30,
+            y: 40,
+            width: 10,
+            height: 10,
+        };
+
+        let sender_thread = thread::spawn(move || {
+            let _: () = backend.update_dmabuf_scanout(&request).unwrap();
+        });
+
+        let (hdr, req_body, fds) = frontend.recv_body::<VhostUserGpuUpdate>().unwrap();
+        assert!(fds.is_none());
+        assert_hdr(&hdr, GpuBackendReq::DMABUF_UPDATE, size_of_val(&request));
+        assert_eq!(req_body, request);
+
+        // let's check if update_dmabuf_scanout blocks
+        // The 100ms should be enough for the thread to write to a socket and quit.
+        // (worst case on slow computer is that this test succeeds even though it should have failed)
+        thread::sleep(Duration::from_millis(100));
+        assert!(
+            !sender_thread.is_finished(),
+            "update_dmabuf_scanout is supposed to block until it receives an empty reply"
+        );
+
+        // send ack
+        reply_with_msg(&mut frontend, &hdr, &VhostUserEmpty);
 
         sender_thread.join().expect("Failed to send!");
     }
