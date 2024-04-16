@@ -262,6 +262,27 @@ unsafe impl ByteValued for VhostUserGpuEdidRequest {}
 
 impl VhostUserMsgValidator for VhostUserGpuEdidRequest {}
 
+/// The VhostUserGpuUpdate from the vhost-user-gpu specification.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+#[repr(C)]
+pub struct VhostUserGpuUpdate {
+    /// The id of the scanout that is being updated
+    pub scanout_id: u32,
+    /// The x coordinate of the region to update
+    pub x: u32,
+    /// The y coordinate of the region to update
+    pub y: u32,
+    /// The width of the region to update
+    pub width: u32,
+    /// The height of the region to update
+    pub height: u32,
+}
+
+// SAFETY: Safe because all fields are POD.
+unsafe impl ByteValued for VhostUserGpuUpdate {}
+
+impl VhostUserMsgValidator for VhostUserGpuUpdate {}
+
 /// The virtio_gpu_resp_edid struct from the virtio specification.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(C)]
