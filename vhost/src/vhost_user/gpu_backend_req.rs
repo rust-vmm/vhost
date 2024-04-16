@@ -63,6 +63,23 @@ impl BackendInternal {
         Ok(hdr)
     }
 
+    fn send_message_with_payload<T: ByteValued>(
+        &mut self,
+        request: GpuBackendReq,
+        body: &T,
+        data: &[u8],
+        fds: Option<&[RawFd]>,
+    ) -> io::Result<VhostUserGpuMsgHeader<GpuBackendReq>> {
+        self.check_state()?;
+
+        let len = mem::size_of::<T>() + data.len();
+        let hdr = VhostUserGpuMsgHeader::new(request, 0, len as u32);
+        self.sock
+            .send_message_with_payload(&hdr, body, data, fds)
+            .map_err(io_err_convert_fn("send_message_with_payload"))?;
+        Ok(hdr)
+    }
+
     // Note that there is no VHOST_USER_PROTOCOL_F_REPLY_ACK for this protocol, some messages always
     // expect a reply/ack and others don't expect a reply/ack at all.
     fn recv_reply<V: ByteValued + Sized + Default + VhostUserMsgValidator>(
@@ -129,6 +146,16 @@ impl GpuBackend {
         let mut node = self.node();
 
         node.send_message(GpuBackendReq::SCANOUT, scanout, None)?;
+        Ok(())
+    }
+
+    /// Sends the VHOST_USER_GPU_UPDATE  message to the frontend. Doesn't wait for a reply.
+    /// Updates the scanout content. The data payload contains the graphical bits.
+    /// The display should be flushed and presented.
+    pub fn update_scanout(&self, update: &VhostUserGpuUpdate, data: &[u8]) -> io::Result<()> {
+        let mut node = self.node();
+
+        node.send_message_with_payload(GpuBackendReq::UPDATE, update, data, None)?;
         Ok(())
     }
 
@@ -271,6 +298,40 @@ mod tests {
         assert!(fds.is_none());
         assert_hdr(&hdr, GpuBackendReq::SCANOUT, size_of_val(&request));
         assert_eq!(req_body, request);
+
+        sender_thread.join().expect("Failed to send!");
+    }
+
+    #[test]
+    fn test_update_scanout() {
+        let (mut frontend, backend) = frontend_backend_pair();
+
+        let request = VhostUserGpuUpdate {
+            scanout_id: 1,
+            x: 30,
+            y: 40,
+            width: 10,
+            height: 10,
+        };
+        let payload = [1u8; 4 * 10 * 10];
+
+        let sender_thread = thread::spawn(move || {
+            let _: () = backend.update_scanout(&request, &payload).unwrap();
+        });
+
+        let mut recv_buf = [0u8; 4096];
+        let (hdr, req_body, recv_buf_len, fds) = frontend
+            .recv_payload_into_buf::<VhostUserGpuUpdate>(&mut recv_buf)
+            .unwrap();
+        assert!(fds.is_none());
+        assert_hdr(
+            &hdr,
+            GpuBackendReq::UPDATE,
+            size_of_val(&request) + payload.len(),
+        );
+        assert_eq!(req_body, request);
+
+        assert_eq!(&payload[..], &recv_buf[..recv_buf_len]);
 
         sender_thread.join().expect("Failed to send!");
     }
