@@ -195,6 +195,24 @@ impl GpuBackend {
         Ok(())
     }
 
+    /// Send the VHOST_USER_GPU_DMABUF_SCANOUT2  message to the frontend. Doesn't wait for a reply.
+    /// Same as `set_dmabuf_scanout` (VHOST_USER_GPU_DMABUF_SCANOUT), but also sends the dmabuf
+    /// modifiers appended to the message, which were not provided in the other message. This
+    /// message requires the VhostUserGpuProtocolFeatures::DMABUF2
+    /// (VHOST_USER_GPU_PROTOCOL_F_DMABUF2) protocol feature to be supported.
+    pub fn set_dmabuf_scanout2(
+        &self,
+        scanout: &VhostUserGpuDMABUFScanout2,
+        fd: Option<&impl AsRawFd>,
+    ) -> io::Result<()> {
+        let mut node = self.node();
+
+        let fd = fd.map(AsRawFd::as_raw_fd);
+        let fd = fd.as_ref().map(slice::from_ref);
+        node.send_message(GpuBackendReq::DMABUF_SCANOUT2, scanout, fd)?;
+        Ok(())
+    }
+
     /// Send the VHOST_USER_GPU_DMABUF_UPDATE message to the frontend and wait for acknowledgment.
     /// The display should be flushed and presented according to updated region
     /// from VhostUserGpuUpdate.
@@ -606,6 +624,30 @@ mod tests {
         assert_eq!(req_body, request);
 
         assert_eq!(&payload[..], &recv_buf[..recv_buf_len]);
+
+        sender_thread.join().expect("Failed to send!");
+    }
+
+    #[test]
+    fn test_set_dmabuf_scanout2() {
+        let (mut frontend, backend) = frontend_backend_pair();
+
+        let request = VhostUserGpuDMABUFScanout2 {
+            dmabuf_scanout: TEST_DMABUF_SCANOUT_REQUEST,
+            modifier: 13,
+        };
+
+        let fd: RawFd = STDOUT_FILENO;
+
+        let sender_thread = thread::spawn(move || {
+            let _: () = backend.set_dmabuf_scanout2(&request, Some(&fd)).unwrap();
+        });
+
+        let (hdr, req_body, fds) = frontend.recv_body::<VhostUserGpuDMABUFScanout2>().unwrap();
+
+        assert!(fds.is_some_and(|fds| fds.len() == 1));
+        assert_hdr(&hdr, GpuBackendReq::DMABUF_SCANOUT2, size_of_val(&request));
+        assert_eq!(req_body, request);
 
         sender_thread.join().expect("Failed to send!");
     }
