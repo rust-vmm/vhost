@@ -326,6 +326,21 @@ unsafe impl ByteValued for VhostUserGpuDMABUFScanout {}
 
 impl VhostUserMsgValidator for VhostUserGpuDMABUFScanout {}
 
+/// The VhostUserGpuDMABUFScanout2 from the vhost-user-gpu specification.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+#[repr(C, packed)]
+pub struct VhostUserGpuDMABUFScanout2 {
+    /// The dmabuf scanout parameters
+    pub dmabuf_scanout: VhostUserGpuDMABUFScanout,
+    /// The DMABUF modifiers
+    pub modifier: u64,
+}
+
+// SAFETY: Safe because all fields are POD.
+unsafe impl ByteValued for VhostUserGpuDMABUFScanout2 {}
+
+impl VhostUserMsgValidator for VhostUserGpuDMABUFScanout2 {}
+
 /// The VhostUserGpuCursorPos from the vhost-user-gpu specification.
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(C)]
