@@ -3,6 +3,7 @@
 
 ### Added
 - [[#241]](https://github.com/rust-vmm/vhost/pull/241) Add shared objects support
+- [[#239]](https://github.com/rust-vmm/vhost/pull/239) Add support for `VHOST_USER_GPU_SET_SOCKET`
 
 ### Changed
 - [[#240]](https://github.com/rust-vmm/vhost/pull/240) Move the set of event_idx property from set_vring_base callback to set_features one
