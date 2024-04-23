@@ -4,6 +4,7 @@
 ### Added
 
 ### Changed
+- [[#240]](https://github.com/rust-vmm/vhost/pull/240) Move the set of event_idx property from set_vring_base callback to set_features one
 
 ### Fixed
 

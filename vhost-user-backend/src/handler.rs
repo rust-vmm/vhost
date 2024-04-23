@@ -279,6 +279,11 @@ where
             }
         }
 
+        let event_idx: bool = (self.acked_features & (1 << VIRTIO_RING_F_EVENT_IDX)) != 0;
+        for vring in self.vrings.iter_mut() {
+            vring.set_queue_event_idx(event_idx);
+        }
+        self.backend.set_event_idx(event_idx);
         self.backend.acked_features(self.acked_features);
 
         Ok(())
@@ -398,11 +403,7 @@ where
             .get(index as usize)
             .ok_or_else(|| VhostUserError::InvalidParam)?;
 
-        let event_idx: bool = (self.acked_features & (1 << VIRTIO_RING_F_EVENT_IDX)) != 0;
-
         vring.set_queue_next_avail(base as u16);
-        vring.set_queue_event_idx(event_idx);
-        self.backend.set_event_idx(event_idx);
 
         Ok(())
     }
