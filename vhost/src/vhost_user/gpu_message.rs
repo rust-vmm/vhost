@@ -168,4 +168,5 @@ impl<T: Req> VhostUserMsgValidator for VhostUserGpuMsgHeader<T> {
 
 impl<R: Req> MsgHeader for VhostUserGpuMsgHeader<R> {
     type Request = R;
+    const MAX_MSG_SIZE: usize = u32::MAX as usize;
 }
