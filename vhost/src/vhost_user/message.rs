@@ -25,6 +25,15 @@ use vm_memory::{GuestAddress, MmapRange, MmapXenFlags};
 use super::{enum_value, Error, Result};
 use crate::VringConfigData;
 
+/*
+TODO: Consider deprecating this. We don't actually have any preallocated buffers except in tests,
+so we should be able to support u32::MAX normally.
+Also this doesn't need to be public api, since Endpoint is private anyway, this doesn't seem
+useful for consumers of this crate.
+
+There are GPU specific messages (GpuBackendReq::UPDATE and CURSOR_UPDATE) that are larger than 4K.
+We can use MsgHeader::MAX_MSG_SIZE, if we want to support larger messages only for GPU headers.
+*/
 /// The vhost-user specification uses a field of u32 to store message length.
 /// On the other hand, preallocated buffers are needed to receive messages from the Unix domain
 /// socket. To preallocating a 4GB buffer for each vhost-user message is really just an overhead.
@@ -58,6 +67,9 @@ pub(super) trait Req:
 
 pub(super) trait MsgHeader: ByteValued + Copy + Default + VhostUserMsgValidator {
     type Request: Req;
+
+    /// The maximum size of a msg that can be encapsulated by this MsgHeader
+    const MAX_MSG_SIZE: usize;
 }
 
 enum_value! {
@@ -228,6 +240,7 @@ pub(super) struct VhostUserMsgHeader<R: Req> {
 
 impl<R: Req> MsgHeader for VhostUserMsgHeader<R> {
     type Request = R;
+    const MAX_MSG_SIZE: usize = MAX_MSG_SIZE;
 }
 
 impl<R: Req> Debug for VhostUserMsgHeader<R> {
