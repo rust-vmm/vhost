@@ -226,7 +226,7 @@ impl<H: MsgHeader> Endpoint<H> {
         body: &T,
         fds: Option<&[RawFd]>,
     ) -> Result<()> {
-        if mem::size_of::<T>() > MAX_MSG_SIZE {
+        if mem::size_of::<T>() > H::MAX_MSG_SIZE {
             return Err(Error::OversizedMsg);
         }
         let bytes = self.send_iovec_all(&[hdr.as_slice(), body.as_slice()], fds)?;
@@ -255,10 +255,10 @@ impl<H: MsgHeader> Endpoint<H> {
         fds: Option<&[RawFd]>,
     ) -> Result<()> {
         let len = payload.len();
-        if mem::size_of::<T>() > MAX_MSG_SIZE {
+        if mem::size_of::<T>() > H::MAX_MSG_SIZE {
             return Err(Error::OversizedMsg);
         }
-        if len > MAX_MSG_SIZE - mem::size_of::<T>() {
+        if len > H::MAX_MSG_SIZE - mem::size_of::<T>() {
             return Err(Error::OversizedMsg);
         }
         if let Some(fd_arr) = fds {
