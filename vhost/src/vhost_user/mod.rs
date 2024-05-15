@@ -218,6 +218,44 @@ pub(crate) fn take_single_file(files: Option<Vec<File>>) -> Option<File> {
     Some(files.swap_remove(0))
 }
 
+// Utility to generate `TryFrom` and `From` implementation for enums
+macro_rules! enum_value {
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $enum:ident: $T:tt {
+            $(
+                $(#[$variant_meta:meta])*
+                $variant:ident $(= $val:expr)?,
+            )*
+        }
+    ) => {
+        #[repr($T)]
+        $(#[$meta])*
+        $vis enum $enum {
+            $($(#[$variant_meta])* $variant $(= $val)?,)*
+        }
+
+        impl std::convert::TryFrom<$T> for $enum {
+            type Error = ();
+
+            fn try_from(v: $T) -> std::result::Result<Self, Self::Error> {
+                match v {
+                    $(v if v == $enum::$variant as $T => Ok($enum::$variant),)*
+                    _ => Err(()),
+                }
+            }
+        }
+
+        impl std::convert::From<$enum> for $T {
+            fn from(v: $enum) -> $T {
+                v as $T
+            }
+        }
+    }
+}
+
+use enum_value;
+
 #[cfg(all(test, feature = "vhost-user-backend"))]
 mod dummy_backend;
 
