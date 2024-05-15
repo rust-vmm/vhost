@@ -22,7 +22,7 @@
     },
     {
       "test_name": "unittests-gnu-all-with-xen",
-      "command": "cargo test --workspace --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,vhost-user-backend,xen",
+      "command": "cargo test --workspace --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,gpu-socket,vhost-user-backend,xen",
       "platform": [
         "x86_64",
         "aarch64"
@@ -30,7 +30,7 @@
     },
     {
       "test_name": "unittests-gnu-all-without-xen",
-      "command": "cargo test --workspace --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,vhost-user-backend,postcopy",
+      "command": "cargo test --workspace --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,gpu-socket,vhost-user-backend,postcopy",
       "platform": [
         "x86_64",
         "aarch64"
@@ -38,7 +38,7 @@
     },
     {
       "test_name": "unittests-musl-all-with-xen",
-      "command": "cargo test --workspace --target {target_platform}-unknown-linux-musl --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,vhost-user-backend,xen",
+      "command": "cargo test --workspace --target {target_platform}-unknown-linux-musl --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,gpu-socket,vhost-user-backend,xen",
       "platform": [
         "x86_64",
         "aarch64"
@@ -46,7 +46,7 @@
     },
     {
       "test_name": "unittests-musl-all-without-xen",
-      "command": "cargo test --workspace --target {target_platform}-unknown-linux-musl --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,vhost-user-backend,postcopy",
+      "command": "cargo test --workspace --target {target_platform}-unknown-linux-musl --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,gpu-socket,vhost-user-backend,postcopy",
       "platform": [
         "x86_64",
         "aarch64"
@@ -54,7 +54,7 @@
     },
     {
       "test_name": "clippy-all-with-xen",
-      "command": "cargo clippy --workspace --bins --examples --benches --all-targets --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,vhost-user-backend,xen -- -D warnings -D clippy::undocumented_unsafe_blocks",
+      "command": "cargo clippy --workspace --bins --examples --benches --all-targets --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,gpu-socket,vhost-user-backend,xen -- -D warnings -D clippy::undocumented_unsafe_blocks",
       "platform": [
         "x86_64",
         "aarch64"
@@ -62,7 +62,7 @@
     },
     {
       "test_name": "clippy-all-without-xen",
-      "command": "cargo clippy --workspace --bins --examples --benches --all-targets --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,vhost-user-backend,postcopy -- -D warnings -D clippy::undocumented_unsafe_blocks",
+      "command": "cargo clippy --workspace --bins --examples --benches --all-targets --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,gpu-socket,vhost-user-backend,postcopy -- -D warnings -D clippy::undocumented_unsafe_blocks",
       "platform": [
         "x86_64",
         "aarch64"
@@ -70,7 +70,7 @@
     },
     {
       "test_name": "check-warnings-all-with-xen",
-      "command": "RUSTFLAGS=\"-D warnings\" cargo check --all-targets --workspace --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,vhost-user-backend,xen",
+      "command": "RUSTFLAGS=\"-D warnings\" cargo check --all-targets --workspace --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,gpu-socket,vhost-user-backend,xen",
       "platform": [
         "x86_64",
         "aarch64"
@@ -78,7 +78,7 @@
     },
     {
       "test_name": "check-warnings-all-without-xen",
-      "command": "RUSTFLAGS=\"-D warnings\" cargo check --all-targets --workspace --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,vhost-user-backend,postcopy",
+      "command": "RUSTFLAGS=\"-D warnings\" cargo check --all-targets --workspace --no-default-features --features test-utils,vhost-vsock,vhost-kern,vhost-vdpa,vhost-net,vhost-user,vhost-user-frontend,gpu-socket,vhost-user-backend,postcopy",
       "platform": [
         "x86_64",
         "aarch64"
