@@ -22,7 +22,7 @@ use vm_memory::{mmap::NewBitmap, ByteValued, Error as MmapError, FileOffset, Mma
 #[cfg(feature = "xen")]
 use vm_memory::{GuestAddress, MmapRange, MmapXenFlags};
 
-use super::{Error, Result};
+use super::{enum_value, Error, Result};
 use crate::VringConfigData;
 
 /// The vhost-user specification uses a field of u32 to store message length.
@@ -58,41 +58,6 @@ pub(super) trait Req:
 
 pub(super) trait MsgHeader: ByteValued + Copy + Default + VhostUserMsgValidator {
     type Request: Req;
-}
-
-macro_rules! enum_value {
-    (
-        $(#[$meta:meta])*
-        $vis:vis enum $enum:ident: $T:tt {
-            $(
-                $(#[$variant_meta:meta])*
-                $variant:ident $(= $val:expr)?,
-            )*
-        }
-    ) => {
-        #[repr($T)]
-        $(#[$meta])*
-        $vis enum $enum {
-            $($(#[$variant_meta])* $variant $(= $val)?,)*
-        }
-
-        impl std::convert::TryFrom<$T> for $enum {
-            type Error = ();
-
-            fn try_from(v: $T) -> std::result::Result<Self, Self::Error> {
-                match v {
-                    $(v if v == $enum::$variant as $T => Ok($enum::$variant),)*
-                    _ => Err(()),
-                }
-            }
-        }
-
-        impl std::convert::From<$enum> for $T {
-            fn from(v: $enum) -> $T {
-                v as $T
-            }
-        }
-    }
 }
 
 enum_value! {
