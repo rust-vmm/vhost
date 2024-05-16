@@ -33,6 +33,25 @@ pub trait VhostUserFrontendReqHandler {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
+    /// Handle shared object add operation
+    fn shared_object_add(&self, _uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
+    /// Handle shared object remove operation
+    fn shared_object_remove(&self, _uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
+    /// Handle shared object lookup operation
+    fn shared_object_lookup(
+        &self,
+        _uuid: &VhostUserSharedMsg,
+        _fd: &dyn AsRawFd,
+    ) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
     /// Handle virtio-fs map file requests.
     fn fs_backend_map(&self, _fs: &VhostUserFSBackendMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
@@ -63,6 +82,25 @@ pub trait VhostUserFrontendReqHandler {
 pub trait VhostUserFrontendReqHandlerMut {
     /// Handle device configuration change notifications.
     fn handle_config_change(&mut self) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
+    /// Handle shared object add operation
+    fn shared_object_add(&mut self, _uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
+    /// Handle shared object remove operation
+    fn shared_object_remove(&mut self, _uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
+    /// Handle shared object lookup operation
+    fn shared_object_lookup(
+        &mut self,
+        _uuid: &VhostUserSharedMsg,
+        _fd: &dyn AsRawFd,
+    ) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
@@ -101,6 +139,25 @@ pub trait VhostUserFrontendReqHandlerMut {
 impl<S: VhostUserFrontendReqHandlerMut> VhostUserFrontendReqHandler for Mutex<S> {
     fn handle_config_change(&self) -> HandlerResult<u64> {
         self.lock().unwrap().handle_config_change()
+    }
+
+    /// Handle shared object add operation
+    fn shared_object_add(&self, uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
+        self.lock().unwrap().shared_object_add(uuid)
+    }
+
+    /// Handle shared object remove operation
+    fn shared_object_remove(&self, uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
+        self.lock().unwrap().shared_object_remove(uuid)
+    }
+
+    /// Handle shared object lookup operation
+    fn shared_object_lookup(
+        &self,
+        uuid: &VhostUserSharedMsg,
+        fd: &dyn AsRawFd,
+    ) -> HandlerResult<u64> {
+        self.lock().unwrap().shared_object_lookup(uuid, fd)
     }
 
     fn fs_backend_map(&self, fs: &VhostUserFSBackendMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
@@ -230,6 +287,24 @@ impl<S: VhostUserFrontendReqHandler> FrontendReqHandler<S> {
                     .handle_config_change()
                     .map_err(Error::ReqHandlerError)
             }
+            Ok(BackendReq::SHARED_OBJECT_ADD) => {
+                let msg = self.extract_msg_body::<VhostUserSharedMsg>(&hdr, size, &buf)?;
+                self.backend
+                    .shared_object_add(&msg)
+                    .map_err(Error::ReqHandlerError)
+            }
+            Ok(BackendReq::SHARED_OBJECT_REMOVE) => {
+                let msg = self.extract_msg_body::<VhostUserSharedMsg>(&hdr, size, &buf)?;
+                self.backend
+                    .shared_object_remove(&msg)
+                    .map_err(Error::ReqHandlerError)
+            }
+            Ok(BackendReq::SHARED_OBJECT_LOOKUP) => {
+                let msg = self.extract_msg_body::<VhostUserSharedMsg>(&hdr, size, &buf)?;
+                self.backend
+                    .shared_object_lookup(&msg, &files.unwrap()[0])
+                    .map_err(Error::ReqHandlerError)
+            }
             Ok(BackendReq::FS_MAP) => {
                 let msg = self.extract_msg_body::<VhostUserFSBackendMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
@@ -293,7 +368,7 @@ impl<S: VhostUserFrontendReqHandler> FrontendReqHandler<S> {
         files: &Option<Vec<File>>,
     ) -> Result<()> {
         match hdr.get_code() {
-            Ok(BackendReq::FS_MAP | BackendReq::FS_IO) => {
+            Ok(BackendReq::SHARED_OBJECT_LOOKUP | BackendReq::FS_MAP | BackendReq::FS_IO) => {
                 // Expect a single file is passed.
                 match files {
                     Some(files) if files.len() == 1 => Ok(()),
@@ -370,14 +445,46 @@ impl<S: VhostUserFrontendReqHandler> AsRawFd for FrontendReqHandler<S> {
 mod tests {
     use super::*;
 
+    use std::collections::HashSet;
+
+    use uuid::Uuid;
+
     #[cfg(feature = "vhost-user-backend")]
     use crate::vhost_user::Backend;
     #[cfg(feature = "vhost-user-backend")]
     use std::os::unix::io::FromRawFd;
 
-    struct MockFrontendReqHandler {}
+    struct MockFrontendReqHandler {
+        shared_objects: HashSet<Uuid>,
+    }
+
+    impl MockFrontendReqHandler {
+        fn new() -> Self {
+            Self {
+                shared_objects: HashSet::new(),
+            }
+        }
+    }
 
     impl VhostUserFrontendReqHandlerMut for MockFrontendReqHandler {
+        fn shared_object_add(&mut self, uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
+            Ok(!self.shared_objects.insert(uuid.uuid) as u64)
+        }
+
+        fn shared_object_remove(&mut self, uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
+            Ok(!self.shared_objects.remove(&uuid.uuid) as u64)
+        }
+
+        fn shared_object_lookup(
+            &mut self,
+            uuid: &VhostUserSharedMsg,
+            _fd: &dyn AsRawFd,
+        ) -> HandlerResult<u64> {
+            if self.shared_objects.get(&uuid.uuid).is_some() {
+                return Ok(0);
+            }
+            Ok(1)
+        }
         /// Handle virtio-fs map file requests from the backend.
         fn fs_backend_map(
             &mut self,
@@ -395,7 +502,7 @@ mod tests {
 
     #[test]
     fn test_new_frontend_req_handler() {
-        let backend = Arc::new(Mutex::new(MockFrontendReqHandler {}));
+        let backend = Arc::new(Mutex::new(MockFrontendReqHandler::new()));
         let mut handler = FrontendReqHandler::new(backend).unwrap();
 
         assert!(handler.get_tx_raw_fd() >= 0);
@@ -411,7 +518,7 @@ mod tests {
     #[cfg(feature = "vhost-user-backend")]
     #[test]
     fn test_frontend_backend_req_handler() {
-        let backend = Arc::new(Mutex::new(MockFrontendReqHandler {}));
+        let backend = Arc::new(Mutex::new(MockFrontendReqHandler::new()));
         let mut handler = FrontendReqHandler::new(backend).unwrap();
 
         // SAFETY: Safe because `handler` contains valid fds, and we are
@@ -428,6 +535,13 @@ mod tests {
             let res = handler.handle_request().unwrap();
             assert_eq!(res, 0);
             handler.handle_request().unwrap_err();
+            // Testing shared object messages.
+            assert_eq!(handler.handle_request().unwrap(), 0);
+            assert_eq!(handler.handle_request().unwrap(), 1);
+            assert_eq!(handler.handle_request().unwrap(), 0);
+            assert_eq!(handler.handle_request().unwrap(), 1);
+            assert_eq!(handler.handle_request().unwrap(), 0);
+            assert_eq!(handler.handle_request().unwrap(), 1);
         });
 
         backend
@@ -438,6 +552,23 @@ mod tests {
         backend
             .fs_backend_unmap(&VhostUserFSBackendMsg::default())
             .unwrap();
+
+        let shobj_msg = VhostUserSharedMsg {
+            uuid: Uuid::new_v4(),
+        };
+        assert!(backend.shared_object_add(&shobj_msg).is_ok());
+        assert!(backend.shared_object_add(&shobj_msg).is_ok());
+        assert!(backend.shared_object_lookup(&shobj_msg, &fd).is_ok());
+        assert!(backend
+            .shared_object_lookup(
+                &VhostUserSharedMsg {
+                    uuid: Uuid::new_v4(),
+                },
+                &fd,
+            )
+            .is_ok());
+        assert!(backend.shared_object_remove(&shobj_msg).is_ok());
+        assert!(backend.shared_object_remove(&shobj_msg).is_ok());
         // Ensure that the handler thread did not panic.
         assert!(frontend_handler.join().is_ok());
     }
@@ -445,7 +576,7 @@ mod tests {
     #[cfg(feature = "vhost-user-backend")]
     #[test]
     fn test_frontend_backend_req_handler_with_ack() {
-        let backend = Arc::new(Mutex::new(MockFrontendReqHandler {}));
+        let backend = Arc::new(Mutex::new(MockFrontendReqHandler::new()));
         let mut handler = FrontendReqHandler::new(backend).unwrap();
         handler.set_reply_ack_flag(true);
 
@@ -463,6 +594,13 @@ mod tests {
             let res = handler.handle_request().unwrap();
             assert_eq!(res, 0);
             handler.handle_request().unwrap_err();
+            // Testing shared object messages.
+            assert_eq!(handler.handle_request().unwrap(), 0);
+            assert_eq!(handler.handle_request().unwrap(), 1);
+            assert_eq!(handler.handle_request().unwrap(), 0);
+            assert_eq!(handler.handle_request().unwrap(), 1);
+            assert_eq!(handler.handle_request().unwrap(), 0);
+            assert_eq!(handler.handle_request().unwrap(), 1);
         });
 
         backend.set_reply_ack_flag(true);
@@ -472,6 +610,23 @@ mod tests {
         backend
             .fs_backend_unmap(&VhostUserFSBackendMsg::default())
             .unwrap_err();
+
+        let shobj_msg = VhostUserSharedMsg {
+            uuid: Uuid::new_v4(),
+        };
+        assert!(backend.shared_object_add(&shobj_msg).is_ok());
+        assert!(backend.shared_object_add(&shobj_msg).is_err());
+        assert!(backend.shared_object_lookup(&shobj_msg, &fd).is_ok());
+        assert!(backend
+            .shared_object_lookup(
+                &VhostUserSharedMsg {
+                    uuid: Uuid::new_v4(),
+                },
+                &fd,
+            )
+            .is_err());
+        assert!(backend.shared_object_remove(&shobj_msg).is_ok());
+        assert!(backend.shared_object_remove(&shobj_msg).is_err());
         // Ensure that the handler thread did not panic.
         assert!(frontend_handler.join().is_ok());
     }
