@@ -15,6 +15,8 @@ use std::io;
 use std::marker::PhantomData;
 use std::ops::Deref;
 
+use uuid::Uuid;
+
 use vm_memory::{mmap::NewBitmap, ByteValued, Error as MmapError, FileOffset, MmapRegion};
 
 #[cfg(feature = "xen")]
@@ -178,6 +180,8 @@ enum_value! {
         /// Query the backend for its device status as defined in the VIRTIO
         /// specification.
         GET_STATUS = 40,
+        /// Retrieve a shared object from the device.
+        GET_SHARED_OBJECT = 41,
         /// Begin transfer of internal state to/from the backend for migration
         /// purposes.
         SET_DEVICE_STATE_FD = 42,
@@ -203,6 +207,12 @@ enum_value! {
         VRING_CALL = 4,
         /// Indicate that an error occurred on the specific vring.
         VRING_ERR = 5,
+        /// Add a virtio shared object.
+        SHARED_OBJECT_ADD = 6,
+        /// Remove a virtio shared object.
+        SHARED_OBJECT_REMOVE = 7,
+        /// Lookup for a virtio shared object.
+        SHARED_OBJECT_LOOKUP = 8,
 
         // Non-standard message types.
         /// Virtio-fs draft: map file content into the window.
@@ -444,6 +454,8 @@ bitflags! {
         const STATUS = 0x0001_0000;
         /// Support Xen mmap.
         const XEN_MMAP = 0x0002_0000;
+        /// Support shared objects.
+        const SHARED_OBJECT = 0x0004_0000;
         /// Support transferring internal device state.
         const DEVICE_STATE = 0x0008_0000;
     }
@@ -945,6 +957,25 @@ enum_value! {
     pub enum VhostTransferStatePhase: u32 {
         /// The device (and all its vrings) are stopped
         STOPPED = 0,
+    }
+}
+
+/// Contains UUID to interact with associated virtio shared object.
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct VhostUserSharedMsg {
+    /// UUID of the shared object
+    pub uuid: Uuid,
+}
+
+// SAFETY: Safe because VhostUserSharedMsg is a
+// fixed-size array internally and there is no
+// compiler-inserted padding.
+unsafe impl ByteValued for VhostUserSharedMsg {}
+
+impl VhostUserMsgValidator for VhostUserSharedMsg {
+    fn is_valid(&self) -> bool {
+        !(self.uuid.is_nil() || self.uuid.is_max())
     }
 }
 

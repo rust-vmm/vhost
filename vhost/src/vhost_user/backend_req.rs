@@ -129,6 +129,29 @@ impl Backend {
 }
 
 impl VhostUserFrontendReqHandler for Backend {
+    /// Forward vhost-user shared-object add request to the frontend.
+    fn shared_object_add(&self, uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
+        self.send_message(BackendReq::SHARED_OBJECT_ADD, uuid, None)
+    }
+
+    /// Forward vhost-user shared-object remove request to the frontend.
+    fn shared_object_remove(&self, uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
+        self.send_message(BackendReq::SHARED_OBJECT_REMOVE, uuid, None)
+    }
+
+    /// Forward vhost-user shared-object lookup request to the frontend.
+    fn shared_object_lookup(
+        &self,
+        uuid: &VhostUserSharedMsg,
+        fd: &dyn AsRawFd,
+    ) -> HandlerResult<u64> {
+        self.send_message(
+            BackendReq::SHARED_OBJECT_LOOKUP,
+            uuid,
+            Some(&[fd.as_raw_fd()]),
+        )
+    }
+
     /// Forward vhost-user-fs map file requests to the backend.
     fn fs_backend_map(&self, fs: &VhostUserFSBackendMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
         self.send_message(BackendReq::FS_MAP, fs, Some(&[fd.as_raw_fd()]))
