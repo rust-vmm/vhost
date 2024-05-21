@@ -203,14 +203,16 @@ enum_value! {
         VRING_CALL = 4,
         /// Indicate that an error occurred on the specific vring.
         VRING_ERR = 5,
+
+        // Non-standard message types.
         /// Virtio-fs draft: map file content into the window.
-        FS_MAP = 6,
+        FS_MAP = 1000,
         /// Virtio-fs draft: unmap file content from the window.
-        FS_UNMAP = 7,
+        FS_UNMAP = 1001,
         /// Virtio-fs draft: sync file content.
-        FS_SYNC = 8,
+        FS_SYNC = 1002,
         /// Virtio-fs draft: perform a read/write from an fd directly to GPA.
-        FS_IO = 9,
+        FS_IO = 1003,
     }
 }
 
