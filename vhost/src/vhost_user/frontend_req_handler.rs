@@ -52,6 +52,16 @@ pub trait VhostUserFrontendReqHandler {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
+    /// Handle shared memory region mapping requests.
+    fn shmem_map(&self, _req: &VhostUserMMap, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
+    /// Handle shared memory region unmapping requests.
+    fn shmem_unmap(&self, _req: &VhostUserMMap) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
     // fn handle_iotlb_msg(&mut self, iotlb: VhostUserIotlb);
     // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: &dyn AsRawFd);
 }
@@ -84,6 +94,16 @@ pub trait VhostUserFrontendReqHandlerMut {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
+    /// Handle shared memory region mapping requests.
+    fn shmem_map(&mut self, _req: &VhostUserMMap, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
+    /// Handle shared memory region unmapping requests.
+    fn shmem_unmap(&mut self, _req: &VhostUserMMap) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
     // fn handle_iotlb_msg(&mut self, iotlb: VhostUserIotlb);
     // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: RawFd);
 }
@@ -110,6 +130,14 @@ impl<S: VhostUserFrontendReqHandlerMut> VhostUserFrontendReqHandler for Mutex<S>
         fd: &dyn AsRawFd,
     ) -> HandlerResult<u64> {
         self.lock().unwrap().shared_object_lookup(uuid, fd)
+    }
+
+    fn shmem_map(&self, req: &VhostUserMMap, fd: &dyn AsRawFd) -> HandlerResult<u64> {
+        self.lock().unwrap().shmem_map(req, fd)
+    }
+
+    fn shmem_unmap(&self, req: &VhostUserMMap) -> HandlerResult<u64> {
+        self.lock().unwrap().shmem_unmap(req)
     }
 }
 
@@ -241,6 +269,18 @@ impl<S: VhostUserFrontendReqHandler> FrontendReqHandler<S> {
                     .shared_object_lookup(&msg, &files.unwrap()[0])
                     .map_err(Error::ReqHandlerError)
             }
+            Ok(BackendReq::SHMEM_MAP) => {
+                let msg = self.extract_msg_body::<VhostUserMMap>(&hdr, size, &buf)?;
+                self.backend
+                    .shmem_map(&msg, &files.unwrap()[0])
+                    .map_err(Error::ReqHandlerError)
+            }
+            Ok(BackendReq::SHMEM_UNMAP) => {
+                let msg = self.extract_msg_body::<VhostUserMMap>(&hdr, size, &buf)?;
+                self.backend
+                    .shmem_unmap(&msg)
+                    .map_err(Error::ReqHandlerError)
+            }
             _ => Err(Error::InvalidMessage),
         };
 
@@ -278,7 +318,7 @@ impl<S: VhostUserFrontendReqHandler> FrontendReqHandler<S> {
         files: &Option<Vec<File>>,
     ) -> Result<()> {
         match hdr.get_code() {
-            Ok(BackendReq::SHARED_OBJECT_LOOKUP) => {
+            Ok(BackendReq::SHARED_OBJECT_LOOKUP | BackendReq::SHMEM_MAP) => {
                 // Expect a single file is passed.
                 match files {
                     Some(files) if files.len() == 1 => Ok(()),
@@ -366,12 +406,14 @@ mod tests {
 
     struct MockFrontendReqHandler {
         shared_objects: HashSet<Uuid>,
+        shmem_mappings: HashSet<(u64, u64)>,
     }
 
     impl MockFrontendReqHandler {
         fn new() -> Self {
             Self {
                 shared_objects: HashSet::new(),
+                shmem_mappings: HashSet::new(),
             }
         }
     }
@@ -394,6 +436,16 @@ mod tests {
                 return Ok(0);
             }
             Ok(1)
+        }
+
+        fn shmem_map(&mut self, req: &VhostUserMMap, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
+            assert_eq!({ req.shmid }, 0);
+            Ok(!self.shmem_mappings.insert((req.shm_offset, req.len)) as u64)
+        }
+
+        fn shmem_unmap(&mut self, req: &VhostUserMMap) -> HandlerResult<u64> {
+            assert_eq!({ req.shmid }, 0);
+            Ok(!self.shmem_mappings.remove(&(req.shm_offset, req.len)) as u64)
         }
     }
 
@@ -436,6 +488,13 @@ mod tests {
             assert_eq!(handler.handle_request().unwrap(), 1);
             assert_eq!(handler.handle_request().unwrap(), 0);
             assert_eq!(handler.handle_request().unwrap(), 1);
+
+            // Testing shmem map/unmap messages.
+            assert_eq!(handler.handle_request().unwrap(), 0);
+            assert_eq!(handler.handle_request().unwrap(), 1);
+            assert_eq!(handler.handle_request().unwrap(), 0);
+            assert_eq!(handler.handle_request().unwrap(), 0);
+            assert_eq!(handler.handle_request().unwrap(), 0);
         });
 
         backend.set_shared_object_flag(true);
@@ -456,6 +515,24 @@ mod tests {
             .is_ok());
         assert!(backend.shared_object_remove(&shobj_msg).is_ok());
         assert!(backend.shared_object_remove(&shobj_msg).is_ok());
+
+        let (_, some_fd_to_map) = UnixStream::pair().unwrap();
+        let map_request1 = VhostUserMMap {
+            shm_offset: 0,
+            len: 4096,
+            ..Default::default()
+        };
+        let map_request2 = VhostUserMMap {
+            shm_offset: 4096,
+            len: 8192,
+            ..Default::default()
+        };
+        backend.shmem_map(&map_request1, &some_fd_to_map).unwrap();
+        backend.shmem_unmap(&map_request2).unwrap();
+        backend.shmem_map(&map_request2, &some_fd_to_map).unwrap();
+        backend.shmem_unmap(&map_request2).unwrap();
+        backend.shmem_unmap(&map_request1).unwrap();
+
         // Ensure that the handler thread did not panic.
         assert!(frontend_handler.join().is_ok());
     }
@@ -485,6 +562,13 @@ mod tests {
             assert_eq!(handler.handle_request().unwrap(), 1);
             assert_eq!(handler.handle_request().unwrap(), 0);
             assert_eq!(handler.handle_request().unwrap(), 1);
+
+            // Testing shmem map/unmap messages.
+            assert_eq!(handler.handle_request().unwrap(), 0);
+            assert_eq!(handler.handle_request().unwrap(), 1);
+            assert_eq!(handler.handle_request().unwrap(), 0);
+            assert_eq!(handler.handle_request().unwrap(), 0);
+            assert_eq!(handler.handle_request().unwrap(), 0);
         });
 
         backend.set_reply_ack_flag(true);
@@ -506,6 +590,24 @@ mod tests {
             .is_err());
         assert!(backend.shared_object_remove(&shobj_msg).is_ok());
         assert!(backend.shared_object_remove(&shobj_msg).is_err());
+
+        let (_, some_fd_to_map) = UnixStream::pair().unwrap();
+        let map_request1 = VhostUserMMap {
+            shm_offset: 0,
+            len: 4096,
+            ..Default::default()
+        };
+        let map_request2 = VhostUserMMap {
+            shm_offset: 4096,
+            len: 8192,
+            ..Default::default()
+        };
+        backend.shmem_map(&map_request1, &some_fd_to_map).unwrap();
+        backend.shmem_unmap(&map_request2).unwrap_err();
+        backend.shmem_map(&map_request2, &some_fd_to_map).unwrap();
+        backend.shmem_unmap(&map_request2).unwrap();
+        backend.shmem_unmap(&map_request1).unwrap();
+
         // Ensure that the handler thread did not panic.
         assert!(frontend_handler.join().is_ok());
     }
