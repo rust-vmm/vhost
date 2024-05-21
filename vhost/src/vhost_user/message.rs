@@ -194,6 +194,10 @@ enum_value! {
         SHARED_OBJECT_REMOVE = 7,
         /// Lookup for a virtio shared object.
         SHARED_OBJECT_LOOKUP = 8,
+        /// Map memory into guest address space
+        SHMEM_MAP = 9,
+        /// Unmap memory from guest address space
+        SHMEM_UNMAP = 10,
     }
 }
 
@@ -434,6 +438,9 @@ bitflags! {
         const SHARED_OBJECT = 0x0004_0000;
         /// Support transferring internal device state.
         const DEVICE_STATE = 0x0008_0000;
+        /// Allow the backend to request file descriptors be mapped into virtio shared memory
+        /// regions.
+        const SHMEM = 0x0010_0000;
     }
 }
 
@@ -987,6 +994,47 @@ impl VhostUserMsgValidator for VhostUserTransferDeviceState {
     }
 }
 
+// Bit mask for flags in VhostUserMMap struct
+bitflags! {
+    #[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
+    /// Flags specifying access permissions of memory mapping of a file
+    /// Use VhostUserMMapFlags::default() for a read-only mapping
+    pub struct VhostUserMMapFlags: u64 {
+        /// Read-write permission
+        const WRITABLE = 1 << 0;
+    }
+}
+
+/// Backend request to mmap a file-backed buffer into guest memory
+#[repr(C, packed)]
+#[derive(Debug, Copy, Clone, Default)]
+pub struct VhostUserMMap {
+    /// Shared memory region ID.
+    pub shmid: u8,
+    /// Struct padding.
+    pub padding: [u8; 7],
+    /// File offset.
+    pub fd_offset: u64,
+    /// Offset into the shared memory region.
+    pub shm_offset: u64,
+    /// Size of region to map.
+    pub len: u64,
+    /// Flags for the mmap operation
+    pub flags: u64,
+}
+
+// SAFETY: Safe because all fields of VhostUserMMap are POD.
+unsafe impl ByteValued for VhostUserMMap {}
+
+impl VhostUserMsgValidator for VhostUserMMap {
+    fn is_valid(&self) -> bool {
+        // NOTE: we currently don't check padding, because spec doesn't specify it must be zeroed
+        self.fd_offset.checked_add(self.len).is_some()
+            && self.shm_offset.checked_add(self.len).is_some()
+            && self.len != 0
+            && VhostUserMMapFlags::from_bits(self.flags).is_some()
+    }
+}
 /// Inflight I/O descriptor state for split virtqueues
 #[repr(C, packed)]
 #[derive(Clone, Copy, Default)]
@@ -1412,6 +1460,42 @@ mod tests {
         msg.flags |= VhostUserConfigFlags::LIVE_MIGRATION.bits();
         assert!(msg.is_valid());
         msg.flags |= 0x4;
+        assert!(!msg.is_valid());
+    }
+
+    #[test]
+    fn check_user_mmap_msg() {
+        let mut msg = VhostUserMMap {
+            shmid: 0,
+            padding: [0; 7],
+            fd_offset: 0,
+            shm_offset: 0x1000,
+            len: 0x2000,
+            flags: VhostUserMMapFlags::WRITABLE.bits(),
+        };
+        assert!(msg.is_valid());
+
+        // Check read-only flag (empty flags) is valid
+        msg.flags = 0;
+        assert!(msg.is_valid());
+
+        // Check invalid flags
+        msg.flags = 0x2; // invalid flag bit
+        assert!(!msg.is_valid());
+        msg.flags = VhostUserMMapFlags::WRITABLE.bits();
+
+        // Check len == 0 is invalid
+        msg.len = 0;
+        assert!(!msg.is_valid());
+        msg.len = 0x2000;
+
+        // Check fd_offset + len overflow is invalid
+        msg.fd_offset = u64::MAX - msg.len + 1;
+        assert!(!msg.is_valid());
+        msg.fd_offset = 0;
+
+        // Check shm_offset + len overflow is invalid
+        msg.shm_offset = u64::MAX - msg.len + 1;
         assert!(!msg.is_valid());
     }
 }

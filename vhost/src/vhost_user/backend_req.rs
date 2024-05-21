@@ -22,6 +22,9 @@ struct BackendInternal {
     // Protocol feature VHOST_USER_PROTOCOL_F_SHARED_OBJECT has been negotiated.
     shared_object_negotiated: bool,
 
+    // Protocol feature VHOST_USER_PROTOCOL_F_SHMEM has been negotiated.
+    shmem_negotiated: bool,
+
     // whether the endpoint has encountered any failure
     error: Option<i32>,
 }
@@ -92,6 +95,7 @@ impl Backend {
                 sock: ep,
                 reply_ack_negotiated: false,
                 shared_object_negotiated: false,
+                shmem_negotiated: false,
                 error: None,
             })),
         }
@@ -136,6 +140,14 @@ impl Backend {
         self.node().shared_object_negotiated = enable;
     }
 
+    /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_SHMEM` protocol feature.
+    ///
+    /// When the `VHOST_USER_PROTOCOL_F_SHMEM` protocol feature has been negotiated,
+    /// the backend is allowed to send "SHMEM_{MAP, UNMAP}" messages to the frontend.
+    pub fn set_shmem_flag(&self, enable: bool) {
+        self.node().shmem_negotiated = enable;
+    }
+
     /// Mark endpoint as failed with specified error code.
     pub fn set_failed(&self, error: i32) {
         self.node().error = Some(error);
@@ -173,6 +185,22 @@ impl VhostUserFrontendReqHandler for Backend {
             uuid,
             Some(&[fd.as_raw_fd()]),
         )
+    }
+
+    /// Forward vhost-user memory map file request to the frontend.
+    fn shmem_map(&self, req: &VhostUserMMap, fd: &dyn AsRawFd) -> HandlerResult<u64> {
+        if !self.node().shmem_negotiated {
+            return Err(io::Error::other("SHMEM feature not negotiated"));
+        }
+        self.send_message(BackendReq::SHMEM_MAP, req, Some(&[fd.as_raw_fd()]))
+    }
+
+    /// Forward vhost-user memory unmap file request to the frontend.
+    fn shmem_unmap(&self, req: &VhostUserMMap) -> HandlerResult<u64> {
+        if !self.node().shmem_negotiated {
+            return Err(io::Error::other("SHMEM feature not negotiated"));
+        }
+        self.send_message(BackendReq::SHMEM_UNMAP, req, None)
     }
 }
 
@@ -259,5 +287,61 @@ mod tests {
         backend
             .shared_object_add(&VhostUserSharedMsg::default())
             .unwrap();
+    }
+
+    #[test]
+    fn test_shmem_map() {
+        let (mut frontend, backend) = frontend_backend_pair();
+
+        let (_, some_fd_to_send) = UnixStream::pair().unwrap();
+        let map_request = VhostUserMMap {
+            shmid: 0,
+            padding: Default::default(),
+            fd_offset: 0,
+            shm_offset: 1028,
+            len: 4096,
+            flags: VhostUserMMapFlags::WRITABLE.bits(),
+        };
+
+        // Feature not negotiated -> fails
+        backend
+            .shmem_map(&map_request, &some_fd_to_send)
+            .unwrap_err();
+
+        backend.set_shmem_flag(true);
+        backend.shmem_map(&map_request, &some_fd_to_send).unwrap();
+
+        let (hdr, request, fd) = frontend.recv_body::<VhostUserMMap>().unwrap();
+        assert_eq!(hdr.get_code().unwrap(), BackendReq::SHMEM_MAP);
+        assert!(fd.is_some());
+        assert_eq!({ request.shm_offset }, { map_request.shm_offset });
+        assert_eq!({ request.len }, { map_request.len });
+        assert_eq!({ request.flags }, { map_request.flags });
+    }
+
+    #[test]
+    fn test_shmem_unmap() {
+        let (mut frontend, backend) = frontend_backend_pair();
+
+        let unmap_request = VhostUserMMap {
+            shmid: 0,
+            padding: Default::default(),
+            fd_offset: 0,
+            shm_offset: 1028,
+            len: 4096,
+            flags: 0,
+        };
+
+        // Feature not negotiated -> fails
+        backend.shmem_unmap(&unmap_request).unwrap_err();
+
+        backend.set_shmem_flag(true);
+        backend.shmem_unmap(&unmap_request).unwrap();
+
+        let (hdr, request, fd) = frontend.recv_body::<VhostUserMMap>().unwrap();
+        assert_eq!(hdr.get_code().unwrap(), BackendReq::SHMEM_UNMAP);
+        assert!(fd.is_none());
+        assert_eq!({ request.shm_offset }, { unmap_request.shm_offset });
+        assert_eq!({ request.len }, { unmap_request.len });
     }
 }

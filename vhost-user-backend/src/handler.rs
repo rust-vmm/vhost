@@ -560,6 +560,9 @@ where
         if self.acked_protocol_features & VhostUserProtocolFeatures::SHARED_OBJECT.bits() != 0 {
             backend.set_shared_object_flag(true);
         }
+        if self.acked_protocol_features & VhostUserProtocolFeatures::SHMEM.bits() != 0 {
+            backend.set_shmem_flag(true);
+        }
         self.backend.set_backend_req_fd(backend);
     }
 

@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- [[#251]](https://github.com/rust-vmm/vhost/pull/251) Add `SHMEM_MAP` and `SHMEM_UNMAP` support
+
 ### Changed
 ### Deprecated
 ### Fixed
