@@ -19,6 +19,9 @@ struct BackendInternal {
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     reply_ack_negotiated: bool,
 
+    // Protocol feature VHOST_USER_PROTOCOL_F_SHARED_OBJECT has been negotiated.
+    shared_object_negotiated: bool,
+
     // whether the endpoint has encountered any failure
     error: Option<i32>,
 }
@@ -88,6 +91,7 @@ impl Backend {
             node: Arc::new(Mutex::new(BackendInternal {
                 sock: ep,
                 reply_ack_negotiated: false,
+                shared_object_negotiated: false,
                 error: None,
             })),
         }
@@ -122,6 +126,14 @@ impl Backend {
         self.node().reply_ack_negotiated = enable;
     }
 
+    /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_SHARED_OBJECT` protocol feature.
+    ///
+    /// When the `VHOST_USER_PROTOCOL_F_SHARED_OBJECT` protocol feature has been negotiated,
+    /// the backend is allowed to send "SHARED_OBJECT_*" messages to the frontend.
+    pub fn set_shared_object_flag(&self, enable: bool) {
+        self.node().shared_object_negotiated = enable;
+    }
+
     /// Mark endpoint as failed with specified error code.
     pub fn set_failed(&self, error: i32) {
         self.node().error = Some(error);
@@ -131,11 +143,23 @@ impl Backend {
 impl VhostUserFrontendReqHandler for Backend {
     /// Forward vhost-user shared-object add request to the frontend.
     fn shared_object_add(&self, uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
+        if !self.node().shared_object_negotiated {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Shared Object feature not negotiated",
+            ));
+        }
         self.send_message(BackendReq::SHARED_OBJECT_ADD, uuid, None)
     }
 
     /// Forward vhost-user shared-object remove request to the frontend.
     fn shared_object_remove(&self, uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
+        if !self.node().shared_object_negotiated {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Shared Object feature not negotiated",
+            ));
+        }
         self.send_message(BackendReq::SHARED_OBJECT_REMOVE, uuid, None)
     }
 
@@ -145,6 +169,12 @@ impl VhostUserFrontendReqHandler for Backend {
         uuid: &VhostUserSharedMsg,
         fd: &dyn AsRawFd,
     ) -> HandlerResult<u64> {
+        if !self.node().shared_object_negotiated {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Shared Object feature not negotiated",
+            ));
+        }
         self.send_message(
             BackendReq::SHARED_OBJECT_LOOKUP,
             uuid,

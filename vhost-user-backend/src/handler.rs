@@ -546,7 +546,9 @@ where
         if self.acked_protocol_features & VhostUserProtocolFeatures::REPLY_ACK.bits() != 0 {
             backend.set_reply_ack_flag(true);
         }
-
+        if self.acked_protocol_features & VhostUserProtocolFeatures::SHARED_OBJECT.bits() != 0 {
+            backend.set_shared_object_flag(true);
+        }
         self.backend.set_backend_req_fd(backend);
     }
 
