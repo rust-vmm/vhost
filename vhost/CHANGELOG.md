@@ -2,6 +2,7 @@
 ## [Unreleased]
 
 ### Added
+- [[#241]](https://github.com/rust-vmm/vhost/pull/241) Add shared objects support
 
 ### Changed
 
