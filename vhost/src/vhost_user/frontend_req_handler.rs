@@ -544,6 +544,7 @@ mod tests {
             assert_eq!(handler.handle_request().unwrap(), 1);
         });
 
+        backend.set_shared_object_flag(true);
         backend
             .fs_backend_map(&VhostUserFSBackendMsg::default(), &fd)
             .unwrap();
@@ -604,6 +605,7 @@ mod tests {
         });
 
         backend.set_reply_ack_flag(true);
+        backend.set_shared_object_flag(true);
         backend
             .fs_backend_map(&VhostUserFSBackendMsg::default(), &fd)
             .unwrap();
