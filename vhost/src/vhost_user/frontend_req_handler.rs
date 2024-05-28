@@ -424,7 +424,7 @@ mod tests {
         let stream = unsafe { UnixStream::from_raw_fd(fd) };
         let backend = Backend::from_stream(stream);
 
-        std::thread::spawn(move || {
+        let frontend_handler = std::thread::spawn(move || {
             let res = handler.handle_request().unwrap();
             assert_eq!(res, 0);
             handler.handle_request().unwrap_err();
@@ -438,6 +438,8 @@ mod tests {
         backend
             .fs_backend_unmap(&VhostUserFSBackendMsg::default())
             .unwrap();
+        // Ensure that the handler thread did not panic.
+        assert!(frontend_handler.join().is_ok());
     }
 
     #[cfg(feature = "vhost-user-backend")]
@@ -457,7 +459,7 @@ mod tests {
         let stream = unsafe { UnixStream::from_raw_fd(fd) };
         let backend = Backend::from_stream(stream);
 
-        std::thread::spawn(move || {
+        let frontend_handler = std::thread::spawn(move || {
             let res = handler.handle_request().unwrap();
             assert_eq!(res, 0);
             handler.handle_request().unwrap_err();
@@ -470,5 +472,7 @@ mod tests {
         backend
             .fs_backend_unmap(&VhostUserFSBackendMsg::default())
             .unwrap_err();
+        // Ensure that the handler thread did not panic.
+        assert!(frontend_handler.join().is_ok());
     }
 }
