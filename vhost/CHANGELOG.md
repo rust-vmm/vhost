@@ -5,6 +5,7 @@
 - [[#241]](https://github.com/rust-vmm/vhost/pull/241) Add shared objects support
 
 ### Changed
+- [[#243]](https://github.com/rust-vmm/vhost/pull/243) Ignore unknown bits in `VHOST_USER_GET_PROTOCOL_FEATURES` response.
 
 ### Remove
 - [[#246]](https://github.com/rust-vmm/vhost/pull/246) Remove support for FS_* requests

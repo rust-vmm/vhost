@@ -362,12 +362,9 @@ impl VhostUserFrontend for Frontend {
         let hdr = node.send_request_header(FrontendReq::GET_PROTOCOL_FEATURES, None)?;
         let val = node.recv_reply::<VhostUserU64>(&hdr)?;
         node.protocol_features = val.value;
-        // Should we support forward compatibility?
-        // If so just mask out unrecognized flags instead of return errors.
-        match VhostUserProtocolFeatures::from_bits(node.protocol_features) {
-            Some(val) => Ok(val),
-            None => error_code(VhostUserError::InvalidMessage),
-        }
+        Ok(VhostUserProtocolFeatures::from_bits_truncate(
+            node.protocol_features,
+        ))
     }
 
     fn set_protocol_features(&mut self, features: VhostUserProtocolFeatures) -> Result<()> {
@@ -811,6 +808,8 @@ mod tests {
 
     use std::path::PathBuf;
 
+    const INVALID_PROTOCOL_FEATURE: u64 = 1 << 63;
+
     fn temp_path() -> PathBuf {
         PathBuf::from(format!(
             "/tmp/vhost_test_{}",
@@ -935,7 +934,8 @@ mod tests {
 
         let pfeatures = VhostUserProtocolFeatures::all();
         let hdr = VhostUserMsgHeader::new(FrontendReq::GET_PROTOCOL_FEATURES, 0x4, 8);
-        let msg = VhostUserU64::new(pfeatures.bits());
+        // Unknown feature bits should be ignored.
+        let msg = VhostUserU64::new(pfeatures.bits() | INVALID_PROTOCOL_FEATURE);
         peer.send_message(&hdr, &msg, None).unwrap();
         let features = frontend.get_protocol_features().unwrap();
         assert_eq!(features, pfeatures);
