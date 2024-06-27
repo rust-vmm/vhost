@@ -6,6 +6,9 @@
 
 ### Changed
 
+### Remove
+- [[#246]](https://github.com/rust-vmm/vhost/pull/246) Remove support for FS_* requests
+
 ### Fixed
 
 ### Deprecated
