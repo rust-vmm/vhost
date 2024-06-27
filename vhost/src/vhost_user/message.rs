@@ -213,16 +213,6 @@ enum_value! {
         SHARED_OBJECT_REMOVE = 7,
         /// Lookup for a virtio shared object.
         SHARED_OBJECT_LOOKUP = 8,
-
-        // Non-standard message types.
-        /// Virtio-fs draft: map file content into the window.
-        FS_MAP = 1000,
-        /// Virtio-fs draft: unmap file content from the window.
-        FS_UNMAP = 1001,
-        /// Virtio-fs draft: sync file content.
-        FS_SYNC = 1002,
-        /// Virtio-fs draft: perform a read/write from an fd directly to GPA.
-        FS_IO = 1003,
     }
 }
 
@@ -1014,54 +1004,6 @@ impl VhostUserMsgValidator for VhostUserTransferDeviceState {
     }
 }
 
-// Bit mask for flags in virtio-fs backend messages
-bitflags! {
-    #[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
-    /// Flags for virtio-fs backend messages.
-    pub struct VhostUserFSBackendMsgFlags: u64 {
-        /// Empty permission.
-        const EMPTY = 0x0;
-        /// Read permission.
-        const MAP_R = 0x1;
-        /// Write permission.
-        const MAP_W = 0x2;
-    }
-}
-
-/// Max entries in one virtio-fs backend request.
-pub const VHOST_USER_FS_BACKEND_ENTRIES: usize = 8;
-
-/// Backend request message to update the MMIO window.
-#[repr(C, packed)]
-#[derive(Copy, Clone, Default)]
-pub struct VhostUserFSBackendMsg {
-    /// File offset.
-    pub fd_offset: [u64; VHOST_USER_FS_BACKEND_ENTRIES],
-    /// Offset into the DAX window.
-    pub cache_offset: [u64; VHOST_USER_FS_BACKEND_ENTRIES],
-    /// Size of region to map.
-    pub len: [u64; VHOST_USER_FS_BACKEND_ENTRIES],
-    /// Flags for the mmap operation
-    pub flags: [VhostUserFSBackendMsgFlags; VHOST_USER_FS_BACKEND_ENTRIES],
-}
-
-// SAFETY: Safe because all fields of VhostUserFSBackendMsg are POD.
-unsafe impl ByteValued for VhostUserFSBackendMsg {}
-
-impl VhostUserMsgValidator for VhostUserFSBackendMsg {
-    fn is_valid(&self) -> bool {
-        for i in 0..VHOST_USER_FS_BACKEND_ENTRIES {
-            if ({ self.flags[i] }.bits() & !VhostUserFSBackendMsgFlags::all().bits()) != 0
-                || self.fd_offset[i].checked_add(self.len[i]).is_none()
-                || self.cache_offset[i].checked_add(self.len[i]).is_none()
-            {
-                return false;
-            }
-        }
-        true
-    }
-}
-
 /// Inflight I/O descriptor state for split virtqueues
 #[repr(C, packed)]
 #[derive(Clone, Copy, Default)]
@@ -1488,22 +1430,5 @@ mod tests {
         assert!(msg.is_valid());
         msg.flags |= 0x4;
         assert!(!msg.is_valid());
-    }
-
-    #[test]
-    fn test_vhost_user_fs_backend() {
-        let mut fs_backend = VhostUserFSBackendMsg::default();
-
-        assert!(fs_backend.is_valid());
-
-        fs_backend.fd_offset[0] = 0xffff_ffff_ffff_ffff;
-        fs_backend.len[0] = 0x1;
-        assert!(!fs_backend.is_valid());
-
-        assert_ne!(
-            VhostUserFSBackendMsgFlags::MAP_R,
-            VhostUserFSBackendMsgFlags::MAP_W
-        );
-        assert_eq!(VhostUserFSBackendMsgFlags::EMPTY.bits(), 0);
     }
 }
