@@ -181,16 +181,6 @@ impl VhostUserFrontendReqHandler for Backend {
             Some(&[fd.as_raw_fd()]),
         )
     }
-
-    /// Forward vhost-user-fs map file requests to the backend.
-    fn fs_backend_map(&self, fs: &VhostUserFSBackendMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
-        self.send_message(BackendReq::FS_MAP, fs, Some(&[fd.as_raw_fd()]))
-    }
-
-    /// Forward vhost-user-fs unmap file requests to the frontend.
-    fn fs_backend_unmap(&self, fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
-        self.send_message(BackendReq::FS_UNMAP, fs, None)
-    }
 }
 
 #[cfg(test)]
@@ -211,15 +201,15 @@ mod tests {
 
     #[test]
     fn test_backend_req_send_failure() {
-        let (p1, p2) = UnixStream::pair().unwrap();
+        let (p1, _) = UnixStream::pair().unwrap();
         let backend = Backend::from_stream(p1);
 
         backend.set_failed(libc::ECONNRESET);
         backend
-            .fs_backend_map(&VhostUserFSBackendMsg::default(), &p2)
+            .shared_object_add(&VhostUserSharedMsg::default())
             .unwrap_err();
         backend
-            .fs_backend_unmap(&VhostUserFSBackendMsg::default())
+            .shared_object_remove(&VhostUserSharedMsg::default())
             .unwrap_err();
         backend.node().error = None;
     }
@@ -230,9 +220,9 @@ mod tests {
         let backend = Backend::from_stream(p1);
         let mut frontend = Endpoint::<BackendReq>::from_stream(p2);
 
-        let len = mem::size_of::<VhostUserFSBackendMsg>();
+        let len = mem::size_of::<VhostUserSharedMsg>();
         let mut hdr = VhostUserMsgHeader::new(
-            BackendReq::FS_MAP,
+            BackendReq::SHARED_OBJECT_ADD,
             VhostUserHeaderFlag::REPLY.bits(),
             len as u32,
         );
@@ -242,31 +232,36 @@ mod tests {
             .send_message(&hdr, &body, Some(&[frontend.as_raw_fd()]))
             .unwrap();
         backend
-            .fs_backend_map(&VhostUserFSBackendMsg::default(), &frontend)
+            .shared_object_add(&VhostUserSharedMsg::default())
+            .unwrap_err();
+
+        backend.set_shared_object_flag(true);
+        backend
+            .shared_object_add(&VhostUserSharedMsg::default())
             .unwrap();
 
         backend.set_reply_ack_flag(true);
         backend
-            .fs_backend_map(&VhostUserFSBackendMsg::default(), &frontend)
+            .shared_object_add(&VhostUserSharedMsg::default())
             .unwrap_err();
 
-        hdr.set_code(BackendReq::FS_UNMAP);
+        hdr.set_code(BackendReq::SHARED_OBJECT_REMOVE);
         frontend.send_message(&hdr, &body, None).unwrap();
         backend
-            .fs_backend_map(&VhostUserFSBackendMsg::default(), &frontend)
+            .shared_object_add(&VhostUserSharedMsg::default())
             .unwrap_err();
-        hdr.set_code(BackendReq::FS_MAP);
+        hdr.set_code(BackendReq::SHARED_OBJECT_ADD);
 
         let body = VhostUserU64::new(1);
         frontend.send_message(&hdr, &body, None).unwrap();
         backend
-            .fs_backend_map(&VhostUserFSBackendMsg::default(), &frontend)
+            .shared_object_add(&VhostUserSharedMsg::default())
             .unwrap_err();
 
         let body = VhostUserU64::new(0);
         frontend.send_message(&hdr, &body, None).unwrap();
         backend
-            .fs_backend_map(&VhostUserFSBackendMsg::default(), &frontend)
+            .shared_object_add(&VhostUserSharedMsg::default())
             .unwrap();
     }
 }

@@ -52,26 +52,6 @@ pub trait VhostUserFrontendReqHandler {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
-    /// Handle virtio-fs map file requests.
-    fn fs_backend_map(&self, _fs: &VhostUserFSBackendMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
-    /// Handle virtio-fs unmap file requests.
-    fn fs_backend_unmap(&self, _fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
-    /// Handle virtio-fs sync file requests.
-    fn fs_backend_sync(&self, _fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
-    /// Handle virtio-fs file IO requests.
-    fn fs_backend_io(&self, _fs: &VhostUserFSBackendMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
     // fn handle_iotlb_msg(&mut self, iotlb: VhostUserIotlb);
     // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: &dyn AsRawFd);
 }
@@ -104,34 +84,6 @@ pub trait VhostUserFrontendReqHandlerMut {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
-    /// Handle virtio-fs map file requests.
-    fn fs_backend_map(
-        &mut self,
-        _fs: &VhostUserFSBackendMsg,
-        _fd: &dyn AsRawFd,
-    ) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
-    /// Handle virtio-fs unmap file requests.
-    fn fs_backend_unmap(&mut self, _fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
-    /// Handle virtio-fs sync file requests.
-    fn fs_backend_sync(&mut self, _fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
-    /// Handle virtio-fs file IO requests.
-    fn fs_backend_io(
-        &mut self,
-        _fs: &VhostUserFSBackendMsg,
-        _fd: &dyn AsRawFd,
-    ) -> HandlerResult<u64> {
-        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-    }
-
     // fn handle_iotlb_msg(&mut self, iotlb: VhostUserIotlb);
     // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: RawFd);
 }
@@ -158,22 +110,6 @@ impl<S: VhostUserFrontendReqHandlerMut> VhostUserFrontendReqHandler for Mutex<S>
         fd: &dyn AsRawFd,
     ) -> HandlerResult<u64> {
         self.lock().unwrap().shared_object_lookup(uuid, fd)
-    }
-
-    fn fs_backend_map(&self, fs: &VhostUserFSBackendMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
-        self.lock().unwrap().fs_backend_map(fs, fd)
-    }
-
-    fn fs_backend_unmap(&self, fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
-        self.lock().unwrap().fs_backend_unmap(fs)
-    }
-
-    fn fs_backend_sync(&self, fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
-        self.lock().unwrap().fs_backend_sync(fs)
-    }
-
-    fn fs_backend_io(&self, fs: &VhostUserFSBackendMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
-        self.lock().unwrap().fs_backend_io(fs, fd)
     }
 }
 
@@ -305,32 +241,6 @@ impl<S: VhostUserFrontendReqHandler> FrontendReqHandler<S> {
                     .shared_object_lookup(&msg, &files.unwrap()[0])
                     .map_err(Error::ReqHandlerError)
             }
-            Ok(BackendReq::FS_MAP) => {
-                let msg = self.extract_msg_body::<VhostUserFSBackendMsg>(&hdr, size, &buf)?;
-                // check_attached_files() has validated files
-                self.backend
-                    .fs_backend_map(&msg, &files.unwrap()[0])
-                    .map_err(Error::ReqHandlerError)
-            }
-            Ok(BackendReq::FS_UNMAP) => {
-                let msg = self.extract_msg_body::<VhostUserFSBackendMsg>(&hdr, size, &buf)?;
-                self.backend
-                    .fs_backend_unmap(&msg)
-                    .map_err(Error::ReqHandlerError)
-            }
-            Ok(BackendReq::FS_SYNC) => {
-                let msg = self.extract_msg_body::<VhostUserFSBackendMsg>(&hdr, size, &buf)?;
-                self.backend
-                    .fs_backend_sync(&msg)
-                    .map_err(Error::ReqHandlerError)
-            }
-            Ok(BackendReq::FS_IO) => {
-                let msg = self.extract_msg_body::<VhostUserFSBackendMsg>(&hdr, size, &buf)?;
-                // check_attached_files() has validated files
-                self.backend
-                    .fs_backend_io(&msg, &files.unwrap()[0])
-                    .map_err(Error::ReqHandlerError)
-            }
             _ => Err(Error::InvalidMessage),
         };
 
@@ -368,7 +278,7 @@ impl<S: VhostUserFrontendReqHandler> FrontendReqHandler<S> {
         files: &Option<Vec<File>>,
     ) -> Result<()> {
         match hdr.get_code() {
-            Ok(BackendReq::SHARED_OBJECT_LOOKUP | BackendReq::FS_MAP | BackendReq::FS_IO) => {
+            Ok(BackendReq::SHARED_OBJECT_LOOKUP) => {
                 // Expect a single file is passed.
                 match files {
                     Some(files) if files.len() == 1 => Ok(()),
@@ -485,19 +395,6 @@ mod tests {
             }
             Ok(1)
         }
-        /// Handle virtio-fs map file requests from the backend.
-        fn fs_backend_map(
-            &mut self,
-            _fs: &VhostUserFSBackendMsg,
-            _fd: &dyn AsRawFd,
-        ) -> HandlerResult<u64> {
-            Ok(0)
-        }
-
-        /// Handle virtio-fs unmap file requests from the backend.
-        fn fs_backend_unmap(&mut self, _fs: &VhostUserFSBackendMsg) -> HandlerResult<u64> {
-            Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
-        }
     }
 
     #[test]
@@ -532,9 +429,6 @@ mod tests {
         let backend = Backend::from_stream(stream);
 
         let frontend_handler = std::thread::spawn(move || {
-            let res = handler.handle_request().unwrap();
-            assert_eq!(res, 0);
-            handler.handle_request().unwrap_err();
             // Testing shared object messages.
             assert_eq!(handler.handle_request().unwrap(), 0);
             assert_eq!(handler.handle_request().unwrap(), 1);
@@ -545,14 +439,6 @@ mod tests {
         });
 
         backend.set_shared_object_flag(true);
-        backend
-            .fs_backend_map(&VhostUserFSBackendMsg::default(), &fd)
-            .unwrap();
-        // When REPLY_ACK has not been negotiated, the frontend has no way to detect failure from
-        // backend side.
-        backend
-            .fs_backend_unmap(&VhostUserFSBackendMsg::default())
-            .unwrap();
 
         let shobj_msg = VhostUserSharedMsg {
             uuid: Uuid::new_v4(),
@@ -592,9 +478,6 @@ mod tests {
         let backend = Backend::from_stream(stream);
 
         let frontend_handler = std::thread::spawn(move || {
-            let res = handler.handle_request().unwrap();
-            assert_eq!(res, 0);
-            handler.handle_request().unwrap_err();
             // Testing shared object messages.
             assert_eq!(handler.handle_request().unwrap(), 0);
             assert_eq!(handler.handle_request().unwrap(), 1);
@@ -606,12 +489,6 @@ mod tests {
 
         backend.set_reply_ack_flag(true);
         backend.set_shared_object_flag(true);
-        backend
-            .fs_backend_map(&VhostUserFSBackendMsg::default(), &fd)
-            .unwrap();
-        backend
-            .fs_backend_unmap(&VhostUserFSBackendMsg::default())
-            .unwrap_err();
 
         let shobj_msg = VhostUserSharedMsg {
             uuid: Uuid::new_v4(),

@@ -1,5 +1,5 @@
 {
-  "coverage_score": 72.12,
+  "coverage_score": 73.04,
   "exclude_path": "vhost/src/vhost_kern/",
   "crate_features": "vhost/vhost-user-frontend,vhost/vhost-user-backend,vhost-user-backend/postcopy"
 }
