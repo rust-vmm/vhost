@@ -58,6 +58,12 @@ pub trait VhostUserBackend: Send + Sync {
     /// Get available vhost protocol features.
     fn protocol_features(&self) -> VhostUserProtocolFeatures;
 
+    /// Reset the emulated device state.
+    ///
+    /// A default implementation is provided as we cannot expect all backends to implement this
+    /// function.
+    fn reset_device(&self) {}
+
     /// Enable or disable the virtio EVENT_IDX feature
     fn set_event_idx(&self, enabled: bool);
 
@@ -179,6 +185,12 @@ pub trait VhostUserBackendMut: Send + Sync {
 
     /// Get available vhost protocol features.
     fn protocol_features(&self) -> VhostUserProtocolFeatures;
+
+    /// Reset the emulated device state.
+    ///
+    /// A default implementation is provided as we cannot expect all backends to implement this
+    /// function.
+    fn reset_device(&mut self) {}
 
     /// Enable or disable the virtio EVENT_IDX feature
     fn set_event_idx(&mut self, enabled: bool);
@@ -305,6 +317,10 @@ impl<T: VhostUserBackend> VhostUserBackend for Arc<T> {
         self.deref().protocol_features()
     }
 
+    fn reset_device(&self) {
+        self.deref().reset_device()
+    }
+
     fn set_event_idx(&self, enabled: bool) {
         self.deref().set_event_idx(enabled)
     }
@@ -384,6 +400,10 @@ impl<T: VhostUserBackendMut> VhostUserBackend for Mutex<T> {
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
         self.lock().unwrap().protocol_features()
+    }
+
+    fn reset_device(&self) {
+        self.lock().unwrap().reset_device()
     }
 
     fn set_event_idx(&self, enabled: bool) {
@@ -468,6 +488,10 @@ impl<T: VhostUserBackendMut> VhostUserBackend for RwLock<T> {
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
         self.read().unwrap().protocol_features()
+    }
+
+    fn reset_device(&self) {
+        self.write().unwrap().reset_device()
     }
 
     fn set_event_idx(&self, enabled: bool) {
@@ -589,6 +613,12 @@ pub mod tests {
             VhostUserProtocolFeatures::all()
         }
 
+        fn reset_device(&mut self) {
+            self.event_idx = false;
+            self.events = 0;
+            self.acked_features = 0;
+        }
+
         fn set_event_idx(&mut self, enabled: bool) {
             self.event_idx = enabled;
         }
@@ -668,6 +698,11 @@ pub mod tests {
             GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
         );
         backend.update_memory(mem).unwrap();
+
+        backend.reset_device();
+        assert!(backend.lock().unwrap().events == 0);
+        assert!(!backend.lock().unwrap().event_idx);
+        assert!(backend.lock().unwrap().acked_features == 0);
     }
 
     #[test]
@@ -703,5 +738,10 @@ pub mod tests {
         backend
             .handle_event(0x1, EventSet::IN, &[vring], 0)
             .unwrap();
+
+        backend.reset_device();
+        assert!(backend.read().unwrap().events == 0);
+        assert!(!backend.read().unwrap().event_idx);
+        assert!(backend.read().unwrap().acked_features == 0);
     }
 }
