@@ -12,6 +12,8 @@ use vm_memory::ByteValued;
 
 use super::backend_req::Backend;
 use super::connection::Endpoint;
+#[cfg(feature = "gpu-socket")]
+use super::gpu_backend_req::GpuBackend;
 use super::message::*;
 use super::{take_single_file, Error, Result};
 
@@ -65,6 +67,8 @@ pub trait VhostUserBackendReqHandler {
     fn get_config(&self, offset: u32, size: u32, flags: VhostUserConfigFlags) -> Result<Vec<u8>>;
     fn set_config(&self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
     fn set_backend_req_fd(&self, _backend: Backend) {}
+    #[cfg(feature = "gpu-socket")]
+    fn set_gpu_socket(&self, gpu_backend: GpuBackend);
     fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, File)>;
     fn set_inflight_fd(&self, inflight: &VhostUserInflight, file: File) -> Result<()>;
     fn get_max_mem_slots(&self) -> Result<u64>;
@@ -124,6 +128,8 @@ pub trait VhostUserBackendReqHandlerMut {
     ) -> Result<Vec<u8>>;
     fn set_config(&mut self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
     fn set_backend_req_fd(&mut self, _backend: Backend) {}
+    #[cfg(feature = "gpu-socket")]
+    fn set_gpu_socket(&mut self, _gpu_backend: GpuBackend);
     fn get_inflight_fd(
         &mut self,
         inflight: &VhostUserInflight,
@@ -235,6 +241,11 @@ impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
         self.lock().unwrap().set_backend_req_fd(backend)
     }
 
+    #[cfg(feature = "gpu-socket")]
+    fn set_gpu_socket(&self, gpu_backend: GpuBackend) {
+        self.lock().unwrap().set_gpu_socket(gpu_backend);
+    }
+
     fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, File)> {
         self.lock().unwrap().get_inflight_fd(inflight)
     }
@@ -302,7 +313,7 @@ impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
 /// [BackendReqHandler]: struct.BackendReqHandler.html
 pub struct BackendReqHandler<S: VhostUserBackendReqHandler> {
     // underlying Unix domain socket for communication
-    main_sock: Endpoint<FrontendReq>,
+    main_sock: Endpoint<VhostUserMsgHeader<FrontendReq>>,
     // the vhost-user backend device object
     backend: Arc<S>,
 
@@ -319,7 +330,10 @@ pub struct BackendReqHandler<S: VhostUserBackendReqHandler> {
 
 impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
     /// Create a vhost-user backend endpoint.
-    pub(super) fn new(main_sock: Endpoint<FrontendReq>, backend: Arc<S>) -> Self {
+    pub(super) fn new(
+        main_sock: Endpoint<VhostUserMsgHeader<FrontendReq>>,
+        backend: Arc<S>,
+    ) -> Self {
         BackendReqHandler {
             main_sock,
             backend,
@@ -359,7 +373,10 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
     /// * - `path` - path of Unix domain socket listener to connect to
     /// * - `backend` - handler for requests from the frontend to the backend
     pub fn connect(path: &str, backend: Arc<S>) -> Result<Self> {
-        Ok(Self::new(Endpoint::<FrontendReq>::connect(path)?, backend))
+        Ok(Self::new(
+            Endpoint::<VhostUserMsgHeader<FrontendReq>>::connect(path)?,
+            backend,
+        ))
     }
 
     /// Mark endpoint as failed with specified error code.
@@ -552,6 +569,11 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
                 let file = take_single_file(files).ok_or(Error::IncorrectFds)?;
                 let msg = self.extract_request_body::<VhostUserInflight>(&hdr, size, &buf)?;
                 let res = self.backend.set_inflight_fd(&msg, file);
+                self.send_ack_message(&hdr, res)?;
+            }
+            #[cfg(feature = "gpu-socket")]
+            Ok(FrontendReq::GPU_SET_SOCKET) => {
+                let res = self.set_gpu_socket(files);
                 self.send_ack_message(&hdr, res)?;
             }
             Ok(FrontendReq::GET_MAX_MEM_SLOTS) => {
@@ -790,6 +812,18 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
         Ok(())
     }
 
+    #[cfg(feature = "gpu-socket")]
+    fn set_gpu_socket(&mut self, files: Option<Vec<File>>) -> Result<()> {
+        let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
+        // SAFETY: Safe because we have ownership of the files that were
+        // checked when received. We have to trust that they are Unix sockets
+        // since we have no way to check this. If not, it will fail later.
+        let sock = unsafe { UnixStream::from_raw_fd(file.into_raw_fd()) };
+        let gpu_backend = GpuBackend::from_stream(sock);
+        self.backend.set_gpu_socket(gpu_backend);
+        Ok(())
+    }
+
     fn handle_vring_fd_request(
         &mut self,
         buf: &[u8],
@@ -859,7 +893,8 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
                 | FrontendReq::SET_BACKEND_REQ_FD
                 | FrontendReq::SET_INFLIGHT_FD
                 | FrontendReq::ADD_MEM_REG
-                | FrontendReq::SET_DEVICE_STATE_FD,
+                | FrontendReq::SET_DEVICE_STATE_FD
+                | FrontendReq::GPU_SET_SOCKET,
             ) => Ok(()),
             _ if files.is_some() => Err(Error::InvalidMessage),
             _ => Ok(()),
@@ -965,7 +1000,7 @@ mod tests {
     #[test]
     fn test_backend_req_handler_new() {
         let (p1, _p2) = UnixStream::pair().unwrap();
-        let endpoint = Endpoint::<FrontendReq>::from_stream(p1);
+        let endpoint = Endpoint::<VhostUserMsgHeader<FrontendReq>>::from_stream(p1);
         let backend = Arc::new(Mutex::new(DummyBackendReqHandler::new()));
         let mut handler = BackendReqHandler::new(endpoint, backend);
 

@@ -21,9 +21,12 @@ use vhost::vhost_user::message::{
     VhostUserMemoryRegion, VhostUserProtocolFeatures, VhostUserSingleMemoryRegion,
     VhostUserVirtioFeatures, VhostUserVringAddrFlags, VhostUserVringState,
 };
+#[cfg(feature = "gpu-socket")]
+use vhost::vhost_user::GpuBackend;
 use vhost::vhost_user::{
     Backend, Error as VhostUserError, Result as VhostUserResult, VhostUserBackendReqHandlerMut,
 };
+
 use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use virtio_queue::{Error as VirtQueError, QueueT};
 use vm_memory::mmap::NewBitmap;
@@ -550,6 +553,11 @@ where
             backend.set_shared_object_flag(true);
         }
         self.backend.set_backend_req_fd(backend);
+    }
+
+    #[cfg(feature = "gpu-socket")]
+    fn set_gpu_socket(&mut self, gpu_backend: GpuBackend) {
+        self.backend.set_gpu_socket(gpu_backend);
     }
 
     fn get_inflight_fd(

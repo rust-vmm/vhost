@@ -14,7 +14,7 @@ use super::{Error, HandlerResult, Result, VhostUserFrontendReqHandler};
 use vm_memory::ByteValued;
 
 struct BackendInternal {
-    sock: Endpoint<BackendReq>,
+    sock: Endpoint<VhostUserMsgHeader<BackendReq>>,
 
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     reply_ack_negotiated: bool,
@@ -86,7 +86,7 @@ pub struct Backend {
 }
 
 impl Backend {
-    fn new(ep: Endpoint<BackendReq>) -> Self {
+    fn new(ep: Endpoint<VhostUserMsgHeader<BackendReq>>) -> Self {
         Backend {
             node: Arc::new(Mutex::new(BackendInternal {
                 sock: ep,
@@ -114,7 +114,9 @@ impl Backend {
 
     /// Create a new instance from a `UnixStream` object.
     pub fn from_stream(sock: UnixStream) -> Self {
-        Self::new(Endpoint::<BackendReq>::from_stream(sock))
+        Self::new(Endpoint::<VhostUserMsgHeader<BackendReq>>::from_stream(
+            sock,
+        ))
     }
 
     /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature.
@@ -218,7 +220,7 @@ mod tests {
     fn test_backend_req_recv_negative() {
         let (p1, p2) = UnixStream::pair().unwrap();
         let backend = Backend::from_stream(p1);
-        let mut frontend = Endpoint::<BackendReq>::from_stream(p2);
+        let mut frontend = Endpoint::<VhostUserMsgHeader<BackendReq>>::from_stream(p2);
 
         let len = mem::size_of::<VhostUserSharedMsg>();
         let mut hdr = VhostUserMsgHeader::new(
