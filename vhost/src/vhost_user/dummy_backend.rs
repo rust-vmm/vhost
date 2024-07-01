@@ -72,6 +72,12 @@ impl VhostUserBackendReqHandlerMut for DummyBackendReqHandler {
         Ok(())
     }
 
+    fn reset_device(&mut self) -> Result<()> {
+        self.features_acked = false;
+        self.acked_features = 0;
+        Ok(())
+    }
+
     fn get_features(&mut self) -> Result<u64> {
         Ok(VIRTIO_FEATURES)
     }
