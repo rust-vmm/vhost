@@ -191,10 +191,16 @@ mod tests {
 
     use super::*;
 
+    fn frontend_backend_pair() -> (Endpoint<VhostUserMsgHeader<BackendReq>>, Backend) {
+        let (p1, p2) = UnixStream::pair().unwrap();
+        let backend = Backend::from_stream(p1);
+        let frontend = Endpoint::<VhostUserMsgHeader<BackendReq>>::from_stream(p2);
+        (frontend, backend)
+    }
+
     #[test]
     fn test_backend_req_set_failed() {
-        let (p1, _p2) = UnixStream::pair().unwrap();
-        let backend = Backend::from_stream(p1);
+        let (_, backend) = frontend_backend_pair();
 
         assert!(backend.node().error.is_none());
         backend.set_failed(libc::EAGAIN);
@@ -203,8 +209,7 @@ mod tests {
 
     #[test]
     fn test_backend_req_send_failure() {
-        let (p1, _) = UnixStream::pair().unwrap();
-        let backend = Backend::from_stream(p1);
+        let (_, backend) = frontend_backend_pair();
 
         backend.set_failed(libc::ECONNRESET);
         backend
@@ -218,9 +223,7 @@ mod tests {
 
     #[test]
     fn test_backend_req_recv_negative() {
-        let (p1, p2) = UnixStream::pair().unwrap();
-        let backend = Backend::from_stream(p1);
-        let mut frontend = Endpoint::<VhostUserMsgHeader<BackendReq>>::from_stream(p2);
+        let (mut frontend, backend) = frontend_backend_pair();
 
         let len = mem::size_of::<VhostUserSharedMsg>();
         let mut hdr = VhostUserMsgHeader::new(
