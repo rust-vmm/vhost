@@ -617,6 +617,7 @@ fn get_sub_iovs_offset(iov_lens: &[usize], skip_size: usize) -> (usize, usize) {
 mod tests {
     use super::*;
     use std::io::{Read, Seek, SeekFrom, Write};
+    use std::os::fd::IntoRawFd;
     use vmm_sys_util::rand::rand_alphanumerics;
     use vmm_sys_util::tempfile::TempFile;
 
@@ -640,8 +641,9 @@ mod tests {
         let path = temp_path();
         let file = File::create(path).unwrap();
 
-        // SAFETY: Safe because `file` contains a valid fd to a file just created.
-        let listener = unsafe { Listener::from_raw_fd(file.as_raw_fd()) };
+        // SAFETY: Safe because `file` contains a valid fd to a file just created and ownership of
+        // the file descriptor is released.
+        let listener = unsafe { Listener::from_raw_fd(file.into_raw_fd()) };
 
         assert!(listener.as_raw_fd() > 0);
     }
