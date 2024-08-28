@@ -396,6 +396,7 @@ mod tests {
     use super::*;
 
     use std::collections::HashSet;
+    use std::io::ErrorKind;
 
     use uuid::Uuid;
 
@@ -447,6 +448,72 @@ mod tests {
             assert_eq!({ req.shmid }, 0);
             Ok(!self.shmem_mappings.remove(&(req.shm_offset, req.len)) as u64)
         }
+    }
+
+    #[test]
+    fn test_default_frontend_impl() {
+        struct Frontend;
+        impl VhostUserFrontendReqHandler for Frontend {}
+
+        let f = Frontend;
+        assert_eq!(
+            f.shared_object_add(&Default::default()).unwrap_err().kind(),
+            ErrorKind::Unsupported
+        );
+        assert_eq!(
+            f.shared_object_remove(&Default::default())
+                .unwrap_err()
+                .kind(),
+            ErrorKind::Unsupported
+        );
+        assert_eq!(
+            f.shared_object_lookup(&Default::default(), &0)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::Unsupported
+        );
+
+        assert_eq!(
+            f.shmem_map(&Default::default(), &0).unwrap_err().kind(),
+            ErrorKind::Unsupported
+        );
+        assert_eq!(
+            f.shmem_unmap(&Default::default()).unwrap_err().kind(),
+            ErrorKind::Unsupported
+        );
+    }
+
+    #[test]
+    fn test_default_frontend_impl_mut() {
+        struct FrontendMut;
+        impl VhostUserFrontendReqHandlerMut for FrontendMut {}
+
+        let mut f = FrontendMut;
+        assert_eq!(
+            f.shared_object_add(&Default::default()).unwrap_err().kind(),
+            ErrorKind::Unsupported
+        );
+        assert_eq!(
+            f.shared_object_remove(&Default::default())
+                .unwrap_err()
+                .kind(),
+            ErrorKind::Unsupported
+        );
+        assert_eq!(
+            f.shared_object_lookup(&Default::default(), &0)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::Unsupported
+        );
+
+        assert_eq!(
+            f.shmem_map(&Default::default(), &0).unwrap_err().kind(),
+            ErrorKind::Unsupported
+        );
+        assert_eq!(
+            f.shmem_unmap(&Default::default()).unwrap_err().kind(),
+            ErrorKind::Unsupported
+        );
     }
 
     #[test]
