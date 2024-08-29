@@ -213,11 +213,12 @@ pub trait VhostUserBackendMut: Send + Sync {
     /// useful for a gpu device.
     fn set_gpu_socket(&mut self, gpu_backend: GpuBackend);
 
-    /// Get the map to map queue index to worker thread index.
+    /// Get the mapping of queue indices to worker thread indices.
     ///
-    /// A return value of [2, 2, 4] means: the first two queues will be handled by worker thread 0,
-    /// the following two queues will be handled by worker thread 1, and the last four queues will
-    /// be handled by worker thread 2.
+    /// A return value of [0b11, 0b1100, 0b11110000] means: 
+    /// - Worker thread 0 handles queues 0 and 1 (0b11).
+    /// - Worker thread 1 handles queues 2 and 3 (0b1100).
+    /// - Worker thread 2 handles queues 4 to 7 (0b11110000).
     fn queues_per_thread(&self) -> Vec<u64> {
         vec![0xffff_ffff]
     }
