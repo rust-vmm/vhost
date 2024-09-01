@@ -2,6 +2,7 @@
 ## [Unreleased]
 
 ### Added
+- [[#251]](https://github.com/rust-vmm/vhost/pull/251) Add `SHMEM_MAP` and `SHMEM_UNMAP` support
 - [[#241]](https://github.com/rust-vmm/vhost/pull/241) Add shared objects support
 - [[#239]](https://github.com/rust-vmm/vhost/pull/239) Add support for `VHOST_USER_GPU_SET_SOCKET`
 
