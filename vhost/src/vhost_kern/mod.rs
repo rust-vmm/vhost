@@ -21,8 +21,9 @@ use vmm_sys_util::eventfd::EventFd;
 use vmm_sys_util::ioctl::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
 
 use super::{
-    Error, Result, VhostBackend, VhostIotlbBackend, VhostIotlbMsg, VhostIotlbMsgParser,
-    VhostUserDirtyLogRegion, VhostUserMemoryRegionInfo, VringConfigData, VHOST_MAX_MEMORY_REGIONS,
+    Error, Result, VhostAccess, VhostBackend, VhostIotlbBackend, VhostIotlbMsg,
+    VhostIotlbMsgParser, VhostIotlbType, VhostUserDirtyLogRegion, VhostUserMemoryRegionInfo,
+    VringConfigData, VHOST_MAX_MEMORY_REGIONS,
 };
 
 pub mod vhost_binding;
@@ -402,8 +403,8 @@ impl VhostIotlbMsgParser for vhost_msg {
             msg.iova = self.__bindgen_anon_1.iotlb.iova;
             msg.size = self.__bindgen_anon_1.iotlb.size;
             msg.userspace_addr = self.__bindgen_anon_1.iotlb.uaddr;
-            msg.perm = mem::transmute(self.__bindgen_anon_1.iotlb.perm);
-            msg.msg_type = mem::transmute(self.__bindgen_anon_1.iotlb.type_);
+            msg.perm = mem::transmute::<u8, VhostAccess>(self.__bindgen_anon_1.iotlb.perm);
+            msg.msg_type = mem::transmute::<u8, VhostIotlbType>(self.__bindgen_anon_1.iotlb.type_);
         }
 
         Ok(())
@@ -427,8 +428,8 @@ impl VhostIotlbMsgParser for vhost_msg_v2 {
             msg.iova = self.__bindgen_anon_1.iotlb.iova;
             msg.size = self.__bindgen_anon_1.iotlb.size;
             msg.userspace_addr = self.__bindgen_anon_1.iotlb.uaddr;
-            msg.perm = mem::transmute(self.__bindgen_anon_1.iotlb.perm);
-            msg.msg_type = mem::transmute(self.__bindgen_anon_1.iotlb.type_);
+            msg.perm = mem::transmute::<u8, VhostAccess>(self.__bindgen_anon_1.iotlb.perm);
+            msg.msg_type = mem::transmute::<u8, VhostIotlbType>(self.__bindgen_anon_1.iotlb.type_);
         }
 
         Ok(())
