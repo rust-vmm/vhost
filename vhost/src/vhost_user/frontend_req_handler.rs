@@ -390,7 +390,7 @@ mod tests {
             uuid: &VhostUserSharedMsg,
             _fd: &dyn AsRawFd,
         ) -> HandlerResult<u64> {
-            if self.shared_objects.get(&uuid.uuid).is_some() {
+            if self.shared_objects.contains(&uuid.uuid) {
                 return Ok(0);
             }
             Ok(1)
