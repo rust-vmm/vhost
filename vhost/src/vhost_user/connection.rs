@@ -135,10 +135,7 @@ impl<H: MsgHeader> Endpoint<H> {
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
     pub fn send_iovec(&mut self, iovs: &[&[u8]], fds: Option<&[RawFd]>) -> Result<usize> {
-        let rfds = match fds {
-            Some(rfds) => rfds,
-            _ => &[],
-        };
+        let rfds = fds.unwrap_or_default();
         self.sock.send_with_fds(iovs, rfds).map_err(Into::into)
     }
 
