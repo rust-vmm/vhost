@@ -755,7 +755,7 @@ impl VhostUserVringAddr {
     }
 
     /// Create a new instance from `VringConfigData`.
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::useless_conversion))]
+    #[allow(clippy::useless_conversion)]
     pub fn from_config_data(index: u32, config_data: &VringConfigData) -> Self {
         let log_addr = config_data.log_addr.unwrap_or(0);
         VhostUserVringAddr {
