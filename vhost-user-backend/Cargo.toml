@@ -19,12 +19,12 @@ log = "0.4.17"
 userfaultfd = { version = "0.8.1", optional = true }
 vhost = { path = "../vhost", version = "0.11", features = ["vhost-user-backend"] }
 virtio-bindings = "0.2.1"
-virtio-queue = "0.12.0"
-vm-memory = { version = "0.14.0", features = ["backend-mmap", "backend-atomic"] }
+virtio-queue = "0.13.0"
+vm-memory = { version = "0.15.0", features = ["backend-mmap", "backend-atomic", "backend-bitmap"] }
 vmm-sys-util = "0.12.1"
 
 [dev-dependencies]
 nix = { version = "0.29", features = ["fs"] }
 vhost = { path = "../vhost", version = "0.11", features = ["test-utils", "vhost-user-frontend", "vhost-user-backend"] }
-vm-memory = { version = "0.14.0", features = ["backend-mmap", "backend-atomic", "backend-bitmap"] }
+vm-memory = { version = "0.15.0", features = ["backend-mmap", "backend-atomic"] }
 tempfile = "3.2.0"
