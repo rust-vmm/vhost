@@ -2,18 +2,25 @@
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Deprecated
+
+### Fixed
+
+## [0.12.0]
+
+### Added
 - [[#241]](https://github.com/rust-vmm/vhost/pull/241) Add shared objects support
 - [[#239]](https://github.com/rust-vmm/vhost/pull/239) Add support for `VHOST_USER_GPU_SET_SOCKET`
 
 ### Changed
+- [[#257]](https://github.com/rust-vmm/vhost/pull/257) Update vm-memory from 0.14.0 to 0.15.0.
 - [[#243]](https://github.com/rust-vmm/vhost/pull/243) Ignore unknown bits in `VHOST_USER_GET_PROTOCOL_FEATURES` response.
 
 ### Remove
 - [[#246]](https://github.com/rust-vmm/vhost/pull/246) Remove support for FS_* requests
-
-### Fixed
-
-### Deprecated
 
 ## [0.11.0]
 
