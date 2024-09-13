@@ -1,6 +1,6 @@
 [package]
 name = "vhost"
-version = "0.11.0"
+version = "0.12.0"
 keywords = ["vhost", "vhost-user", "virtio", "vdpa"]
 description = "a pure rust library for vdpa, vhost and vhost-user"
 authors = ["Liu Jiang <gerry@linux.alibaba.com>"]
