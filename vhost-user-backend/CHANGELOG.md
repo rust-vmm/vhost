@@ -2,15 +2,22 @@
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Deprecated
+
+### Fixed
+
+## v0.16.0
+
+### Added
 - [[#241]](https://github.com/rust-vmm/vhost/pull/241) Add shared objects support
 - [[#239]](https://github.com/rust-vmm/vhost/pull/239) Add support for `VHOST_USER_GPU_SET_SOCKET`
 
 ### Changed
+- [[#257]](https://github.com/rust-vmm/vhost/pull/257) Update virtio-queue version from 0.12.0 to 0.13.0 and vm-memory from 0.14.0 to 0.15.0.
 - [[#240]](https://github.com/rust-vmm/vhost/pull/240) Move the set of event_idx property from set_vring_base callback to set_features one
-
-### Fixed
-
-### Deprecated
 
 ## v0.15.0
 
