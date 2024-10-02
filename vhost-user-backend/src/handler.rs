@@ -82,6 +82,7 @@ impl error::Error for VhostUserHandlerError {}
 /// Result of vhost-user handler operations.
 pub type VhostUserHandlerResult<T> = std::result::Result<T, VhostUserHandlerError>;
 
+#[derive(Debug)]
 struct AddrMapping {
     #[cfg(feature = "postcopy")]
     local_addr: u64,
