@@ -61,6 +61,12 @@ impl VhostUserBackendMut for MockVhostBackend {
         VhostUserProtocolFeatures::all()
     }
 
+    fn reset_device(&mut self) {
+        self.events = 0;
+        self.event_idx = false;
+        self.acked_features = 0;
+    }
+
     fn set_event_idx(&mut self, enabled: bool) {
         self.event_idx = enabled;
     }
@@ -219,10 +225,24 @@ fn vhost_user_client(path: &Path, barrier: Arc<Barrier>) {
     frontend.remove_mem_region(&region).unwrap();
 }
 
-fn vhost_user_server(cb: fn(&Path, Arc<Barrier>)) {
+/// Provide a vhost-user back-end for front-end testing.
+///
+/// Set up a `MockVhostBackend` vhost-user back-end and run `cb` in a thread, passing the
+/// vhost-user socket's path and a barrier to await request processing.  `cb` is supposed to run
+/// the front-end tests.
+///
+/// After request processing has begun, run `server_fn`, passing both a reference to the back-end
+/// and the same barrier as given to `cb`.  `server_fn` may perform additional back-end tests while
+/// `cb` is still run in its thread.
+///
+/// After `server_fn` is done, await `cb` (joining its thread), and return.
+fn vhost_user_server_with_fn<F: FnOnce(Arc<Mutex<MockVhostBackend>>, Arc<Barrier>)>(
+    cb: fn(&Path, Arc<Barrier>),
+    server_fn: F,
+) {
     let mem = GuestMemoryAtomic::new(GuestMemoryMmap::<()>::new());
     let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
-    let mut daemon = VhostUserDaemon::new("test".to_owned(), backend, mem).unwrap();
+    let mut daemon = VhostUserDaemon::new("test".to_owned(), backend.clone(), mem).unwrap();
 
     let barrier = Arc::new(Barrier::new(2));
     let tmpdir = tempfile::tempdir().unwrap();
@@ -238,8 +258,14 @@ fn vhost_user_server(cb: fn(&Path, Arc<Barrier>)) {
     daemon.start(listener).unwrap();
     barrier.wait();
 
+    server_fn(backend, barrier);
+
     // handle service requests from clients.
     thread.join().unwrap();
+}
+
+fn vhost_user_server(cb: fn(&Path, Arc<Barrier>)) {
+    vhost_user_server_with_fn(cb, |_, _| {})
 }
 
 #[test]
@@ -324,4 +350,39 @@ fn test_vhost_user_postcopy() {
     vhost_user_server(vhost_user_postcopy_advise);
     vhost_user_server(vhost_user_postcopy_listen);
     vhost_user_server(vhost_user_postcopy_end);
+}
+
+fn vhost_user_reset_device(path: &Path, barrier: Arc<Barrier>) {
+    let mut frontend = setup_frontend(path, barrier.clone());
+
+    // Signal that we are about to reset
+    barrier.wait();
+    // Wait until server has checked non-reset state
+    barrier.wait();
+
+    frontend.reset_device().unwrap();
+
+    // Signal reset is done
+    barrier.wait();
+}
+
+#[test]
+fn test_vhost_user_reset_device() {
+    vhost_user_server_with_fn(vhost_user_reset_device, |backend, barrier| {
+        // Wait until `vhost_user_reset_device()` is before reset
+        barrier.wait();
+        // Check non-reset state
+        assert!(backend.lock().unwrap().acked_features == MockVhostBackend::SUPPORTED_FEATURES);
+        // Set up some arbitrary internal state
+        backend.lock().unwrap().events = 42;
+
+        // Allow reset
+        barrier.wait();
+        // Wait for reset to be done
+        barrier.wait();
+
+        // Check reset state
+        assert!(backend.lock().unwrap().acked_features == 0);
+        assert!(backend.lock().unwrap().events == 0);
+    });
 }
