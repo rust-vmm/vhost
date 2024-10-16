@@ -32,6 +32,9 @@ pub trait VhostUserFrontend: VhostBackend {
     /// Query how many queues the backend supports.
     fn get_queue_num(&mut self) -> Result<u64>;
 
+    /// Disable all rings and reset the internal device state.
+    fn reset_device(&mut self) -> Result<()>;
+
     /// Signal backend to enable or disable corresponding vring.
     ///
     /// Backend must not pass data to/from the backend until ring is enabled by
@@ -393,6 +396,14 @@ impl VhostUserFrontend for Frontend {
         }
         node.max_queue_num = val.value;
         Ok(node.max_queue_num)
+    }
+
+    fn reset_device(&mut self) -> Result<()> {
+        let mut node = self.node();
+        node.check_proto_feature(VhostUserProtocolFeatures::RESET_DEVICE)?;
+
+        let hdr = node.send_request_header(FrontendReq::RESET_DEVICE, None)?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
     fn set_vring_enable(&mut self, queue_index: usize, enable: bool) -> Result<()> {
