@@ -26,6 +26,8 @@ struct MockVhostBackend {
 }
 
 impl MockVhostBackend {
+    const SUPPORTED_FEATURES: u64 = 0xffff_ffff_ffff_ffff;
+
     fn new() -> Self {
         MockVhostBackend {
             events: 0,
@@ -48,7 +50,7 @@ impl VhostUserBackendMut for MockVhostBackend {
     }
 
     fn features(&self) -> u64 {
-        0xffff_ffff_ffff_ffff
+        Self::SUPPORTED_FEATURES
     }
 
     fn acked_features(&mut self, features: u64) {
