@@ -555,8 +555,10 @@ where
         self.backend.set_backend_req_fd(backend);
     }
 
-    fn set_gpu_socket(&mut self, gpu_backend: GpuBackend) {
-        self.backend.set_gpu_socket(gpu_backend);
+    fn set_gpu_socket(&mut self, gpu_backend: GpuBackend) -> VhostUserResult<()> {
+        self.backend
+            .set_gpu_socket(gpu_backend)
+            .map_err(VhostUserError::ReqHandlerError)
     }
 
     fn get_inflight_fd(
