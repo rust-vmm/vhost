@@ -7,8 +7,10 @@ use std::path::Path;
 use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
 
+use uuid::Uuid;
 use vhost::vhost_user::message::{
     VhostUserConfigFlags, VhostUserHeaderFlag, VhostUserInflight, VhostUserProtocolFeatures,
+    VhostUserSharedMsg,
 };
 use vhost::vhost_user::{Backend, Frontend, Listener, VhostUserFrontend};
 use vhost::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
@@ -93,6 +95,11 @@ impl VhostUserBackendMut for MockVhostBackend {
     }
 
     fn set_backend_req_fd(&mut self, _backend: Backend) {}
+
+    fn get_shared_object(&mut self, _uuid: VhostUserSharedMsg) -> Result<File> {
+        let file = tempfile::tempfile().unwrap();
+        Ok(file)
+    }
 
     fn queues_per_thread(&self) -> Vec<u64> {
         vec![1, 1]
@@ -314,6 +321,23 @@ fn vhost_user_get_inflight(path: &Path, barrier: Arc<Barrier>) {
         queue_size: 256,
     };
     assert!(frontend.get_inflight_fd(&inflight).is_err());
+}
+
+#[test]
+fn test_vhost_user_get_shared_object() {
+    vhost_user_server(vhost_user_get_shared_object);
+}
+
+fn vhost_user_get_shared_object(path: &Path, barrier: Arc<Barrier>) {
+    let mut frontend = setup_frontend(path, barrier);
+    frontend
+        .get_shared_object(&VhostUserSharedMsg::default())
+        .unwrap_err();
+    frontend
+        .get_shared_object(&VhostUserSharedMsg {
+            uuid: Uuid::new_v4(),
+        })
+        .unwrap();
 }
 
 #[test]
