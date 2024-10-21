@@ -26,6 +26,7 @@ pub struct DummyBackendReqHandler {
     pub vring_started: [bool; MAX_QUEUE_NUM],
     pub vring_enabled: [bool; MAX_QUEUE_NUM],
     pub inflight_file: Option<File>,
+    pub shared_file: Option<File>,
 }
 
 impl DummyBackendReqHandler {
@@ -267,6 +268,13 @@ impl VhostUserBackendReqHandlerMut for DummyBackendReqHandler {
 
     fn set_gpu_socket(&mut self, _gpu_backend: GpuBackend) -> Result<()> {
         Ok(())
+    }
+
+    fn get_shared_object(&mut self, _uuid: VhostUserSharedMsg) -> Result<File> {
+        let file = tempfile::tempfile().unwrap();
+
+        self.shared_file = Some(file.try_clone().unwrap());
+        Ok(file)
     }
 
     fn get_inflight_fd(

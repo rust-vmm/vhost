@@ -18,8 +18,9 @@ use crate::bitmap::{BitmapReplace, MemRegionBitmap, MmapLogReg};
 use userfaultfd::{Uffd, UffdBuilder};
 use vhost::vhost_user::message::{
     VhostTransferStateDirection, VhostTransferStatePhase, VhostUserConfigFlags, VhostUserLog,
-    VhostUserMemoryRegion, VhostUserProtocolFeatures, VhostUserSingleMemoryRegion,
-    VhostUserVirtioFeatures, VhostUserVringAddrFlags, VhostUserVringState,
+    VhostUserMemoryRegion, VhostUserProtocolFeatures, VhostUserSharedMsg,
+    VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
+    VhostUserVringState,
 };
 use vhost::vhost_user::GpuBackend;
 use vhost::vhost_user::{
@@ -572,6 +573,16 @@ where
         self.backend
             .set_gpu_socket(gpu_backend)
             .map_err(VhostUserError::ReqHandlerError)
+    }
+
+    fn get_shared_object(&mut self, uuid: VhostUserSharedMsg) -> VhostUserResult<File> {
+        match self.backend.get_shared_object(uuid) {
+            Ok(shared_file) => Ok(shared_file),
+            Err(e) => Err(VhostUserError::ReqHandlerError(io::Error::new(
+                io::ErrorKind::Other,
+                e,
+            ))),
+        }
     }
 
     fn get_inflight_fd(
