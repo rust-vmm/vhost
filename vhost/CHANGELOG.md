@@ -2,6 +2,7 @@
 ## [Unreleased]
 
 ### Added
+- [[#266]](https://github.com/rust-vmm/vhost/pull/266) Add support for `VHOST_USER_RESET_DEVICE`
 
 ### Changed
 

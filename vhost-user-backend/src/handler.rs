@@ -257,6 +257,19 @@ where
         Ok(())
     }
 
+    fn reset_device(&mut self) -> VhostUserResult<()> {
+        // Disable all vrings
+        for vring in self.vrings.iter_mut() {
+            vring.set_enabled(false);
+        }
+
+        // Reset device state, retain protocol state
+        self.features_acked = false;
+        self.acked_features = 0;
+        self.backend.reset_device();
+        Ok(())
+    }
+
     fn get_features(&mut self) -> VhostUserResult<u64> {
         Ok(self.backend.features())
     }

@@ -41,6 +41,7 @@ use super::{take_single_file, Error, Result};
 pub trait VhostUserBackendReqHandler {
     fn set_owner(&self) -> Result<()>;
     fn reset_owner(&self) -> Result<()>;
+    fn reset_device(&self) -> Result<()>;
     fn get_features(&self) -> Result<u64>;
     fn set_features(&self, features: u64) -> Result<()>;
     fn set_mem_table(&self, ctx: &[VhostUserMemoryRegion], files: Vec<File>) -> Result<()>;
@@ -97,6 +98,7 @@ pub trait VhostUserBackendReqHandler {
 pub trait VhostUserBackendReqHandlerMut {
     fn set_owner(&mut self) -> Result<()>;
     fn reset_owner(&mut self) -> Result<()>;
+    fn reset_device(&mut self) -> Result<()>;
     fn get_features(&mut self) -> Result<u64>;
     fn set_features(&mut self, features: u64) -> Result<()>;
     fn set_mem_table(&mut self, ctx: &[VhostUserMemoryRegion], files: Vec<File>) -> Result<()>;
@@ -161,6 +163,10 @@ impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
 
     fn reset_owner(&self) -> Result<()> {
         self.lock().unwrap().reset_owner()
+    }
+
+    fn reset_device(&self) -> Result<()> {
+        self.lock().unwrap().reset_device()
     }
 
     fn get_features(&self) -> Result<u64> {
@@ -426,6 +432,12 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
             Ok(FrontendReq::RESET_OWNER) => {
                 self.check_request_size(&hdr, size, 0)?;
                 let res = self.backend.reset_owner();
+                self.send_ack_message(&hdr, res)?;
+            }
+            Ok(FrontendReq::RESET_DEVICE) => {
+                self.check_proto_feature(VhostUserProtocolFeatures::RESET_DEVICE)?;
+                self.check_request_size(&hdr, size, 0)?;
+                let res = self.backend.reset_device();
                 self.send_ack_message(&hdr, res)?;
             }
             Ok(FrontendReq::GET_FEATURES) => {
