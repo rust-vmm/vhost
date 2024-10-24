@@ -21,7 +21,6 @@ use vhost::vhost_user::message::{
     VhostUserMemoryRegion, VhostUserProtocolFeatures, VhostUserSingleMemoryRegion,
     VhostUserVirtioFeatures, VhostUserVringAddrFlags, VhostUserVringState,
 };
-#[cfg(feature = "gpu-socket")]
 use vhost::vhost_user::GpuBackend;
 use vhost::vhost_user::{
     Backend, Error as VhostUserError, Result as VhostUserResult, VhostUserBackendReqHandlerMut,
@@ -556,9 +555,10 @@ where
         self.backend.set_backend_req_fd(backend);
     }
 
-    #[cfg(feature = "gpu-socket")]
-    fn set_gpu_socket(&mut self, gpu_backend: GpuBackend) {
-        self.backend.set_gpu_socket(gpu_backend);
+    fn set_gpu_socket(&mut self, gpu_backend: GpuBackend) -> VhostUserResult<()> {
+        self.backend
+            .set_gpu_socket(gpu_backend)
+            .map_err(VhostUserError::ReqHandlerError)
     }
 
     fn get_inflight_fd(
