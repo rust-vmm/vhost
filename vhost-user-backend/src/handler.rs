@@ -6,9 +6,9 @@
 use std::error;
 use std::fs::File;
 use std::io;
-use std::os::fd::AsFd;
 #[cfg(feature = "postcopy")]
 use std::os::fd::FromRawFd;
+use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 use std::thread;
@@ -18,8 +18,9 @@ use crate::bitmap::{BitmapReplace, MemRegionBitmap, MmapLogReg};
 use userfaultfd::{Uffd, UffdBuilder};
 use vhost::vhost_user::message::{
     VhostTransferStateDirection, VhostTransferStatePhase, VhostUserConfigFlags, VhostUserLog,
-    VhostUserMemoryRegion, VhostUserProtocolFeatures, VhostUserSingleMemoryRegion,
-    VhostUserVirtioFeatures, VhostUserVringAddrFlags, VhostUserVringState,
+    VhostUserMemoryRegion, VhostUserProtocolFeatures, VhostUserSharedMsg,
+    VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
+    VhostUserVringState,
 };
 #[cfg(feature = "gpu-socket")]
 use vhost::vhost_user::GpuBackend;
@@ -559,6 +560,17 @@ where
     #[cfg(feature = "gpu-socket")]
     fn set_gpu_socket(&mut self, gpu_backend: GpuBackend) {
         self.backend.set_gpu_socket(gpu_backend);
+    }
+
+    fn get_shared_object(&mut self, uuid: VhostUserSharedMsg) -> VhostUserResult<OwnedFd> {
+        match self.backend.get_shared_object(uuid) {
+            Ok(Some(owned_fd)) => Ok(owned_fd),
+            Ok(None) => Err(VhostUserError::IncorrectFds),
+            Err(e) => Err(VhostUserError::ReqHandlerError(io::Error::new(
+                io::ErrorKind::Other,
+                e,
+            ))),
+        }
     }
 
     fn get_inflight_fd(

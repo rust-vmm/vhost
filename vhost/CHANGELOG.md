@@ -2,6 +2,7 @@
 ## [Unreleased]
 
 ### Added
+- [[#268]](https://github.com/rust-vmm/vhost/pull/268) Add support for `VHOST_USER_GET_SHARED_OBJECT`
 
 ### Changed
 

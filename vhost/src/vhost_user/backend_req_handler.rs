@@ -3,6 +3,7 @@
 
 use std::fs::File;
 use std::mem;
+use std::os::fd::OwnedFd;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::slice;
@@ -67,6 +68,7 @@ pub trait VhostUserBackendReqHandler {
     fn get_config(&self, offset: u32, size: u32, flags: VhostUserConfigFlags) -> Result<Vec<u8>>;
     fn set_config(&self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
     fn set_backend_req_fd(&self, _backend: Backend) {}
+    fn get_shared_object(&self, uuid: VhostUserSharedMsg) -> Result<OwnedFd>;
     #[cfg(feature = "gpu-socket")]
     fn set_gpu_socket(&self, gpu_backend: GpuBackend);
     fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, File)>;
@@ -130,6 +132,7 @@ pub trait VhostUserBackendReqHandlerMut {
     fn set_backend_req_fd(&mut self, _backend: Backend) {}
     #[cfg(feature = "gpu-socket")]
     fn set_gpu_socket(&mut self, _gpu_backend: GpuBackend);
+    fn get_shared_object(&mut self, uuid: VhostUserSharedMsg) -> Result<OwnedFd>;
     fn get_inflight_fd(
         &mut self,
         inflight: &VhostUserInflight,
@@ -241,6 +244,9 @@ impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
         self.lock().unwrap().set_backend_req_fd(backend)
     }
 
+    fn get_shared_object(&self, uuid: VhostUserSharedMsg) -> Result<OwnedFd> {
+        self.lock().unwrap().get_shared_object(uuid)
+    }
     #[cfg(feature = "gpu-socket")]
     fn set_gpu_socket(&self, gpu_backend: GpuBackend) {
         self.lock().unwrap().set_gpu_socket(gpu_backend);
@@ -554,6 +560,26 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
                 self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
                 let res = self.set_backend_req_fd(files);
                 self.send_ack_message(&hdr, res)?;
+            }
+            Ok(FrontendReq::GET_SHARED_OBJECT) => {
+                self.check_proto_feature(VhostUserProtocolFeatures::SHARED_OBJECT)?;
+                self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
+                let msg = self.extract_request_body::<VhostUserSharedMsg>(&hdr, size, &buf)?;
+                let res = self.backend.get_shared_object(msg);
+
+                match res {
+                    Ok(file) => {
+                        let hdr = self.new_reply_header::<VhostUserEmpty>(&hdr, 0)?;
+                        self.main_sock.send_message(
+                            &hdr,
+                            &VhostUserEmpty,
+                            Some(&[file.as_raw_fd()]),
+                        )?;
+                    }
+                    Err(_) => {
+                        self.main_sock.send_message(&hdr, &VhostUserEmpty, None)?;
+                    }
+                }
             }
             Ok(FrontendReq::GET_INFLIGHT_FD) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::INFLIGHT_SHMFD)?;

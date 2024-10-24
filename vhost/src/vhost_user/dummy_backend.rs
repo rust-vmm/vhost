@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::fs::File;
+use std::os::fd::{FromRawFd, IntoRawFd, OwnedFd};
 
 use super::message::*;
 use super::*;
@@ -261,6 +262,17 @@ impl VhostUserBackendReqHandlerMut for DummyBackendReqHandler {
 
     #[cfg(feature = "gpu-socket")]
     fn set_gpu_socket(&mut self, _gpu_backend: GpuBackend) {}
+
+    fn get_shared_object(&mut self, _uuid: VhostUserSharedMsg) -> Result<OwnedFd> {
+        let file = tempfile::tempfile().unwrap();
+
+        // SAFETY: We are calling `OwnedFd::from_raw_fd` to take ownership of the raw file descriptor.
+        // This is safe in this context because:
+        // 1. The file descriptor returned by `into_raw_fd()` is valid and open.
+        // 2. We ensure that `OwnedFd` will properly close the file descriptor when it is dropped.
+        let owned_fd = unsafe { OwnedFd::from_raw_fd(file.into_raw_fd()) };
+        Ok(owned_fd)
+    }
 
     fn get_inflight_fd(
         &mut self,

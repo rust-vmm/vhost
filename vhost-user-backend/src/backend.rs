@@ -21,10 +21,12 @@
 use std::fs::File;
 use std::io::Result;
 use std::ops::Deref;
+use std::os::fd::OwnedFd;
 use std::sync::{Arc, Mutex, RwLock};
 
 use vhost::vhost_user::message::{
     VhostTransferStateDirection, VhostTransferStatePhase, VhostUserProtocolFeatures,
+    VhostUserSharedMsg,
 };
 use vhost::vhost_user::Backend;
 use vm_memory::bitmap::Bitmap;
@@ -86,6 +88,18 @@ pub trait VhostUserBackend: Send + Sync {
     /// A default implementation is provided as we cannot expect all backends to implement this
     /// function.
     fn set_backend_req_fd(&self, _backend: Backend) {}
+
+    /// This function gets an owned file descriptor that the front-end can use otherwise
+    /// no file descriptor.
+    ///
+    /// A default implementation is provided as we cannot expect all backends to implement this
+    /// function.
+    fn get_shared_object(&self, _uuid: VhostUserSharedMsg) -> Result<Option<OwnedFd>> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "back end does not support get shared object",
+        ))
+    }
 
     #[cfg(feature = "gpu-socket")]
     /// Set handler for communicating with the frontend by the gpu specific backend communication
@@ -205,6 +219,18 @@ pub trait VhostUserBackendMut: Send + Sync {
     /// function.
     fn set_backend_req_fd(&mut self, _backend: Backend) {}
 
+    /// This function gets an owned file descriptor that the front-end can use otherwise
+    /// no file descriptor.
+    ///
+    /// A default implementation is provided as we cannot expect all backends to implement this
+    /// function.
+    fn get_shared_object(&mut self, _uuid: VhostUserSharedMsg) -> Result<Option<OwnedFd>> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "back end does not support get shared object",
+        ))
+    }
+
     #[cfg(feature = "gpu-socket")]
     /// Set handler for communicating with the frontend by the gpu specific backend communication
     /// channel.
@@ -318,6 +344,10 @@ impl<T: VhostUserBackend> VhostUserBackend for Arc<T> {
         self.deref().set_backend_req_fd(backend)
     }
 
+    fn get_shared_object(&self, uuid: VhostUserSharedMsg) -> Result<Option<OwnedFd>> {
+        self.deref().get_shared_object(uuid)
+    }
+
     #[cfg(feature = "gpu-socket")]
     fn set_gpu_socket(&self, gpu_backend: GpuBackend) {
         self.deref().set_gpu_socket(gpu_backend)
@@ -398,6 +428,10 @@ impl<T: VhostUserBackendMut> VhostUserBackend for Mutex<T> {
 
     fn set_backend_req_fd(&self, backend: Backend) {
         self.lock().unwrap().set_backend_req_fd(backend)
+    }
+
+    fn get_shared_object(&self, uuid: VhostUserSharedMsg) -> Result<Option<OwnedFd>> {
+        self.lock().unwrap().get_shared_object(uuid)
     }
 
     #[cfg(feature = "gpu-socket")]
@@ -485,6 +519,10 @@ impl<T: VhostUserBackendMut> VhostUserBackend for RwLock<T> {
         self.write().unwrap().set_backend_req_fd(backend)
     }
 
+    fn get_shared_object(&self, uuid: VhostUserSharedMsg) -> Result<Option<OwnedFd>> {
+        self.write().unwrap().get_shared_object(uuid)
+    }
+
     #[cfg(feature = "gpu-socket")]
     fn set_gpu_socket(&self, gpu_backend: GpuBackend) {
         self.write().unwrap().set_gpu_socket(gpu_backend)
@@ -532,6 +570,7 @@ pub mod tests {
     use crate::VringRwLock;
     use libc::EFD_NONBLOCK;
     use std::sync::Mutex;
+    use uuid::Uuid;
     use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
 
     pub struct MockVhostBackend {
@@ -610,6 +649,10 @@ pub mod tests {
 
         fn set_backend_req_fd(&mut self, _backend: Backend) {}
 
+        fn get_shared_object(&mut self, _uuid: VhostUserSharedMsg) -> Result<Option<OwnedFd>> {
+            Ok(None)
+        }
+
         #[cfg(feature = "gpu-socket")]
         fn set_gpu_socket(&mut self, _gpu_backend: GpuBackend) {}
 
@@ -663,6 +706,11 @@ pub mod tests {
 
         let _ = backend.exit_event(0).unwrap();
 
+        let uuid = VhostUserSharedMsg {
+            uuid: Uuid::new_v4(),
+        };
+        backend.get_shared_object(uuid).unwrap();
+
         let mem = GuestMemoryAtomic::new(
             GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
         );
@@ -697,6 +745,11 @@ pub mod tests {
             GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
         );
         backend.update_memory(mem.clone()).unwrap();
+
+        let uuid = VhostUserSharedMsg {
+            uuid: Uuid::new_v4(),
+        };
+        backend.get_shared_object(uuid).unwrap();
 
         let vring = VringRwLock::new(mem, 0x1000).unwrap();
         backend

@@ -55,6 +55,9 @@ pub trait VhostUserFrontend: VhostBackend {
     /// Setup backend communication channel.
     fn set_backend_request_fd(&mut self, fd: &dyn AsRawFd) -> Result<()>;
 
+    /// Retrieve a given dma-buf fd from a given backend
+    fn get_shared_object(&mut self, uuid: &VhostUserSharedMsg) -> Result<File>;
+
     /// Retrieve shared buffer for inflight I/O tracking.
     fn get_inflight_fd(
         &mut self,
@@ -471,6 +474,21 @@ impl VhostUserFrontend for Frontend {
         let fds = [fd.as_raw_fd()];
         let hdr = node.send_request_header(FrontendReq::SET_BACKEND_REQ_FD, Some(&fds))?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
+    }
+
+    fn get_shared_object(&mut self, uuid: &VhostUserSharedMsg) -> Result<File> {
+        let mut node = self.node();
+        node.check_proto_feature(VhostUserProtocolFeatures::SHARED_OBJECT)?;
+        if !uuid.is_valid() {
+            return error_code(VhostUserError::InvalidParam);
+        }
+        let hdr = node.send_request_with_body(FrontendReq::GET_SHARED_OBJECT, uuid, None)?;
+        let (_, files) = node.recv_reply_with_files::<VhostUserEmpty>(&hdr)?;
+
+        match take_single_file(files) {
+            Some(file) => Ok(file),
+            None => error_code(VhostUserError::IncorrectFds),
+        }
     }
 
     fn get_inflight_fd(

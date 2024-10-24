@@ -267,11 +267,13 @@ mod dummy_backend;
 
 #[cfg(all(test, feature = "vhost-user-frontend", feature = "vhost-user-backend"))]
 mod tests {
+    use message::VhostUserSharedMsg;
     use std::fs::File;
     use std::os::unix::io::AsRawFd;
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Barrier, Mutex};
     use std::thread;
+    use uuid::Uuid;
     use vmm_sys_util::rand::rand_alphanumerics;
     use vmm_sys_util::tempfile::TempFile;
 
@@ -407,6 +409,9 @@ mod tests {
             // set_inflight_fd()
             backend.handle_request().unwrap();
 
+            // get_shared_object()
+            backend.handle_request().unwrap();
+
             // get_queue_num()
             backend.handle_request().unwrap();
 
@@ -478,6 +483,11 @@ mod tests {
             .set_inflight_fd(&inflight_info, inflight_file.as_raw_fd())
             .unwrap();
 
+        frontend
+            .get_shared_object(&VhostUserSharedMsg {
+                uuid: Uuid::new_v4(),
+            })
+            .unwrap();
         let num = frontend.get_queue_num().unwrap();
         assert_eq!(num, 2);
 
