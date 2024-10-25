@@ -8,6 +8,10 @@
 ### Deprecated
 
 ### Fixed
+
+## [0.12.1]
+
+### Fixed
 - [[#267](https://github.com/rust-vmm/vhost/pull/267)] Fix feature unification issues with gpu-socket feature.
 
 ## [0.12.0]
