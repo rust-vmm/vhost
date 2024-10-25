@@ -9,7 +9,7 @@
 
 ### Fixed
 
-## [0.13.0]
+## v0.13.0
 
 ### Added
 - [[#266]](https://github.com/rust-vmm/vhost/pull/266) Add support for `VHOST_USER_RESET_DEVICE`
@@ -17,12 +17,12 @@
 ### Changed
 - [[#269]](https://github.com/rust-vmm/vhost/pull/269) Update vm-memory to 0.16.0 and virtio-queue to 0.13.0
 
-## [0.12.1]
+## v0.12.1
 
 ### Fixed
-- [[#267](https://github.com/rust-vmm/vhost/pull/267)] Fix feature unification issues with gpu-socket feature.
+- [[#267]](https://github.com/rust-vmm/vhost/pull/267) Fix feature unification issues with gpu-socket feature.
 
-## [0.12.0] - yanked
+## v0.12.0 - yanked
 
 This version got yanked because the `gpu_socket` feature introduced in this
 release was causing problems
@@ -40,26 +40,26 @@ Starting with the next version (v0.12.1), the `gpu_socket` feature was removed.
 ### Remove
 - [[#246]](https://github.com/rust-vmm/vhost/pull/246) Remove support for FS_* requests
 
-## [0.11.0]
+## v0.11.0
 
 ### Added
 - [[#203]](https://github.com/rust-vmm/vhost/pull/203) Add back-end's internal state migration support
 - [[#218]](https://github.com/rust-vmm/vhost/pull/218) Adding POSTCOPY support
 - [[#206]](https://github.com/rust-vmm/vhost/pull/206) Add bitmap support for tracking dirty pages during migration
 
-## [0.10.0]
+## v0.10.0
 
 ### Changed
 - [[#219]](https://github.com/rust-vmm/vhost/pull/219) Update vmm-sys-util dependency to 0.12.1.
 
 ### Remove
-- [[#202](https://github.com/rust-vmm/vhost/pull/202)] Do not expose for internal-usage-only `NOOP` and `MAX_CMD` requests.
-- [[#205](https://github.com/rust-vmm/vhost/pull/205)] Remove some commented out code.
+- [[#202]](https://github.com/rust-vmm/vhost/pull/202) Do not expose for internal-usage-only `NOOP` and `MAX_CMD` requests.
+- [[#205]](https://github.com/rust-vmm/vhost/pull/205) Remove some commented out code.
 
 ### Fixed
-- [[#208](https://github.com/rust-vmm/vhost/pull/208)] Fix various message structs being `repr(Rust)` instead of `repr(C)`.
+- [[#208]](https://github.com/rust-vmm/vhost/pull/208) Fix various message structs being `repr(Rust)` instead of `repr(C)`.
 
-## [0.9.0]
+## v0.9.0
 
 ### Changed
 - [[#187]](https://github.com/rust-vmm/vhost/pull/187) Clean master slave
@@ -72,12 +72,12 @@ Starting with the next version (v0.12.1), the `gpu_socket` feature was removed.
 - [[#184]](https://github.com/rust-vmm/vhost/pull/184) Safety fixes
 - [[#186]](https://github.com/rust-vmm/vhost/pull/186) vhost: Fix clippy warnings.
 
-## [0.8.1]
+## v0.8.1
 
 ### Fixed
 - [[#175]](https://github.com/rust-vmm/vhost/pull/175) vhost: Always enable vm-memory/backend-mmap
 
-## [0.8.0]
+## v0.8.0
 
 ### Added
 - [[#169]](https://github.com/rust-vmm/vhost/pull/160) vhost: Add xen memory mapping support
@@ -86,7 +86,7 @@ Starting with the next version (v0.12.1), the `gpu_socket` feature was removed.
 - [[#165]](https://github.com/rust-vmm/vhost/pull/165) vhost: vdpa: Provide custom set_vring_addr() implementation
 - [[#172]](https://github.com/rust-vmm/vhost/pull/172) Vhost user fix
 
-## [0.7.0]
+## v0.7.0
 
 ### Added
 - [[#137]](https://github.com/rust-vmm/vhost/pull/137) vhost_user: add Error::Disconnected
@@ -101,19 +101,19 @@ Starting with the next version (v0.12.1), the `gpu_socket` feature was removed.
 
 ### Deprecated
 
-## [0.6.0]
+## v0.6.0
 
 ### Upgraded
 - vm-memory from 0.9 to 0.10
 - vmm-sys-util from 0.10 to 0.11
 
-## [0.5.0]
+## v0.5.0
 
 ### Changed
 - [[#113]](https://github.com/rust-vmm/vhost/pull/113) Improved error messages.
 - [[#115]](https://github.com/rust-vmm/vhost/pull/115) Use caret requirements for dependencies.
 
-## [v0.4.0]
+## v0.4.0
 
 ### Added
 - [[#109]](https://github.com/rust-vmm/vhost/pull/109) vhost_kern: vdpa: Override the implementation of valid()
@@ -123,7 +123,7 @@ Starting with the next version (v0.12.1), the `gpu_socket` feature was removed.
 - [[#104]](https://github.com/rust-vmm/vhost/pull/104) fix CODEOWNERS file
 - [[#107]](https://github.com/rust-vmm/vhost/pull/107) vhost_kern/vdpa: fix get_iova_range()
 
-## [v0.3.0]
+## v0.3.0
 
 ### Added
 - [[#92]](https://github.com/rust-vmm/vhost/pull/92) implement vhost_net backend
@@ -141,7 +141,7 @@ Starting with the next version (v0.12.1), the `gpu_socket` feature was removed.
 ### Deprecated
 - [[#90]](https://github.com/rust-vmm/vhost/pull/90) remove parse_iotlb_msg
 
-## [v0.2.0]
+## v0.2.0
 
 ### Added
 
@@ -153,6 +153,6 @@ Starting with the next version (v0.12.1), the `gpu_socket` feature was removed.
 
 - [[#68]](https://github.com/rust-vmm/vhost/pull/68) Enforce ByteValued for received structs
 
-## [v0.1.0]
+## v0.1.0
 
 First release

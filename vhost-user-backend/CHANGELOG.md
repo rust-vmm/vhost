@@ -20,7 +20,7 @@
 ## v0.16.1
 
 ### Fixed
-- [[#267](https://github.com/rust-vmm/vhost/pull/267)] Fix feature unification issues with gpu-socket feature.
+- [[#267]](https://github.com/rust-vmm/vhost/pull/267) Fix feature unification issues with gpu-socket feature.
 
 ## v0.16.0 - yanked
 
@@ -63,13 +63,13 @@ Starting with the next version (v0.16.1), the `gpu_socket` feature was removed.
 ## v0.12.0
 
 ### Fixed
-- [[#210](https://github.com/rust-vmm/vhost/pull/210)] Enable all vrings upon receipt of `VHOST_USER_SET_FEATURES`
+- [[#210]](https://github.com/rust-vmm/vhost/pull/210) Enable all vrings upon receipt of `VHOST_USER_SET_FEATURES`
   message.
-- [[#212](https://github.com/rust-vmm/vhost/pull/212)] Validate queue index in `VhostUserHandler::set_vring_base`
+- [[#212]](https://github.com/rust-vmm/vhost/pull/212) Validate queue index in `VhostUserHandler::set_vring_base`
   to avoid potential out-of-bounds panic.
 
 ### Changed
-- [[#214](https://github.com/rust-vmm/vhost/pull/214)] Avoid indexing the same Vec multiple times by locally caching the
+- [[#214]](https://github.com/rust-vmm/vhost/pull/214) Avoid indexing the same Vec multiple times by locally caching the
   result of `Vec:get`.
 - [[#219]](https://github.com/rust-vmm/vhost/pull/219) Update vmm-sys-util dependency to 0.12.1 and vm-memory dependency to 0.14.0.
 
