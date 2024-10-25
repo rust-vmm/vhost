@@ -15,7 +15,12 @@
 ### Fixed
 - [[#267](https://github.com/rust-vmm/vhost/pull/267)] Fix feature unification issues with gpu-socket feature.
 
-## [0.12.0]
+## [0.12.0] - yanked
+
+This version got yanked because the `gpu_socket` feature introduced in this
+release was causing problems
+(see [#265](https://github.com/rust-vmm/vhost/issues/265)).
+Starting with the next version (v0.12.1), the `gpu_socket` feature was removed.
 
 ### Added
 - [[#241]](https://github.com/rust-vmm/vhost/pull/241) Add shared objects support
