@@ -2,13 +2,20 @@
 ## [Unreleased]
 
 ### Added
-- [[#266]](https://github.com/rust-vmm/vhost/pull/266) Add support for `VHOST_USER_RESET_DEVICE`
 
 ### Changed
 
 ### Deprecated
 
 ### Fixed
+
+## [0.13.0]
+
+### Added
+- [[#266]](https://github.com/rust-vmm/vhost/pull/266) Add support for `VHOST_USER_RESET_DEVICE`
+
+### Changed
+- [[#269]](https://github.com/rust-vmm/vhost/pull/269) Update vm-memory to 0.16.0 and virtio-queue to 0.13.0
 
 ## [0.12.1]
 
