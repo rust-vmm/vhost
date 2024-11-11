@@ -8,6 +8,7 @@
 ### Deprecated
 
 ### Fixed
+- [[#277]](https://github.com/rust-vmm/vhost/pull/277) vhost: Fix reply header for error case in POSTCOPY_ADVISE
 
 ## v0.13.0
 
