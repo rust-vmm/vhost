@@ -658,17 +658,17 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
             Ok(FrontendReq::POSTCOPY_ADVISE) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
 
+                let reply_hdr = self.new_reply_header::<VhostUserEmpty>(&hdr, 0)?;
                 let res = self.backend.postcopy_advice();
                 match res {
-                    Ok(uffd_file) => {
-                        let hdr = self.new_reply_header::<VhostUserEmpty>(&hdr, 0)?;
-                        self.main_sock.send_message(
-                            &hdr,
-                            &VhostUserEmpty,
-                            Some(&[uffd_file.as_raw_fd()]),
-                        )?
-                    }
-                    Err(_) => self.main_sock.send_message(&hdr, &VhostUserEmpty, None)?,
+                    Ok(uffd_file) => self.main_sock.send_message(
+                        &reply_hdr,
+                        &VhostUserEmpty,
+                        Some(&[uffd_file.as_raw_fd()]),
+                    )?,
+                    Err(_) => self
+                        .main_sock
+                        .send_message(&reply_hdr, &VhostUserEmpty, None)?,
                 }
             }
             #[cfg(feature = "postcopy")]
