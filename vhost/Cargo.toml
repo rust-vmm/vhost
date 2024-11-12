@@ -29,7 +29,7 @@ postcopy = []
 [dependencies]
 bitflags = "2.4"
 libc = "0.2.39"
-uuid = { version = "1.8.0", features=["v4", "fast-rng", "macro-diagnostics"] }
+uuid = { version = "1.11.0", features=["v4", "fast-rng"] }
 
 vmm-sys-util = { workspace = true }
 vm-memory = { workspace = true, features=["backend-mmap"] }
