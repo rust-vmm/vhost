@@ -106,7 +106,7 @@ impl BitmapReplace for BitmapMmapRegion {
 
 impl BitmapSlice for BitmapMmapRegion {}
 
-impl<'a> WithBitmapSlice<'a> for BitmapMmapRegion {
+impl WithBitmapSlice<'_> for BitmapMmapRegion {
     type S = Self;
 }
 
