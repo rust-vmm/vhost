@@ -356,7 +356,7 @@ where
         let vring = self
             .vrings
             .get(index as usize)
-            .ok_or_else(|| VhostUserError::InvalidParam)?;
+            .ok_or(VhostUserError::InvalidParam)?;
 
         if num == 0 || num as usize > self.max_queue_size {
             return Err(VhostUserError::InvalidParam);
@@ -377,7 +377,7 @@ where
         let vring = self
             .vrings
             .get(index as usize)
-            .ok_or_else(|| VhostUserError::InvalidParam)?;
+            .ok_or(VhostUserError::InvalidParam)?;
 
         if !self.mappings.is_empty() {
             let desc_table = self.vmm_va_to_gpa(descriptor).map_err(|e| {
@@ -418,7 +418,7 @@ where
         let vring = self
             .vrings
             .get(index as usize)
-            .ok_or_else(|| VhostUserError::InvalidParam)?;
+            .ok_or(VhostUserError::InvalidParam)?;
 
         vring.set_queue_next_avail(base as u16);
 
@@ -429,7 +429,7 @@ where
         let vring = self
             .vrings
             .get(index as usize)
-            .ok_or_else(|| VhostUserError::InvalidParam)?;
+            .ok_or(VhostUserError::InvalidParam)?;
 
         // Quote from vhost-user specification:
         // Client must start ring upon receiving a kick (that is, detecting
@@ -463,7 +463,7 @@ where
         let vring = self
             .vrings
             .get(index as usize)
-            .ok_or_else(|| VhostUserError::InvalidParam)?;
+            .ok_or(VhostUserError::InvalidParam)?;
 
         // SAFETY: EventFd requires that it has sole ownership of its fd. So
         // does File, so this is safe.
@@ -482,7 +482,7 @@ where
         let vring = self
             .vrings
             .get(index as usize)
-            .ok_or_else(|| VhostUserError::InvalidParam)?;
+            .ok_or(VhostUserError::InvalidParam)?;
 
         vring.set_call(file);
 
@@ -497,7 +497,7 @@ where
         let vring = self
             .vrings
             .get(index as usize)
-            .ok_or_else(|| VhostUserError::InvalidParam)?;
+            .ok_or(VhostUserError::InvalidParam)?;
 
         vring.set_err(file);
 
@@ -528,7 +528,7 @@ where
         let vring = self
             .vrings
             .get(index as usize)
-            .ok_or_else(|| VhostUserError::InvalidParam)?;
+            .ok_or(VhostUserError::InvalidParam)?;
 
         // Backend must not pass data to/from the backend until ring is
         // enabled by VHOST_USER_SET_VRING_ENABLE with parameter 1,
