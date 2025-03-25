@@ -78,19 +78,19 @@ pub trait VhostKernBackend: AsRawFd {
         let used_ring_size = 6 + 8 * u64::from(queue_size) as GuestUsize;
         if GuestAddress(config_data.desc_table_addr)
             .checked_add(desc_table_size)
-            .map_or(true, |v| !m.address_in_range(v))
+            .is_none_or(|v| !m.address_in_range(v))
         {
             return false;
         }
         if GuestAddress(config_data.avail_ring_addr)
             .checked_add(avail_ring_size)
-            .map_or(true, |v| !m.address_in_range(v))
+            .is_none_or(|v| !m.address_in_range(v))
         {
             return false;
         }
         if GuestAddress(config_data.used_ring_addr)
             .checked_add(used_ring_size)
-            .map_or(true, |v| !m.address_in_range(v))
+            .is_none_or(|v| !m.address_in_range(v))
         {
             return false;
         }
