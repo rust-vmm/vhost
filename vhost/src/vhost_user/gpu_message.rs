@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Implementation parts of the protocol on the socket from VHOST_USER_SET_GPU_SOCKET
-//! see: https://www.qemu.org/docs/master/interop/vhost-user-gpu.html
+//! see: <https://www.qemu.org/docs/master/interop/vhost-user-gpu.html>
 
 use super::enum_value;
 use crate::vhost_user::message::{MsgHeader, Req, VhostUserMsgValidator};

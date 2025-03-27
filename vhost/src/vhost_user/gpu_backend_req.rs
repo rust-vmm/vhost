@@ -100,7 +100,7 @@ impl BackendInternal {
 
 /// Proxy for sending messages from the backend to the fronted
 /// over the socket obtained from VHOST_USER_GPU_SET_SOCKET.
-/// The protocol is documented here: https://www.qemu.org/docs/master/interop/vhost-user-gpu.html
+/// The protocol is documented here: <https://www.qemu.org/docs/master/interop/vhost-user-gpu.html>
 #[derive(Clone)]
 pub struct GpuBackend {
     // underlying Unix domain socket for communication
