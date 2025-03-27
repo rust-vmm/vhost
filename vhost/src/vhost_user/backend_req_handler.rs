@@ -327,7 +327,6 @@ pub struct BackendReqHandler<S: VhostUserBackendReqHandler> {
 
     virtio_features: u64,
     acked_virtio_features: u64,
-    protocol_features: VhostUserProtocolFeatures,
     acked_protocol_features: u64,
 
     // sending ack for messages without payload
@@ -347,7 +346,6 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
             backend,
             virtio_features: 0,
             acked_virtio_features: 0,
-            protocol_features: VhostUserProtocolFeatures::empty(),
             acked_protocol_features: 0,
             reply_ack_enabled: false,
             error: None,
@@ -512,7 +510,9 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
             }
             Ok(FrontendReq::GET_PROTOCOL_FEATURES) => {
                 self.check_request_size(&hdr, size, 0)?;
-                let features = self.backend.get_protocol_features()?;
+                // REPLY_ACK is implemented entirely by this library, so it's always supported.
+                let features =
+                    self.backend.get_protocol_features()? | VhostUserProtocolFeatures::REPLY_ACK;
 
                 // Enable the `XEN_MMAP` protocol feature for backends if xen feature is enabled.
                 #[cfg(feature = "xen")]
@@ -520,7 +520,6 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
 
                 let msg = VhostUserU64::new(features.bits());
                 self.send_reply_message(&hdr, &msg)?;
-                self.protocol_features = features;
                 self.update_reply_ack_flag();
             }
             Ok(FrontendReq::SET_PROTOCOL_FEATURES) => {
@@ -952,7 +951,6 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
         let pflag = VhostUserProtocolFeatures::REPLY_ACK;
 
         self.reply_ack_enabled = (self.virtio_features & vflag) != 0
-            && self.protocol_features.contains(pflag)
             && (self.acked_protocol_features & pflag.bits()) != 0;
     }
 
