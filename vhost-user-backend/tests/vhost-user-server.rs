@@ -60,7 +60,8 @@ impl VhostUserBackendMut for MockVhostBackend {
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
-        VhostUserProtocolFeatures::all()
+        // Exclude REPLY_ACK to test that it is automatically added.
+        VhostUserProtocolFeatures::all() - VhostUserProtocolFeatures::REPLY_ACK
     }
 
     fn reset_device(&mut self) {

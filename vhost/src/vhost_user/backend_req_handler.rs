@@ -512,7 +512,8 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
             }
             Ok(FrontendReq::GET_PROTOCOL_FEATURES) => {
                 self.check_request_size(&hdr, size, 0)?;
-                let features = self.backend.get_protocol_features()?;
+                let features =
+                    self.backend.get_protocol_features()? | VhostUserProtocolFeatures::REPLY_ACK;
 
                 // Enable the `XEN_MMAP` protocol feature for backends if xen feature is enabled.
                 #[cfg(feature = "xen")]
@@ -952,7 +953,6 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
         let pflag = VhostUserProtocolFeatures::REPLY_ACK;
 
         self.reply_ack_enabled = (self.virtio_features & vflag) != 0
-            && self.protocol_features.contains(pflag)
             && (self.acked_protocol_features & pflag.bits()) != 0;
     }
 

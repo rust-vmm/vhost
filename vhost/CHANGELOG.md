@@ -5,6 +5,10 @@
 - [[#268]](https://github.com/rust-vmm/vhost/pull/268) Add support for `VHOST_USER_GET_SHARED_OBJECT`
 
 ### Changed
+- [[#290]](https://github.com/rust-vmm/vhost/pull/290) Backends now
+  always support `VHOST_USER_PROTOCOL_F_REPLY_ACK`, without the
+  `VhostUserBackendReqHandler` implementation having to include it in
+  the features returned from `get_protocol_features`.
 
 ### Deprecated
 
