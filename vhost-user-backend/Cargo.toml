@@ -23,7 +23,7 @@ vm-memory = { workspace = true, features = ["backend-mmap", "backend-atomic", "b
 vmm-sys-util = { workspace = true }
 
 [dev-dependencies]
-nix = { version = "0.29", features = ["fs"] }
+nix = { version = "0.30", features = ["fs"] }
 uuid = { version = "1.8.0", features=["v4"] }
 vhost = { path = "../vhost", version = "0.13.0", features = ["test-utils", "vhost-user-frontend", "vhost-user-backend"] }
 vm-memory = { workspace = true, features = ["backend-mmap", "backend-atomic"] }
