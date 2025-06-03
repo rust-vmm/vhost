@@ -1,14 +1,19 @@
 # Changelog
+
 ## [Unreleased]
+
+### Added
+### Changed
+### Deprecated
+### Fixed
+
+## v0.18.0
 
 ### Added
 - [[#268]](https://github.com/rust-vmm/vhost/pull/268) Add support for `VHOST_USER_GET_SHARED_OBJECT`
 
 ### Changed
-
-### Deprecated
-
-### Fixed
+- [[#295]](https://github.com/rust-vmm/vhost/pull/295) Updated vm-memory to 0.16.2 and vmm-sys-util to 0.14.0
 
 ## v0.17.0
 
