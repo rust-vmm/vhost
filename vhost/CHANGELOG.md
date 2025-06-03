@@ -1,5 +1,13 @@
 # Changelog
+
 ## [Unreleased]
+
+### Added
+### Changed
+### Deprecated
+### Fixed
+
+## v0.14.0
 
 ### Added
 - [[#268]](https://github.com/rust-vmm/vhost/pull/268) Add support for `VHOST_USER_GET_SHARED_OBJECT`
@@ -9,8 +17,7 @@
   always support `VHOST_USER_PROTOCOL_F_REPLY_ACK`, without the
   `VhostUserBackendReqHandler` implementation having to include it in
   the features returned from `get_protocol_features`.
-
-### Deprecated
+- [[#295]](https://github.com/rust-vmm/vhost/pull/295) Updated vm-memory to 0.16.2 and vmm-sys-util to 0.14.0
 
 ### Fixed
 - [[#277]](https://github.com/rust-vmm/vhost/pull/277) vhost: Fix reply header for error case in POSTCOPY_ADVISE
