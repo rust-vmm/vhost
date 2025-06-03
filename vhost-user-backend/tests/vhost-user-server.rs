@@ -1,4 +1,3 @@
-use std::ffi::CString;
 use std::fs::File;
 use std::io::Result;
 use std::os::unix::io::AsRawFd;
@@ -166,11 +165,7 @@ fn vhost_user_client(path: &Path, barrier: Arc<Barrier>) {
     frontend.set_protocol_features(proto).unwrap();
     assert!(proto.contains(VhostUserProtocolFeatures::REPLY_ACK));
 
-    let memfd = nix::sys::memfd::memfd_create(
-        &CString::new("test").unwrap(),
-        nix::sys::memfd::MemFdCreateFlag::empty(),
-    )
-    .unwrap();
+    let memfd = nix::sys::memfd::memfd_create("test", nix::sys::memfd::MFdFlags::empty()).unwrap();
     let file = File::from(memfd);
     file.set_len(0x100000).unwrap();
     let file_offset = FileOffset::new(file, 0);
