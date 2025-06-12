@@ -275,7 +275,7 @@ pub struct VringMutex<M: GuestAddressSpace = GuestMemoryAtomic<GuestMemoryMmap>>
 
 impl<M: GuestAddressSpace> VringMutex<M> {
     /// Get a mutable guard to the underlying raw `VringState` object.
-    fn lock(&self) -> MutexGuard<VringState<M>> {
+    fn lock(&self) -> MutexGuard<'_, VringState<M>> {
         self.state.lock().unwrap()
     }
 }
@@ -295,11 +295,11 @@ impl<M: 'static + GuestAddressSpace> VringT<M> for VringMutex<M> {
         })
     }
 
-    fn get_ref(&self) -> <Self as VringStateGuard<M>>::G {
+    fn get_ref(&self) -> <Self as VringStateGuard<'_, M>>::G {
         self.state.lock().unwrap()
     }
 
-    fn get_mut(&self) -> <Self as VringStateMutGuard<M>>::G {
+    fn get_mut(&self) -> <Self as VringStateMutGuard<'_, M>>::G {
         self.lock()
     }
 
@@ -390,7 +390,7 @@ pub struct VringRwLock<M: GuestAddressSpace = GuestMemoryAtomic<GuestMemoryMmap>
 
 impl<M: GuestAddressSpace> VringRwLock<M> {
     /// Get a mutable guard to the underlying raw `VringState` object.
-    fn write_lock(&self) -> RwLockWriteGuard<VringState<M>> {
+    fn write_lock(&self) -> RwLockWriteGuard<'_, VringState<M>> {
         self.state.write().unwrap()
     }
 }
@@ -410,11 +410,11 @@ impl<M: 'static + GuestAddressSpace> VringT<M> for VringRwLock<M> {
         })
     }
 
-    fn get_ref(&self) -> <Self as VringStateGuard<M>>::G {
+    fn get_ref(&self) -> <Self as VringStateGuard<'_, M>>::G {
         self.state.read().unwrap()
     }
 
-    fn get_mut(&self) -> <Self as VringStateMutGuard<M>>::G {
+    fn get_mut(&self) -> <Self as VringStateMutGuard<'_, M>>::G {
         self.write_lock()
     }
 
