@@ -117,7 +117,7 @@ impl GpuBackend {
         }
     }
 
-    fn node(&self) -> MutexGuard<BackendInternal> {
+    fn node(&self) -> MutexGuard<'_, BackendInternal> {
         self.node.lock().unwrap()
     }
 

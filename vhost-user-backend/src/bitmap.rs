@@ -87,7 +87,7 @@ impl Bitmap for BitmapMmapRegion {
             .is_some_and(|bitmap| bitmap.dirty_at(self.base_address.saturating_add(offset)))
     }
 
-    fn slice_at(&self, offset: usize) -> <Self as WithBitmapSlice>::S {
+    fn slice_at(&self, offset: usize) -> <Self as WithBitmapSlice<'_>>::S {
         Self {
             inner: Arc::clone(&self.inner),
             base_address: self.base_address.saturating_add(offset),
