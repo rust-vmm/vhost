@@ -127,7 +127,7 @@ impl std::fmt::Display for Error {
                 write!(f, "handler failed to allocate memfd during get_inflight_fd")
             }
             Error::FileTruncateError => {
-                write!(f, "handler failed to trucate memfd during get_inflight_fd")
+                write!(f, "handler failed to truncate memfd during get_inflight_fd")
             }
             Error::MemFdSealError => write!(
                 f,
