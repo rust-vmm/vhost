@@ -26,6 +26,9 @@ use super::{
     VringConfigData, VHOST_MAX_MEMORY_REGIONS,
 };
 
+#[cfg(feature = "vhost-user")]
+use super::vhost_user::message::VhostUserVringAddrFlags;
+
 pub mod vhost_binding;
 use self::vhost_binding::*;
 
@@ -73,26 +76,64 @@ pub trait VhostKernBackend: AsRawFd {
         }
 
         let m = self.mem().memory();
-        let desc_table_size = 16 * u64::from(queue_size) as GuestUsize;
-        let avail_ring_size = 6 + 2 * u64::from(queue_size) as GuestUsize;
-        let used_ring_size = 6 + 8 * u64::from(queue_size) as GuestUsize;
-        if GuestAddress(config_data.desc_table_addr)
-            .checked_add(desc_table_size)
-            .is_none_or(|v| !m.address_in_range(v))
-        {
-            return false;
-        }
-        if GuestAddress(config_data.avail_ring_addr)
-            .checked_add(avail_ring_size)
-            .is_none_or(|v| !m.address_in_range(v))
-        {
-            return false;
-        }
-        if GuestAddress(config_data.used_ring_addr)
-            .checked_add(used_ring_size)
-            .is_none_or(|v| !m.address_in_range(v))
-        {
-            return false;
+
+        // Check if packed ring format is being used
+        #[cfg(feature = "vhost-user")]
+        let is_packed =
+            config_data.flags & VhostUserVringAddrFlags::VHOST_VRING_F_PACKED.bits() != 0;
+        #[cfg(not(feature = "vhost-user"))]
+        let is_packed = false;
+
+        if is_packed {
+            // Packed ring: single descriptor ring layout
+            let desc_ring_size = 16 * u64::from(queue_size) as GuestUsize;
+            let driver_event_size = 4; // 4 bytes for driver event suppression
+            let device_event_size = 4; // 4 bytes for device event suppression
+
+            // Validate packed descriptor ring
+            if GuestAddress(config_data.desc_table_addr)
+                .checked_add(desc_ring_size)
+                .is_none_or(|v| !m.address_in_range(v))
+            {
+                return false;
+            }
+            // Validate driver event suppression area (available)
+            if GuestAddress(config_data.avail_ring_addr)
+                .checked_add(driver_event_size)
+                .is_none_or(|v| !m.address_in_range(v))
+            {
+                return false;
+            }
+            // Validate device event suppression area (used)
+            if GuestAddress(config_data.used_ring_addr)
+                .checked_add(device_event_size)
+                .is_none_or(|v| !m.address_in_range(v))
+            {
+                return false;
+            }
+        } else {
+            // Split ring validation (existing logic)
+            let desc_table_size = 16 * u64::from(queue_size) as GuestUsize;
+            let avail_ring_size = 6 + 2 * u64::from(queue_size) as GuestUsize;
+            let used_ring_size = 6 + 8 * u64::from(queue_size) as GuestUsize;
+            if GuestAddress(config_data.desc_table_addr)
+                .checked_add(desc_table_size)
+                .is_none_or(|v| !m.address_in_range(v))
+            {
+                return false;
+            }
+            if GuestAddress(config_data.avail_ring_addr)
+                .checked_add(avail_ring_size)
+                .is_none_or(|v| !m.address_in_range(v))
+            {
+                return false;
+            }
+            if GuestAddress(config_data.used_ring_addr)
+                .checked_add(used_ring_size)
+                .is_none_or(|v| !m.address_in_range(v))
+            {
+                return false;
+            }
         }
 
         config_data.is_log_addr_valid()

@@ -25,6 +25,16 @@ use super::{Error, Result};
 pub const VHOST_MAX_MEMORY_REGIONS: usize = 255;
 
 /// Vring configuration data.
+///
+/// For split virtqueues (traditional layout):
+/// - `desc_table_addr`: Descriptor table address
+/// - `used_ring_addr`: Used ring buffer address  
+/// - `avail_ring_addr`: Available ring buffer address
+///
+/// For packed virtqueues (when VHOST_VRING_F_PACKED flag is set):
+/// - `desc_table_addr`: Packed descriptor ring address
+/// - `used_ring_addr`: Driver event suppression structure address
+/// - `avail_ring_addr`: Device event suppression structure address
 #[derive(Default, Clone, Copy)]
 pub struct VringConfigData {
     /// Maximum queue size supported by the driver.
@@ -33,11 +43,11 @@ pub struct VringConfigData {
     pub queue_size: u16,
     /// Bitmask of vring flags.
     pub flags: u32,
-    /// Descriptor table address.
+    /// Descriptor table address (split) / Packed descriptor ring address (packed).
     pub desc_table_addr: u64,
-    /// Used ring buffer address.
+    /// Used ring buffer address (split) / Driver event suppression address (packed).
     pub used_ring_addr: u64,
-    /// Available ring buffer address.
+    /// Available ring buffer address (split) / Device event suppression address (packed).
     pub avail_ring_addr: u64,
     /// Optional address for logging.
     pub log_addr: Option<u64>,

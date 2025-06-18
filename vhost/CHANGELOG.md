@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Add support for packed virtqueues in vhost-user and vhost-kern backends
 ### Changed
 ### Deprecated
 ### Fixed
