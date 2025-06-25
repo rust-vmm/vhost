@@ -6,6 +6,7 @@
 ### Changed
 ### Deprecated
 ### Fixed
+- [[#304]](https://github.com/rust-vmm/vhost/pull/304) Fix building docs.
 
 ## v0.14.0
 
