@@ -19,7 +19,7 @@ The hypervisor relies on ioctl based interfaces to control those in-kernel
 vhost drivers, such as vhost-net, vhost-scsi and vhost-vsock etc.
 
 ## vHost-user Backend Drivers
-The [vhost-user protocol](https://qemu.readthedocs.io/en/latest/interop/vhost-user.html#communication) aims to implement vhost backend drivers in
+The [vhost-user protocol](https://www.qemu.org/docs/master/interop/vhost-user.html#communication) aims to implement vhost backend drivers in
 userspace, which complements the ioctl interface used to control the vhost
 implementation in the Linux kernel. It implements the control plane needed
 to establish virtqueue sharing with a user space process on the same host.
