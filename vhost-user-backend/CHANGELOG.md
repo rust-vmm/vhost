@@ -7,6 +7,11 @@
 ### Deprecated
 ### Fixed
 
+## v0.20.0
+
+### Changed
+- [[306]](https://github.com/rust-vmm/vhost/pull/306) Updated virtio-queue to v0.16.0 and virtio-bindings to v0.2.6
+
 ## v0.19.0
 
 ### Changed
