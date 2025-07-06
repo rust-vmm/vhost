@@ -30,7 +30,7 @@ use vhost::vhost_user::message::{
 use vhost::vhost_user::Backend;
 use vm_memory::bitmap::Bitmap;
 use vmm_sys_util::epoll::EventSet;
-use vmm_sys_util::eventfd::EventFd;
+use vmm_sys_util::event::{EventConsumer, EventNotifier};
 
 use vhost::vhost_user::GpuBackend;
 
@@ -132,7 +132,8 @@ pub trait VhostUserBackend: Send + Sync {
     ///
     /// The returned `EventFd` will be monitored for IO events. When the
     /// returned EventFd is written to, the worker thread will exit.
-    fn exit_event(&self, _thread_index: usize) -> Option<EventFd> {
+    // TODO: Refine this API to return only EventNotifier.
+    fn exit_event(&self, _thread_index: usize) -> Option<(EventConsumer, EventNotifier)> {
         None
     }
 
@@ -275,7 +276,8 @@ pub trait VhostUserBackendMut: Send + Sync {
     /// If an (`EventFd`, `token`) pair is returned, the returned `EventFd` will be monitored for IO
     /// events by using epoll with the specified `token`. When the returned EventFd is written to,
     /// the worker thread will exit.
-    fn exit_event(&self, _thread_index: usize) -> Option<EventFd> {
+    // TODO: Refine this API to return only EventNotifier.
+    fn exit_event(&self, _thread_index: usize) -> Option<(EventConsumer, EventNotifier)> {
         None
     }
 
@@ -382,7 +384,7 @@ impl<T: VhostUserBackend> VhostUserBackend for Arc<T> {
         self.deref().queues_per_thread()
     }
 
-    fn exit_event(&self, thread_index: usize) -> Option<EventFd> {
+    fn exit_event(&self, thread_index: usize) -> Option<(EventConsumer, EventNotifier)> {
         self.deref().exit_event(thread_index)
     }
 
@@ -471,7 +473,7 @@ impl<T: VhostUserBackendMut> VhostUserBackend for Mutex<T> {
         self.lock().unwrap().queues_per_thread()
     }
 
-    fn exit_event(&self, thread_index: usize) -> Option<EventFd> {
+    fn exit_event(&self, thread_index: usize) -> Option<(EventConsumer, EventNotifier)> {
         self.lock().unwrap().exit_event(thread_index)
     }
 
@@ -563,7 +565,7 @@ impl<T: VhostUserBackendMut> VhostUserBackend for RwLock<T> {
         self.read().unwrap().queues_per_thread()
     }
 
-    fn exit_event(&self, thread_index: usize) -> Option<EventFd> {
+    fn exit_event(&self, thread_index: usize) -> Option<(EventConsumer, EventNotifier)> {
         self.read().unwrap().exit_event(thread_index)
     }
 
@@ -599,16 +601,16 @@ impl<T: VhostUserBackendMut> VhostUserBackend for RwLock<T> {
 pub mod tests {
     use super::*;
     use crate::VringRwLock;
-    use libc::EFD_NONBLOCK;
     use std::sync::Mutex;
     use uuid::Uuid;
     use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
+    use vmm_sys_util::event::{new_event_consumer_and_notifier, EventFlag};
 
     pub struct MockVhostBackend {
         events: u64,
         event_idx: bool,
         acked_features: u64,
-        exit_event_fds: Vec<EventFd>,
+        exit_event_fds: Vec<(EventConsumer, EventNotifier)>,
     }
 
     impl MockVhostBackend {
@@ -624,7 +626,10 @@ pub mod tests {
             // order to allow tests maximum flexibility in checking whether
             // signals arrived or not.
             backend.exit_event_fds = (0..backend.queues_per_thread().len())
-                .map(|_| EventFd::new(EFD_NONBLOCK).unwrap())
+                .map(|_| {
+                    new_event_consumer_and_notifier(EventFlag::NONBLOCK)
+                        .expect("Failed to new EventNotifier and EventConsumer")
+                })
                 .collect();
 
             backend
@@ -695,13 +700,13 @@ pub mod tests {
             vec![1, 1]
         }
 
-        fn exit_event(&self, thread_index: usize) -> Option<EventFd> {
-            Some(
-                self.exit_event_fds
-                    .get(thread_index)?
-                    .try_clone()
-                    .expect("Could not clone exit eventfd"),
-            )
+        fn exit_event(&self, thread_index: usize) -> Option<(EventConsumer, EventNotifier)> {
+            self.exit_event_fds.get(thread_index).map(|(s, r)| {
+                (
+                    s.try_clone().expect("Failed to clone EventConsumer"),
+                    r.try_clone().expect("Failed to clone EventNotifier"),
+                )
+            })
         }
 
         fn handle_event(

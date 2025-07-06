@@ -350,7 +350,7 @@ mod tests {
                 let fd = backend.exit_event(thread_id).unwrap();
                 // Reading from exit fd should fail since nothing was written yet
                 assert_eq!(
-                    fd.read().unwrap_err().raw_os_error().unwrap(),
+                    fd.0.consume().unwrap_err().raw_os_error().unwrap(),
                     EAGAIN,
                     "exit event should not have been raised yet!"
                 );
@@ -365,7 +365,7 @@ mod tests {
         let backend = backend.lock().unwrap();
         for thread_id in 0..backend.queues_per_thread().len() {
             let fd = backend.exit_event(thread_id).unwrap();
-            assert!(fd.read().is_ok(), "No exit event was raised!");
+            assert!(fd.0.consume().is_ok(), "No exit event was raised!");
         }
     }
 }

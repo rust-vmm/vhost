@@ -6,10 +6,11 @@
 use std::fmt::{Display, Formatter};
 use std::io::{self, Result};
 use std::marker::PhantomData;
+use std::os::fd::IntoRawFd;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 use vmm_sys_util::epoll::{ControlOperation, Epoll, EpollEvent, EventSet};
-use vmm_sys_util::eventfd::EventFd;
+use vmm_sys_util::event::EventNotifier;
 
 use super::backend::VhostUserBackend;
 use super::vring::VringT;
@@ -61,7 +62,7 @@ pub struct VringEpollHandler<T: VhostUserBackend> {
     backend: T,
     vrings: Vec<T::Vring>,
     thread_id: usize,
-    exit_event_fd: Option<EventFd>,
+    exit_event_fd: Option<EventNotifier>,
     phantom: PhantomData<T::Bitmap>,
 }
 
@@ -69,7 +70,7 @@ impl<T: VhostUserBackend> VringEpollHandler<T> {
     /// Send `exit event` to break the event loop.
     pub fn send_exit_event(&self) {
         if let Some(eventfd) = self.exit_event_fd.as_ref() {
-            let _ = eventfd.write(1);
+            let _ = eventfd.notify();
         }
     }
 }
@@ -87,16 +88,19 @@ where
         let epoll = Epoll::new().map_err(VringEpollError::EpollCreateFd)?;
         let exit_event_fd = backend.exit_event(thread_id);
 
-        if let Some(exit_event_fd) = &exit_event_fd {
+        let exit_event_fd = if let Some((consumer, notifier)) = exit_event_fd {
             let id = backend.num_queues();
             epoll
                 .ctl(
                     ControlOperation::Add,
-                    exit_event_fd.as_raw_fd(),
+                    consumer.into_raw_fd(),
                     EpollEvent::new(EventSet::IN, id as u64),
                 )
                 .map_err(VringEpollError::RegisterExitEvent)?;
-        }
+            Some(notifier)
+        } else {
+            None
+        };
 
         Ok(VringEpollHandler {
             epoll,
@@ -230,7 +234,7 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
     use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
-    use vmm_sys_util::eventfd::EventFd;
+    use vmm_sys_util::event::{new_event_consumer_and_notifier, EventFlag};
 
     #[test]
     fn test_vring_epoll_handler() {
@@ -242,29 +246,29 @@ mod tests {
 
         let handler = VringEpollHandler::new(backend, vec![vring], 0x1).unwrap();
 
-        let eventfd = EventFd::new(0).unwrap();
+        let (consumer, _notifier) = new_event_consumer_and_notifier(EventFlag::empty()).unwrap();
         handler
-            .register_listener(eventfd.as_raw_fd(), EventSet::IN, 3)
+            .register_listener(consumer.as_raw_fd(), EventSet::IN, 3)
             .unwrap();
         // Register an already registered fd.
         handler
-            .register_listener(eventfd.as_raw_fd(), EventSet::IN, 3)
+            .register_listener(consumer.as_raw_fd(), EventSet::IN, 3)
             .unwrap_err();
         // Register an invalid data.
         handler
-            .register_listener(eventfd.as_raw_fd(), EventSet::IN, 1)
+            .register_listener(consumer.as_raw_fd(), EventSet::IN, 1)
             .unwrap_err();
 
         handler
-            .unregister_listener(eventfd.as_raw_fd(), EventSet::IN, 3)
+            .unregister_listener(consumer.as_raw_fd(), EventSet::IN, 3)
             .unwrap();
         // unregister an already unregistered fd.
         handler
-            .unregister_listener(eventfd.as_raw_fd(), EventSet::IN, 3)
+            .unregister_listener(consumer.as_raw_fd(), EventSet::IN, 3)
             .unwrap_err();
         // unregister an invalid data.
         handler
-            .unregister_listener(eventfd.as_raw_fd(), EventSet::IN, 1)
+            .unregister_listener(consumer.as_raw_fd(), EventSet::IN, 1)
             .unwrap_err();
         // Check we retrieve the correct file descriptor
         assert_eq!(handler.as_raw_fd(), handler.epoll.as_raw_fd());
