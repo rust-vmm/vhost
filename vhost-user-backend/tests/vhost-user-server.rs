@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::Result;
+use std::os::fd::{FromRawFd, IntoRawFd};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
@@ -18,6 +19,7 @@ use vm_memory::{
     FileOffset, GuestAddress, GuestAddressSpace, GuestMemory, GuestMemoryAtomic, GuestMemoryMmap,
 };
 use vmm_sys_util::epoll::EventSet;
+use vmm_sys_util::event::{EventConsumer, EventNotifier};
 use vmm_sys_util::eventfd::EventFd;
 
 struct MockVhostBackend {
@@ -105,10 +107,15 @@ impl VhostUserBackendMut for MockVhostBackend {
         vec![1, 1]
     }
 
-    fn exit_event(&self, _thread_index: usize) -> Option<EventFd> {
-        let event_fd = EventFd::new(0).unwrap();
+    fn exit_event(&self, _thread_index: usize) -> Option<(EventConsumer, EventNotifier)> {
+        let (reader, writer) = std::io::pipe().expect("Failed to create pipe");
 
-        Some(event_fd)
+        Some(unsafe {
+            (
+                EventConsumer::from_raw_fd(reader.into_raw_fd()),
+                EventNotifier::from_raw_fd(writer.into_raw_fd()),
+            )
+        })
     }
 
     fn handle_event(
