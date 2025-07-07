@@ -5,6 +5,7 @@
 ### Added
 ### Changed
 - [[#308](https://github.com/rust-vmm/vhost/pull/308)] Replace Eventfd with EventNotifier/EventConsumer.
+- [[316]](https://github.com/rust-vmm/vhost/pull/316) Use mio to replace Epoll. Expose event_loop::EventSet.
 
 ### Deprecated
 ### Fixed
