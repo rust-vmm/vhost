@@ -15,7 +15,8 @@ use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuar
 
 use virtio_queue::{Error as VirtQueError, Queue, QueueT};
 use vm_memory::{GuestAddress, GuestAddressSpace, GuestMemoryAtomic, GuestMemoryMmap};
-use vmm_sys_util::eventfd::EventFd;
+use vmm_sys_util::event::{EventConsumer, EventNotifier};
+// use vmm_sys_util::eventfd::EventFd;
 
 /// Trait for objects returned by `VringT::get_ref()`.
 pub trait VringStateGuard<'a, M: GuestAddressSpace> {
@@ -109,9 +110,9 @@ pub trait VringT<M: GuestAddressSpace>:
 /// object for single-threaded context.
 pub struct VringState<M: GuestAddressSpace = GuestMemoryAtomic<GuestMemoryMmap>> {
     queue: Queue,
-    kick: Option<EventFd>,
-    call: Option<EventFd>,
-    err: Option<EventFd>,
+    kick: Option<EventConsumer>,
+    call: Option<EventNotifier>,
+    err: Option<EventConsumer>,
     enabled: bool,
     mem: M,
 }
@@ -148,7 +149,7 @@ impl<M: GuestAddressSpace> VringState<M> {
     /// Notify the vhost-user frontend that used descriptors have been put into the used queue.
     pub fn signal_used_queue(&self) -> io::Result<()> {
         if let Some(call) = self.call.as_ref() {
-            call.write(1)
+            call.notify()
         } else {
             Ok(())
         }
@@ -227,7 +228,7 @@ impl<M: GuestAddressSpace> VringState<M> {
     }
 
     /// Get the `EventFd` for kick.
-    pub fn get_kick(&self) -> &Option<EventFd> {
+    pub fn get_kick(&self) -> &Option<EventConsumer> {
         &self.kick
     }
 
@@ -237,13 +238,13 @@ impl<M: GuestAddressSpace> VringState<M> {
         // EventFd requires that it has sole ownership of its fd. So does File, so this is safe.
         // Ideally, we'd have a generic way to refer to a uniquely-owned fd, such as that proposed
         // by Rust RFC #3128.
-        self.kick = file.map(|f| unsafe { EventFd::from_raw_fd(f.into_raw_fd()) });
+        self.kick = file.map(|f| unsafe { EventConsumer::from_raw_fd(f.into_raw_fd()) });
     }
 
     /// Read event from the kick `EventFd`.
     fn read_kick(&self) -> io::Result<bool> {
         if let Some(kick) = &self.kick {
-            kick.read()?;
+            kick.consume()?;
         }
 
         Ok(self.enabled)
@@ -252,18 +253,18 @@ impl<M: GuestAddressSpace> VringState<M> {
     /// Set `EventFd` for call.
     fn set_call(&mut self, file: Option<File>) {
         // SAFETY: see comment in set_kick()
-        self.call = file.map(|f| unsafe { EventFd::from_raw_fd(f.into_raw_fd()) });
+        self.call = file.map(|f| unsafe { EventNotifier::from_raw_fd(f.into_raw_fd()) });
     }
 
     /// Get the `EventFd` for call.
-    pub fn get_call(&self) -> &Option<EventFd> {
+    pub fn get_call(&self) -> &Option<EventNotifier> {
         &self.call
     }
 
     /// Set `EventFd` for err.
     fn set_err(&mut self, file: Option<File>) {
         // SAFETY: see comment in set_kick()
-        self.err = file.map(|f| unsafe { EventFd::from_raw_fd(f.into_raw_fd()) });
+        self.err = file.map(|f| unsafe { EventConsumer::from_raw_fd(f.into_raw_fd()) });
     }
 }
 
