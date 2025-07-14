@@ -349,7 +349,7 @@ mod tests {
     const VHOST_VDPA_PATH: &str = "/dev/vhost-vdpa-0";
 
     use std::alloc::{alloc, dealloc, Layout};
-    use vm_memory::{GuestAddress, GuestMemory, GuestMemoryMmap};
+    use vm_memory::{GuestAddress, GuestMemoryBackend, GuestMemoryMmap};
     use vmm_sys_util::eventfd::EventFd;
 
     use super::*;
