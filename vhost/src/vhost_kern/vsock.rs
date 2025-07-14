@@ -84,7 +84,7 @@ impl<AS: GuestAddressSpace> AsRawFd for Vsock<AS> {
 
 #[cfg(test)]
 mod tests {
-    use vm_memory::{GuestAddress, GuestMemory, GuestMemoryMmap};
+    use vm_memory::{GuestAddress, GuestMemoryBackend, GuestMemoryMmap};
     use vmm_sys_util::eventfd::EventFd;
 
     use super::*;

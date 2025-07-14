@@ -16,7 +16,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 
 use libc::{c_void, ssize_t, write};
 
-use vm_memory::{Address, GuestAddress, GuestAddressSpace, GuestMemory, GuestUsize};
+use vm_memory::{Address, GuestAddress, GuestAddressSpace, GuestMemoryBackend, GuestUsize};
 use vmm_sys_util::eventfd::EventFd;
 use vmm_sys_util::ioctl::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
 
@@ -38,9 +38,9 @@ pub mod vsock;
 
 /// Helper trait to signify `GuestAddressSpace`s that are physical, which is required for
 /// vhost_kern.
-pub trait PhysicalGuestAddressSpace: GuestAddressSpace<M: GuestMemory> {}
+pub trait PhysicalGuestAddressSpace: GuestAddressSpace<M: GuestMemoryBackend> {}
 
-impl<AS: GuestAddressSpace> PhysicalGuestAddressSpace for AS where AS::M: GuestMemory {}
+impl<AS: GuestAddressSpace> PhysicalGuestAddressSpace for AS where AS::M: GuestMemoryBackend {}
 
 #[inline]
 fn ioctl_result<T>(rc: i32, res: T) -> Result<T> {

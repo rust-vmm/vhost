@@ -7,6 +7,7 @@
 - [[#360]](https://github.com/rust-vmm/vhost/pull/360) Validate AF_UNIX SOCK_STREAM socket file descriptors and 
   add Error::InvalidSocketFd, Error::NotUnixSocket and Error::NotStreamSocket.
 ### Changed
+- [[#364]](https://github.com/rust-vmm/vhost/pull/364) Updated vm-memory to 0.18.0
 ### Deprecated
 ### Fixed
 

@@ -5,6 +5,8 @@
 ### Added
 - [[#355]](https://github.com/rust-vmm/vhost/pull/355) Add an explicit shutdown handle for active daemon connections.
 ### Changed
+- [[#364]](https://github.com/rust-vmm/vhost/pull/364) Updated vm-memory to 0.18.0
+
 ### Deprecated
 ### Fixed
 
