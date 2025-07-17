@@ -67,7 +67,7 @@ impl<AS: GuestAddressSpace> VhostKernVdpa<AS> {
     /// # Arguments
     /// * `queue_index` - Index of the queue to set addresses for.
     /// * `config_data` - Vring config data, addresses of desc_table, avail_ring
-    ///     and used_ring are in the guest address space.
+    ///   and used_ring are in the guest address space.
     pub fn set_vring_addr(&self, queue_index: usize, config_data: &VringConfigData) -> Result<()> {
         if !self.is_valid(config_data) {
             return Err(Error::InvalidQueue);
@@ -509,7 +509,7 @@ mod tests {
         } else if device_id == 2 {
             (60, 1, 1, 1, 0)
         } else {
-            panic!("Unexpected device id {}", device_id)
+            panic!("Unexpected device id {device_id}")
         };
 
         validate_ioctl!(vdpa.get_config_size(), config_size);

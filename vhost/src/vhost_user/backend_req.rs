@@ -109,7 +109,7 @@ impl Backend {
     ) -> io::Result<u64> {
         self.node()
             .send_message(request, body, fds)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{}", e)))
+            .map_err(|e| io::Error::other(format!("{e}")))
     }
 
     /// Create a new instance from a `UnixStream` object.
@@ -146,10 +146,7 @@ impl VhostUserFrontendReqHandler for Backend {
     /// Forward vhost-user shared-object add request to the frontend.
     fn shared_object_add(&self, uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
         if !self.node().shared_object_negotiated {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Shared Object feature not negotiated",
-            ));
+            return Err(io::Error::other("Shared Object feature not negotiated"));
         }
         self.send_message(BackendReq::SHARED_OBJECT_ADD, uuid, None)
     }
@@ -157,10 +154,7 @@ impl VhostUserFrontendReqHandler for Backend {
     /// Forward vhost-user shared-object remove request to the frontend.
     fn shared_object_remove(&self, uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
         if !self.node().shared_object_negotiated {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Shared Object feature not negotiated",
-            ));
+            return Err(io::Error::other("Shared Object feature not negotiated"));
         }
         self.send_message(BackendReq::SHARED_OBJECT_REMOVE, uuid, None)
     }
@@ -172,10 +166,7 @@ impl VhostUserFrontendReqHandler for Backend {
         fd: &dyn AsRawFd,
     ) -> HandlerResult<u64> {
         if !self.node().shared_object_negotiated {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Shared Object feature not negotiated",
-            ));
+            return Err(io::Error::other("Shared Object feature not negotiated"));
         }
         self.send_message(
             BackendReq::SHARED_OBJECT_LOOKUP,

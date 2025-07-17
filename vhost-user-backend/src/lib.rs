@@ -67,17 +67,17 @@ pub enum Error {
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match self {
-            Error::NewVhostUserHandler(e) => write!(f, "cannot create vhost user handler: {}", e),
-            Error::CreateBackendListener(e) => write!(f, "cannot create backend listener: {}", e),
+            Error::NewVhostUserHandler(e) => write!(f, "cannot create vhost user handler: {e}"),
+            Error::CreateBackendListener(e) => write!(f, "cannot create backend listener: {e}"),
             Error::CreateBackendReqHandler(e) => {
-                write!(f, "cannot create backend req handler: {}", e)
+                write!(f, "cannot create backend req handler: {e}")
             }
             Error::CreateVhostUserListener(e) => {
-                write!(f, "cannot create vhost-user listener: {}", e)
+                write!(f, "cannot create vhost-user listener: {e}")
             }
-            Error::StartDaemon(e) => write!(f, "failed to start daemon: {}", e),
+            Error::StartDaemon(e) => write!(f, "failed to start daemon: {e}"),
             Error::WaitDaemon(_e) => write!(f, "failed to wait for daemon exit"),
-            Error::HandleRequest(e) => write!(f, "failed to handle request: {}", e),
+            Error::HandleRequest(e) => write!(f, "failed to handle request: {e}"),
         }
     }
 }
