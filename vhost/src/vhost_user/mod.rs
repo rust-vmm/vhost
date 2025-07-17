@@ -105,7 +105,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Error::InvalidParam => write!(f, "invalid parameters"),
-            Error::InvalidOperation(reason) => write!(f, "invalid operation: {}", reason),
+            Error::InvalidOperation(reason) => write!(f, "invalid operation: {reason}"),
             Error::InactiveFeature(bits) => write!(f, "inactive feature: {}", bits.bits()),
             Error::InactiveOperation(bits) => {
                 write!(f, "inactive protocol operation: {}", bits.bits())
@@ -115,14 +115,14 @@ impl std::fmt::Display for Error {
             Error::Disconnected => write!(f, "peer disconnected"),
             Error::OversizedMsg => write!(f, "oversized message"),
             Error::IncorrectFds => write!(f, "wrong number of attached fds"),
-            Error::SocketError(e) => write!(f, "socket error: {}", e),
-            Error::SocketConnect(e) => write!(f, "can't connect to peer: {}", e),
-            Error::SocketBroken(e) => write!(f, "socket is broken: {}", e),
-            Error::SocketRetry(e) => write!(f, "temporary socket error: {}", e),
+            Error::SocketError(e) => write!(f, "socket error: {e}"),
+            Error::SocketConnect(e) => write!(f, "can't connect to peer: {e}"),
+            Error::SocketBroken(e) => write!(f, "socket is broken: {e}"),
+            Error::SocketRetry(e) => write!(f, "temporary socket error: {e}"),
             Error::BackendInternalError => write!(f, "backend internal error"),
             Error::FrontendInternalError => write!(f, "Frontend internal error"),
             Error::FeatureMismatch => write!(f, "virtio/protocol features mismatch"),
-            Error::ReqHandlerError(e) => write!(f, "handler failed to handle request: {}", e),
+            Error::ReqHandlerError(e) => write!(f, "handler failed to handle request: {e}"),
             Error::MemFdCreateError => {
                 write!(f, "handler failed to allocate memfd during get_inflight_fd")
             }
@@ -178,6 +178,7 @@ impl std::convert::From<vmm_sys_util::errno::Error> for Error {
     /// * - Error::SocketBroken: the underline socket is broken.
     /// * - Error::SocketError: other socket related errors.
     #[allow(unreachable_patterns)] // EWOULDBLOCK equals to EGAIN on linux
+    #[allow(clippy::match_overlapping_arm)] // EWOULDBLOCK equals to EGAIN on linux
     fn from(err: vmm_sys_util::errno::Error) -> Self {
         match err.errno() {
             // The socket is marked nonblocking and the requested operation would block.

@@ -551,7 +551,7 @@ impl VhostUserMemoryRegion {
             self.memory_size as usize,
         )
         .map_err(MmapError::MmapRegion)
-        .map_err(|e| Error::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e)))
+        .map_err(|e| Error::ReqHandlerError(io::Error::other(e)))
     }
 
     fn is_valid(&self) -> bool {
@@ -592,7 +592,7 @@ impl VhostUserMemoryRegion {
 
         MmapRegion::<B>::from_range(range)
             .map_err(MmapError::MmapRegion)
-            .map_err(|e| Error::ReqHandlerError(io::Error::new(io::ErrorKind::Other, e)))
+            .map_err(|e| Error::ReqHandlerError(io::Error::other(e)))
     }
 
     fn is_valid(&self) -> bool {

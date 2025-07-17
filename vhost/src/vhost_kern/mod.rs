@@ -202,7 +202,7 @@ impl<T: VhostKernBackend> VhostBackend for T {
     /// # Arguments
     /// * `queue_index` - Index of the queue to set addresses for.
     /// * `config_data` - Vring config data, addresses of desc_table, avail_ring
-    ///     and used_ring are in the guest address space.
+    ///   and used_ring are in the guest address space.
     fn set_vring_addr(&self, queue_index: usize, config_data: &VringConfigData) -> Result<()> {
         if !self.is_valid(config_data) {
             return Err(Error::InvalidQueue);

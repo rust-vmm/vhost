@@ -32,14 +32,14 @@ pub enum VringEpollError {
 impl Display for VringEpollError {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match self {
-            VringEpollError::EpollCreateFd(e) => write!(f, "cannot create epoll fd: {}", e),
-            VringEpollError::EpollWait(e) => write!(f, "failed to wait for epoll event: {}", e),
-            VringEpollError::RegisterExitEvent(e) => write!(f, "cannot register exit event: {}", e),
+            VringEpollError::EpollCreateFd(e) => write!(f, "cannot create epoll fd: {e}"),
+            VringEpollError::EpollWait(e) => write!(f, "failed to wait for epoll event: {e}"),
+            VringEpollError::RegisterExitEvent(e) => write!(f, "cannot register exit event: {e}"),
             VringEpollError::HandleEventReadKick(e) => {
-                write!(f, "cannot read vring kick event: {}", e)
+                write!(f, "cannot read vring kick event: {e}")
             }
             VringEpollError::HandleEventBackendHandling(e) => {
-                write!(f, "failed to handle epoll event: {}", e)
+                write!(f, "failed to handle epoll event: {e}")
             }
         }
     }
@@ -175,7 +175,7 @@ where
                     Some(evset) => evset,
                     None => {
                         let evbits = event.events;
-                        println!("epoll: ignoring unknown event set: 0x{:x}", evbits);
+                        println!("epoll: ignoring unknown event set: 0x{evbits:x}");
                         continue;
                     }
                 };
