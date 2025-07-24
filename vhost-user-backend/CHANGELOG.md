@@ -4,6 +4,8 @@
 
 ### Added
 ### Changed
+- [[#308](https://github.com/rust-vmm/vhost/pull/308)] Replace Eventfd with EventNotifier/EventConsumer.
+
 ### Deprecated
 ### Fixed
 
