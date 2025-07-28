@@ -381,11 +381,19 @@ impl<T: Req> VhostUserMsgValidator for VhostUserMsgHeader<T> {
 bitflags! {
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
     /// Transport specific flags in VirtIO feature set defined by vhost-user.
+    /// 
+    /// NOTE: This is for vhost-user transport-specific features only.
+    /// Standard VirtIO device features (like VIRTIO_F_RING_PACKED) should be
+    /// negotiated through the normal VirtIO device feature mechanism, not here.
     pub struct VhostUserVirtioFeatures: u64 {
         /// Log dirtied shared memory pages.
         const LOG_ALL = 0x400_0000;
         /// Feature flag for the protocol feature.
         const PROTOCOL_FEATURES = 0x4000_0000;
+        // NOTE: VIRTIO_F_RING_PACKED was incorrectly placed here. It's a standard
+        // VirtIO device feature and should be negotiated through device features,
+        // not vhost-user transport features. Packed virtqueue configuration is
+        // handled through VhostUserVringAddrFlags::VHOST_VRING_F_PACKED.
     }
 }
 
@@ -708,11 +716,23 @@ impl VhostUserMsgValidator for VhostUserVringState {}
 
 // Bit mask for vring address flags.
 bitflags! {
-    /// Flags for vring address.
+    /// Flags for vring address configuration.
+    /// 
+    /// These flags control vring setup and are used AFTER device feature negotiation.
+    /// The proper flow is:
+    /// 1. Device features (like VIRTIO_F_RING_PACKED) are negotiated through VirtIO standard mechanism
+    /// 2. These flags configure the actual vring layout based on negotiated features
+    /// 
+    /// NOTE: These values must match the constants in crate::backend::vring_flags
+    /// to ensure compatibility between vhost-user and vhost-kern backends.
     pub struct VhostUserVringAddrFlags: u32 {
         /// Support log of vring operations.
         /// Modifications to "used" vring should be logged.
         const VHOST_VRING_F_LOG = 0x1;
+        /// Indicates packed virtqueue format.
+        /// When set, the vring uses packed layout instead of split layout.
+        /// This should only be set if VIRTIO_F_RING_PACKED was negotiated as a device feature.
+        const VHOST_VRING_F_PACKED = 0x2;
     }
 }
 
@@ -777,12 +797,30 @@ impl VhostUserMsgValidator for VhostUserVringAddr {
     fn is_valid(&self) -> bool {
         if (self.flags & !VhostUserVringAddrFlags::all().bits()) != 0 {
             return false;
-        } else if self.descriptor & 0xf != 0 {
+        }
+
+        // Common validation for both packed and split rings
+        // Descriptor table must be 16-byte aligned for both formats
+        if self.descriptor & 0xf != 0 {
             return false;
-        } else if self.available & 0x1 != 0 {
+        }
+        // Used ring must be 4-byte aligned for both formats
+        if self.used & 0x3 != 0 {
             return false;
-        } else if self.used & 0x3 != 0 {
-            return false;
+        }
+        
+        // Available ring alignment depends on format
+        let is_packed = self.flags & VhostUserVringAddrFlags::VHOST_VRING_F_PACKED.bits() != 0;
+        if is_packed {
+            // Packed: available ring (device event suppression) must be 4-byte aligned
+            if self.available & 0x3 != 0 {
+                return false;
+            }
+        } else {
+            // Split: available ring must be 2-byte aligned
+            if self.available & 0x1 != 0 {
+                return false;
+            }
         }
         true
     }
@@ -1416,5 +1454,73 @@ mod tests {
         assert!(msg.is_valid());
         msg.flags |= 0x4;
         assert!(!msg.is_valid());
+    }
+
+    #[test]
+    fn test_packed_virtqueue_vring_flags() {
+        // Test vring address flags for packed virtqueue configuration
+        // NOTE: VIRTIO_F_RING_PACKED device feature negotiation happens separately
+        
+        let a = VhostUserVringAddrFlags::VHOST_VRING_F_PACKED.bits();
+        assert_eq!(a, 0x2);
+
+        let combined = VhostUserVringAddrFlags::VHOST_VRING_F_LOG
+            | VhostUserVringAddrFlags::VHOST_VRING_F_PACKED;
+        let a = combined.bits();
+        assert_eq!(a, 0x3);
+    }
+
+    #[test]
+    fn test_packed_vring_addr_validation() {
+        let mut addr = VhostUserVringAddr::new(
+            0,
+            VhostUserVringAddrFlags::VHOST_VRING_F_PACKED,
+            0x1000,
+            0x2000,
+            0x3000,
+            0x4000,
+        );
+
+        let a = addr.index;
+        assert_eq!(a, 0);
+        let a = addr.flags;
+        assert_eq!(a, VhostUserVringAddrFlags::VHOST_VRING_F_PACKED.bits());
+        let a = addr.descriptor;
+        assert_eq!(a, 0x1000);
+        let a = addr.used;
+        assert_eq!(a, 0x2000);
+        let a = addr.available;
+        assert_eq!(a, 0x3000);
+        let a = addr.log;
+        assert_eq!(a, 0x4000);
+        assert!(addr.is_valid());
+
+        addr.descriptor = 0x1001;
+        assert!(!addr.is_valid());
+        addr.descriptor = 0x1000;
+
+        addr.available = 0x3001;
+        assert!(!addr.is_valid());
+        addr.available = 0x3000;
+
+        addr.used = 0x2001;
+        assert!(!addr.is_valid());
+        addr.used = 0x2000;
+        assert!(addr.is_valid());
+    }
+
+    #[test]
+    fn test_vring_flags_compatibility() {
+        // Ensure vhost-user flags match the shared backend constants
+        use crate::backend::vring_flags;
+        
+        assert_eq!(
+            VhostUserVringAddrFlags::VHOST_VRING_F_LOG.bits(),
+            vring_flags::VHOST_VRING_F_LOG
+        );
+        assert_eq!(
+            VhostUserVringAddrFlags::VHOST_VRING_F_PACKED.bits(),
+            vring_flags::VHOST_VRING_F_PACKED
+        );
     }
 }
