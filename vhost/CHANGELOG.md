@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- [[#311]](https://github.com/rust-vmm/vhost/pull/311) Implement
+  `From<UnixListener>` for `vhost_user::Listener`.
+
 ### Changed
 ### Deprecated
 ### Fixed

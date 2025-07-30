@@ -86,10 +86,13 @@ impl AsRawFd for Listener {
 
 impl FromRawFd for Listener {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        Listener {
-            fd: UnixListener::from_raw_fd(fd),
-            path: None,
-        }
+        Self::from(UnixListener::from_raw_fd(fd))
+    }
+}
+
+impl From<UnixListener> for Listener {
+    fn from(fd: UnixListener) -> Self {
+        Self { fd, path: None }
     }
 }
 
