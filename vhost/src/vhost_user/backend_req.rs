@@ -174,6 +174,16 @@ impl VhostUserFrontendReqHandler for Backend {
             Some(&[fd.as_raw_fd()]),
         )
     }
+
+    /// Forward vhost-user memory map file request to the frontend.
+    fn shmem_map(&self, req: &VhostUserMMap, fd: &dyn AsRawFd) -> HandlerResult<u64> {
+        self.send_message(BackendReq::SHMEM_MAP, req, Some(&[fd.as_raw_fd()]))
+    }
+
+    /// Forward vhost-user memory unmap file request to the frontend.
+    fn shmem_unmap(&self, req: &VhostUserMMap) -> HandlerResult<u64> {
+        self.send_message(BackendReq::SHMEM_UNMAP, req, None)
+    }
 }
 
 #[cfg(test)]
@@ -182,10 +192,16 @@ mod tests {
 
     use super::*;
 
+    fn frontend_backend_pair() -> (Endpoint<VhostUserMsgHeader<BackendReq>>, Backend) {
+        let (p1, p2) = UnixStream::pair().unwrap();
+        let backend = Backend::from_stream(p1);
+        let frontend = Endpoint::<VhostUserMsgHeader<BackendReq>>::from_stream(p2);
+        (frontend, backend)
+    }
+
     #[test]
     fn test_backend_req_set_failed() {
-        let (p1, _p2) = UnixStream::pair().unwrap();
-        let backend = Backend::from_stream(p1);
+        let (_, backend) = frontend_backend_pair();
 
         assert!(backend.node().error.is_none());
         backend.set_failed(libc::EAGAIN);
@@ -194,8 +210,7 @@ mod tests {
 
     #[test]
     fn test_backend_req_send_failure() {
-        let (p1, _) = UnixStream::pair().unwrap();
-        let backend = Backend::from_stream(p1);
+        let (_, backend) = frontend_backend_pair();
 
         backend.set_failed(libc::ECONNRESET);
         backend
@@ -209,9 +224,7 @@ mod tests {
 
     #[test]
     fn test_backend_req_recv_negative() {
-        let (p1, p2) = UnixStream::pair().unwrap();
-        let backend = Backend::from_stream(p1);
-        let mut frontend = Endpoint::<VhostUserMsgHeader<BackendReq>>::from_stream(p2);
+        let (mut frontend, backend) = frontend_backend_pair();
 
         let len = mem::size_of::<VhostUserSharedMsg>();
         let mut hdr = VhostUserMsgHeader::new(
@@ -256,5 +269,51 @@ mod tests {
         backend
             .shared_object_add(&VhostUserSharedMsg::default())
             .unwrap();
+    }
+
+    #[test]
+    fn test_shmem_map() {
+        let (mut fronted, backend) = frontend_backend_pair();
+
+        let (_, some_fd_to_send) = UnixStream::pair().unwrap();
+        let map_request = VhostUserMMap {
+            shmid: 0,
+            padding: Default::default(),
+            fd_offset: 0,
+            shm_offset: 1028,
+            len: 4096,
+            flags: (VhostUserMMapFlags::MAP_R | VhostUserMMapFlags::MAP_W).bits(),
+        };
+
+        backend.shmem_map(&map_request, &some_fd_to_send).unwrap();
+
+        let (hdr, request, fd) = fronted.recv_body::<VhostUserMMap>().unwrap();
+        assert_eq!(hdr.get_code().unwrap(), BackendReq::SHMEM_MAP);
+        assert!(fd.is_some());
+        assert_eq!({ request.shm_offset }, { map_request.shm_offset });
+        assert_eq!({ request.len }, { map_request.len },);
+        assert_eq!({ request.flags }, { map_request.flags });
+    }
+
+    #[test]
+    fn test_shmem_unmap() {
+        let (mut frontend, backend) = frontend_backend_pair();
+
+        let unmap_request = VhostUserMMap {
+            shmid: 0,
+            padding: Default::default(),
+            fd_offset: 0,
+            shm_offset: 1028,
+            len: 4096,
+            flags: 0,
+        };
+
+        backend.shmem_unmap(&unmap_request).unwrap();
+
+        let (hdr, request, fd) = frontend.recv_body::<VhostUserMMap>().unwrap();
+        assert_eq!(hdr.get_code().unwrap(), BackendReq::SHMEM_UNMAP);
+        assert!(fd.is_none());
+        assert_eq!({ request.shm_offset }, { unmap_request.shm_offset });
+        assert_eq!({ request.len }, { unmap_request.len });
     }
 }
