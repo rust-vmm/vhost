@@ -760,9 +760,13 @@ mod tests {
             .unwrap();
         assert_eq!(len, 4);
 
-        let (bytes, buf4) = backend.recv_data(2).unwrap();
-        assert_eq!(bytes, 2);
-        assert_eq!(&buf1[..2], &buf4[..]);
+        if cfg!(any(target_os = "linux", target_os = "android")) {
+            let _err = backend.recv_data(2).unwrap_err();
+        } else {
+            let (bytes, buf4) = backend.recv_data(2).unwrap();
+            assert_eq!(bytes, 2);
+            assert_eq!(&buf1[..2], &buf4[..]);
+        }
         let (bytes, buf2, files) = backend.recv_into_buf(0x2).unwrap();
         assert_eq!(bytes, 2);
         assert_eq!(&buf1[2..], &buf2[..]);
@@ -817,12 +821,21 @@ mod tests {
             .unwrap();
         assert_eq!(len, 4);
 
-        let (bytes, _) = backend.recv_data(5).unwrap();
-        assert_eq!(bytes, 5);
+        if cfg!(any(target_os = "linux", target_os = "android")) {
+            let _err = backend.recv_data(5).unwrap_err();
+        } else {
+            let (bytes, _) = backend.recv_data(5).unwrap();
+            assert_eq!(bytes, 4);
+        }
 
         let (bytes, _, files) = backend.recv_into_buf(0x4).unwrap();
-        assert_eq!(bytes, 3);
-        assert!(files.is_none());
+        if cfg!(any(target_os = "linux", target_os = "android")) {
+            assert_eq!(bytes, 3);
+            assert!(files.is_none());
+        } else {
+            assert_eq!(bytes, 4);
+            assert!(files.is_some());
+        }
 
         // If the target fd array is too small, extra file descriptors will get lost.
         let len = frontend

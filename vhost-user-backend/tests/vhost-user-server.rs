@@ -18,6 +18,9 @@ use vm_memory::{
     FileOffset, GuestAddress, GuestAddressSpace, GuestMemory, GuestMemoryAtomic, GuestMemoryMmap,
 };
 use vmm_sys_util::epoll::EventSet;
+use vmm_sys_util::event::{
+    new_event_consumer_and_notifier, EventConsumer, EventFlag, EventNotifier,
+};
 use vmm_sys_util::eventfd::EventFd;
 
 struct MockVhostBackend {
@@ -105,10 +108,11 @@ impl VhostUserBackendMut for MockVhostBackend {
         vec![1, 1]
     }
 
-    fn exit_event(&self, _thread_index: usize) -> Option<EventFd> {
-        let event_fd = EventFd::new(0).unwrap();
-
-        Some(event_fd)
+    fn exit_event(&self, _thread_index: usize) -> Option<(EventConsumer, EventNotifier)> {
+        Some(
+            new_event_consumer_and_notifier(EventFlag::empty())
+                .expect("Failed to create EventConsumer and EventNotifier"),
+        )
     }
 
     fn handle_event(
