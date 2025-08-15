@@ -11,11 +11,12 @@ use std::fs::{File, OpenOptions};
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use vm_memory::GuestAddressSpace;
 use vmm_sys_util::ioctl::ioctl_with_ref;
 
 use super::vhost_binding::{VHOST_VSOCK_SET_GUEST_CID, VHOST_VSOCK_SET_RUNNING};
-use super::{ioctl_result, Error, Result, VhostKernBackend};
+use super::{
+    ioctl_result, Error, PhysicalGuestAddressSpace as GuestAddressSpace, Result, VhostKernBackend,
+};
 use crate::vsock::VhostVsock;
 
 const VHOST_PATH: &str = "/dev/vhost-vsock";
