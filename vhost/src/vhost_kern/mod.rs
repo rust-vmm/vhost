@@ -36,6 +36,12 @@ pub mod vdpa;
 #[cfg(feature = "vhost-vsock")]
 pub mod vsock;
 
+/// Helper trait to signify `GuestAddressSpace`s that are physical, which is required for
+/// vhost_kern.
+pub trait PhysicalGuestAddressSpace: GuestAddressSpace<M: GuestMemory> {}
+
+impl<AS: GuestAddressSpace> PhysicalGuestAddressSpace for AS where AS::M: GuestMemory {}
+
 #[inline]
 fn ioctl_result<T>(rc: i32, res: T) -> Result<T> {
     if rc < 0 {
@@ -57,7 +63,7 @@ fn io_result<T>(rc: isize, res: T) -> Result<T> {
 /// Represent an in-kernel vhost device backend.
 pub trait VhostKernBackend: AsRawFd {
     /// Associated type to access guest memory.
-    type AS: GuestAddressSpace;
+    type AS: PhysicalGuestAddressSpace;
 
     /// Get the object to access the guest's memory.
     fn mem(&self) -> &Self::AS;
@@ -439,7 +445,7 @@ impl VhostIotlbMsgParser for vhost_msg_v2 {
 impl VringConfigData {
     /// Convert the config (guest address space) into vhost_vring_addr
     /// (host address space).
-    pub fn to_vhost_vring_addr<AS: GuestAddressSpace>(
+    pub fn to_vhost_vring_addr<AS: PhysicalGuestAddressSpace>(
         &self,
         queue_index: usize,
         mem: &AS,
