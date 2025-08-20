@@ -3,12 +3,16 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::io::{self, Result};
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::sync::Mutex;
 
-use vmm_sys_util::epoll::{ControlOperation, Epoll, EpollEvent, EventSet};
+use mio::event::Event;
+use mio::unix::SourceFd;
+use mio::{Events, Interest, Poll, Registry, Token};
 use vmm_sys_util::eventfd::EventFd;
 
 use super::backend::VhostUserBackend;
@@ -16,39 +20,71 @@ use super::vring::VringT;
 
 /// Errors related to vring epoll event handling.
 #[derive(Debug)]
-pub enum VringEpollError {
+pub enum VringPollError {
     /// Failed to create epoll file descriptor.
-    EpollCreateFd(io::Error),
+    PollerCreate(io::Error),
     /// Failed while waiting for events.
-    EpollWait(io::Error),
+    PollerWait(io::Error),
     /// Could not register exit event
     RegisterExitEvent(io::Error),
     /// Failed to read the event from kick EventFd.
     HandleEventReadKick(io::Error),
     /// Failed to handle the event from the backend.
     HandleEventBackendHandling(io::Error),
+    /// Failed to clone registry.
+    RegistryClone(io::Error),
 }
 
-impl Display for VringEpollError {
+impl Display for VringPollError {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match self {
-            VringEpollError::EpollCreateFd(e) => write!(f, "cannot create epoll fd: {e}"),
-            VringEpollError::EpollWait(e) => write!(f, "failed to wait for epoll event: {e}"),
-            VringEpollError::RegisterExitEvent(e) => write!(f, "cannot register exit event: {e}"),
-            VringEpollError::HandleEventReadKick(e) => {
+            VringPollError::PollerCreate(e) => write!(f, "cannot create poller: {e}"),
+            VringPollError::PollerWait(e) => write!(f, "failed to wait for poller event: {e}"),
+            VringPollError::RegisterExitEvent(e) => write!(f, "cannot register exit event: {e}"),
+            VringPollError::HandleEventReadKick(e) => {
                 write!(f, "cannot read vring kick event: {e}")
             }
-            VringEpollError::HandleEventBackendHandling(e) => {
-                write!(f, "failed to handle epoll event: {e}")
+            VringPollError::HandleEventBackendHandling(e) => {
+                write!(f, "failed to handle poll event: {e}")
             }
+            VringPollError::RegistryClone(e) => write!(f, "cannot clone poller's registry: {e}"),
         }
     }
 }
 
-impl std::error::Error for VringEpollError {}
+impl std::error::Error for VringPollError {}
 
 /// Result of vring epoll operations.
-pub type VringEpollResult<T> = std::result::Result<T, VringEpollError>;
+pub type VringEpollResult<T> = std::result::Result<T, VringPollError>;
+
+pub enum EventSet {
+    Readable,
+    Writable,
+    All,
+}
+
+impl EventSet {
+    fn to_interest(&self) -> Interest {
+        match self {
+            EventSet::Readable => Interest::READABLE,
+            EventSet::Writable => Interest::WRITABLE,
+            EventSet::All => Interest::READABLE | Interest::WRITABLE,
+        }
+    }
+}
+
+fn event_to_event_set(evt: &Event) -> Option<EventSet> {
+    if evt.is_readable() && evt.is_writable() {
+        return Some(EventSet::All);
+    }
+    if evt.is_readable() {
+        return Some(EventSet::Readable);
+    }
+    if evt.is_writable() {
+        return Some(EventSet::Writable);
+    }
+    None
+}
 
 /// Epoll event handler to manage and process epoll events for registered file descriptor.
 ///
@@ -57,7 +93,11 @@ pub type VringEpollResult<T> = std::result::Result<T, VringEpollError>;
 /// - remove registered file descriptors from the epoll fd
 /// - run the event loop to handle pending events on the epoll fd
 pub struct VringEpollHandler<T: VhostUserBackend> {
-    epoll: Epoll,
+    poller: Mutex<Poll>,
+    registry: Registry,
+    // Record the registered fd.
+    // Because in mio, consecutive calls to register is unspecified behavior.
+    fd_set: Mutex<HashSet<RawFd>>,
     backend: T,
     vrings: Vec<T::Vring>,
     thread_id: usize,
@@ -84,22 +124,32 @@ where
         vrings: Vec<T::Vring>,
         thread_id: usize,
     ) -> VringEpollResult<Self> {
-        let epoll = Epoll::new().map_err(VringEpollError::EpollCreateFd)?;
+        let poller = Poll::new().map_err(VringPollError::PollerCreate)?;
         let exit_event_fd = backend.exit_event(thread_id);
+        let fd_set = Mutex::new(HashSet::new());
 
+        let registry = poller
+            .registry()
+            .try_clone()
+            .map_err(VringPollError::RegistryClone)?;
         if let Some(exit_event_fd) = &exit_event_fd {
             let id = backend.num_queues();
-            epoll
-                .ctl(
-                    ControlOperation::Add,
-                    exit_event_fd.as_raw_fd(),
-                    EpollEvent::new(EventSet::IN, id as u64),
+
+            registry
+                .register(
+                    &mut SourceFd(&exit_event_fd.as_raw_fd()),
+                    Token(id),
+                    Interest::READABLE,
                 )
-                .map_err(VringEpollError::RegisterExitEvent)?;
+                .map_err(VringPollError::RegisterExitEvent)?;
+
+            fd_set.lock().unwrap().insert(exit_event_fd.as_raw_fd());
         }
 
         Ok(VringEpollHandler {
-            epoll,
+            poller: Mutex::new(poller),
+            registry,
+            fd_set,
             backend,
             vrings,
             thread_id,
@@ -135,13 +185,31 @@ where
     }
 
     pub(crate) fn register_event(&self, fd: RawFd, ev_type: EventSet, data: u64) -> Result<()> {
-        self.epoll
-            .ctl(ControlOperation::Add, fd, EpollEvent::new(ev_type, data))
+        let mut fd_set = self.fd_set.lock().unwrap();
+        if fd_set.contains(&fd) {
+            return Err(io::Error::from_raw_os_error(libc::EEXIST));
+        }
+        self.registry
+            .register(
+                &mut SourceFd(&fd),
+                Token(data as usize),
+                ev_type.to_interest(),
+            )
+            .map_err(std::io::Error::other)?;
+        fd_set.insert(fd);
+        Ok(())
     }
 
-    pub(crate) fn unregister_event(&self, fd: RawFd, ev_type: EventSet, data: u64) -> Result<()> {
-        self.epoll
-            .ctl(ControlOperation::Delete, fd, EpollEvent::new(ev_type, data))
+    pub(crate) fn unregister_event(&self, fd: RawFd, _ev_type: EventSet, _data: u64) -> Result<()> {
+        let mut fd_set = self.fd_set.lock().unwrap();
+        if !fd_set.contains(&fd) {
+            return Err(io::Error::from_raw_os_error(libc::ENOENT));
+        }
+        self.registry
+            .deregister(&mut SourceFd(&fd))
+            .map_err(|e| std::io::Error::other(format!("Failed to deregister fd {}: {}", fd, e)))?;
+        fd_set.remove(&fd);
+        Ok(())
     }
 
     /// Run the event poll loop to handle all pending events on registered fds.
@@ -150,41 +218,22 @@ where
     /// associated with the backend.
     pub(crate) fn run(&self) -> VringEpollResult<()> {
         const EPOLL_EVENTS_LEN: usize = 100;
-        let mut events = vec![EpollEvent::new(EventSet::empty(), 0); EPOLL_EVENTS_LEN];
 
-        'epoll: loop {
-            let num_events = match self.epoll.wait(-1, &mut events[..]) {
-                Ok(res) => res,
-                Err(e) => {
-                    if e.kind() == io::ErrorKind::Interrupted {
-                        // It's well defined from the epoll_wait() syscall
-                        // documentation that the epoll loop can be interrupted
-                        // before any of the requested events occurred or the
-                        // timeout expired. In both those cases, epoll_wait()
-                        // returns an error of type EINTR, but this should not
-                        // be considered as a regular error. Instead it is more
-                        // appropriate to retry, by calling into epoll_wait().
-                        continue;
+        let mut events = Events::with_capacity(EPOLL_EVENTS_LEN);
+        'poll: loop {
+            self.poller
+                .lock()
+                .unwrap()
+                .poll(&mut events, None)
+                .map_err(VringPollError::PollerWait)?;
+
+            for event in events.iter() {
+                let token = event.token();
+
+                if let Some(evt_set) = event_to_event_set(event) {
+                    if self.handle_event(token.0 as u16, evt_set)? {
+                        break 'poll;
                     }
-                    return Err(VringEpollError::EpollWait(e));
-                }
-            };
-
-            for event in events.iter().take(num_events) {
-                let evset = match EventSet::from_bits(event.events) {
-                    Some(evset) => evset,
-                    None => {
-                        let evbits = event.events;
-                        println!("epoll: ignoring unknown event set: 0x{evbits:x}");
-                        continue;
-                    }
-                };
-
-                let ev_type = event.data() as u16;
-
-                // handle_event() returns true if an event is received from the exit event fd.
-                if self.handle_event(ev_type, evset)? {
-                    break 'epoll;
                 }
             }
         }
@@ -192,7 +241,7 @@ where
         Ok(())
     }
 
-    fn handle_event(&self, device_event: u16, evset: EventSet) -> VringEpollResult<bool> {
+    fn handle_event(&self, device_event: u16, event: EventSet) -> VringEpollResult<bool> {
         if self.exit_event_fd.is_some() && device_event as usize == self.backend.num_queues() {
             return Ok(true);
         }
@@ -201,7 +250,7 @@ where
             let vring = &self.vrings[device_event as usize];
             let enabled = vring
                 .read_kick()
-                .map_err(VringEpollError::HandleEventReadKick)?;
+                .map_err(VringPollError::HandleEventReadKick)?;
 
             // If the vring is not enabled, it should not be processed.
             if !enabled {
@@ -210,8 +259,8 @@ where
         }
 
         self.backend
-            .handle_event(device_event, evset, &self.vrings, self.thread_id)
-            .map_err(VringEpollError::HandleEventBackendHandling)?;
+            .handle_event(device_event, event, &self.vrings, self.thread_id)
+            .map_err(VringPollError::HandleEventBackendHandling)?;
 
         Ok(false)
     }
@@ -219,7 +268,7 @@ where
 
 impl<T: VhostUserBackend> AsRawFd for VringEpollHandler<T> {
     fn as_raw_fd(&self) -> RawFd {
-        self.epoll.as_raw_fd()
+        self.poller.lock().unwrap().as_raw_fd()
     }
 }
 
@@ -244,29 +293,32 @@ mod tests {
 
         let eventfd = EventFd::new(0).unwrap();
         handler
-            .register_listener(eventfd.as_raw_fd(), EventSet::IN, 3)
+            .register_listener(eventfd.as_raw_fd(), EventSet::Readable, 3)
             .unwrap();
         // Register an already registered fd.
         handler
-            .register_listener(eventfd.as_raw_fd(), EventSet::IN, 3)
+            .register_listener(eventfd.as_raw_fd(), EventSet::Readable, 3)
             .unwrap_err();
         // Register an invalid data.
         handler
-            .register_listener(eventfd.as_raw_fd(), EventSet::IN, 1)
+            .register_listener(eventfd.as_raw_fd(), EventSet::Readable, 1)
             .unwrap_err();
 
         handler
-            .unregister_listener(eventfd.as_raw_fd(), EventSet::IN, 3)
+            .unregister_listener(eventfd.as_raw_fd(), EventSet::Readable, 3)
             .unwrap();
         // unregister an already unregistered fd.
         handler
-            .unregister_listener(eventfd.as_raw_fd(), EventSet::IN, 3)
+            .unregister_listener(eventfd.as_raw_fd(), EventSet::Readable, 3)
             .unwrap_err();
         // unregister an invalid data.
         handler
-            .unregister_listener(eventfd.as_raw_fd(), EventSet::IN, 1)
+            .unregister_listener(eventfd.as_raw_fd(), EventSet::Readable, 1)
             .unwrap_err();
         // Check we retrieve the correct file descriptor
-        assert_eq!(handler.as_raw_fd(), handler.epoll.as_raw_fd());
+        assert_eq!(
+            handler.as_raw_fd(),
+            handler.poller.lock().unwrap().as_raw_fd()
+        );
     }
 }

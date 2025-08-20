@@ -29,10 +29,11 @@ use vhost::vhost_user::message::{
 };
 use vhost::vhost_user::Backend;
 use vm_memory::bitmap::Bitmap;
-use vmm_sys_util::epoll::EventSet;
 use vmm_sys_util::eventfd::EventFd;
 
 use vhost::vhost_user::GpuBackend;
+
+use crate::EventSet;
 
 use super::vring::VringT;
 use super::GM;
@@ -793,7 +794,7 @@ pub mod tests {
 
         let vring = VringRwLock::new(mem, 0x1000).unwrap();
         backend
-            .handle_event(0x1, EventSet::IN, &[vring], 0)
+            .handle_event(0x1, EventSet::Readable, &[vring], 0)
             .unwrap();
 
         backend.reset_device();

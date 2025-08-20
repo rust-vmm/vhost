@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::thread;
 
 use crate::bitmap::{BitmapReplace, MemRegionBitmap, MmapLogReg};
+use crate::event_loop::EventSet;
 #[cfg(feature = "postcopy")]
 use userfaultfd::{Uffd, UffdBuilder};
 use vhost::vhost_user::message::{
@@ -31,11 +32,10 @@ use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use virtio_queue::{Error as VirtQueError, QueueT};
 use vm_memory::mmap::NewBitmap;
 use vm_memory::{GuestAddress, GuestAddressSpace, GuestMemory, GuestMemoryMmap, GuestRegionMmap};
-use vmm_sys_util::epoll::EventSet;
 
 use super::backend::VhostUserBackend;
 use super::event_loop::VringEpollHandler;
-use super::event_loop::{VringEpollError, VringEpollResult};
+use super::event_loop::{VringEpollResult, VringPollError};
 use super::vring::VringT;
 use super::GM;
 
@@ -50,7 +50,7 @@ pub enum VhostUserHandlerError {
     /// Failed to create a `Vring`.
     CreateVring(VirtQueError),
     /// Failed to create vring worker.
-    CreateEpollHandler(VringEpollError),
+    CreateEpollHandler(VringPollError),
     /// Failed to spawn vring worker.
     SpawnVringWorker(io::Error),
     /// Could not find the mapping from memory regions.
@@ -212,7 +212,7 @@ where
                 if shifted_queues_mask & 1u64 == 1u64 {
                     let evt_idx = queues_mask.count_ones() - shifted_queues_mask.count_ones();
                     self.handlers[thread_index]
-                        .register_event(fd.as_raw_fd(), EventSet::IN, u64::from(evt_idx))
+                        .register_event(fd.as_raw_fd(), EventSet::Readable, u64::from(evt_idx))
                         .map_err(VhostUserError::ReqHandlerError)?;
                     break;
                 }
@@ -436,7 +436,7 @@ where
                 if shifted_queues_mask & 1u64 == 1u64 {
                     let evt_idx = queues_mask.count_ones() - shifted_queues_mask.count_ones();
                     self.handlers[thread_index]
-                        .unregister_event(fd.as_raw_fd(), EventSet::IN, u64::from(evt_idx))
+                        .unregister_event(fd.as_raw_fd(), EventSet::Readable, u64::from(evt_idx))
                         .map_err(VhostUserError::ReqHandlerError)?;
                     break;
                 }
