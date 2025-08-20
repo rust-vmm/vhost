@@ -38,10 +38,10 @@ pub trait VringT<M: GuestAddressSpace>:
         Self: Sized;
 
     /// Get an immutable reference to the kick event fd.
-    fn get_ref(&self) -> <Self as VringStateGuard<M>>::G;
+    fn get_ref(&self) -> <Self as VringStateGuard<'_, M>>::G;
 
     /// Get a mutable reference to the kick event fd.
-    fn get_mut(&self) -> <Self as VringStateMutGuard<M>>::G;
+    fn get_mut(&self) -> <Self as VringStateMutGuard<'_, M>>::G;
 
     /// Add an used descriptor into the used queue.
     fn add_used(&self, desc_index: u16, len: u32) -> Result<(), VirtQueError>;
