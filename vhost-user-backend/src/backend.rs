@@ -144,7 +144,7 @@ pub trait VhostUserBackend: Send + Sync {
     /// do with events happening on custom listeners.
     fn handle_event(
         &self,
-        device_event: u16,
+        device_event: usize,
         evset: EventSet,
         vrings: &[Self::Vring],
         thread_id: usize,
@@ -295,7 +295,7 @@ pub trait VhostUserBackendMut: Send + Sync {
     /// do with events happening on custom listeners.
     fn handle_event(
         &mut self,
-        device_event: u16,
+        device_event: usize,
         evset: EventSet,
         vrings: &[Self::Vring],
         thread_id: usize,
@@ -404,7 +404,7 @@ impl<T: VhostUserBackend> VhostUserBackend for Arc<T> {
 
     fn handle_event(
         &self,
-        device_event: u16,
+        device_event: usize,
         evset: EventSet,
         vrings: &[Self::Vring],
         thread_id: usize,
@@ -497,7 +497,7 @@ impl<T: VhostUserBackendMut> VhostUserBackend for Mutex<T> {
 
     fn handle_event(
         &self,
-        device_event: u16,
+        device_event: usize,
         evset: EventSet,
         vrings: &[Self::Vring],
         thread_id: usize,
@@ -593,7 +593,7 @@ impl<T: VhostUserBackendMut> VhostUserBackend for RwLock<T> {
 
     fn handle_event(
         &self,
-        device_event: u16,
+        device_event: usize,
         evset: EventSet,
         vrings: &[Self::Vring],
         thread_id: usize,
@@ -741,7 +741,7 @@ pub mod tests {
 
         fn handle_event(
             &mut self,
-            _device_event: u16,
+            _device_event: usize,
             _evset: EventSet,
             _vrings: &[VringRwLock],
             _thread_id: usize,

@@ -184,10 +184,10 @@ where
                     }
                 };
 
-                let ev_type = event.data() as u16;
+                let ev_type = event.data();
 
                 // handle_event() returns true if an event is received from the exit event fd.
-                if self.handle_event(ev_type, evset)? {
+                if self.handle_event(ev_type as usize, evset)? {
                     break 'epoll;
                 }
             }
@@ -196,13 +196,13 @@ where
         Ok(())
     }
 
-    fn handle_event(&self, device_event: u16, evset: EventSet) -> VringEpollResult<bool> {
-        if self.exit_event_fd.is_some() && device_event as usize == self.backend.num_queues() {
+    fn handle_event(&self, device_event: usize, evset: EventSet) -> VringEpollResult<bool> {
+        if self.exit_event_fd.is_some() && device_event == self.backend.num_queues() {
             return Ok(true);
         }
 
-        if (device_event as usize) < self.vrings.len() {
-            let vring = &self.vrings[device_event as usize];
+        if device_event < self.vrings.len() {
+            let vring = &self.vrings[device_event];
             let enabled = vring
                 .read_kick()
                 .map_err(VringEpollError::HandleEventReadKick)?;
