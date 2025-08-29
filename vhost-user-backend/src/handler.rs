@@ -212,7 +212,7 @@ where
                 if shifted_queues_mask & 1u64 == 1u64 {
                     let evt_idx = queues_mask.count_ones() - shifted_queues_mask.count_ones();
                     self.handlers[thread_index]
-                        .register_event(fd.as_raw_fd(), EventSet::IN, u64::from(evt_idx))
+                        .register_event(fd.as_raw_fd(), EventSet::IN, evt_idx as usize)
                         .map_err(VhostUserError::ReqHandlerError)?;
                     break;
                 }
@@ -436,7 +436,7 @@ where
                 if shifted_queues_mask & 1u64 == 1u64 {
                     let evt_idx = queues_mask.count_ones() - shifted_queues_mask.count_ones();
                     self.handlers[thread_index]
-                        .unregister_event(fd.as_raw_fd(), EventSet::IN, u64::from(evt_idx))
+                        .unregister_event(fd.as_raw_fd(), EventSet::IN, evt_idx as usize)
                         .map_err(VhostUserError::ReqHandlerError)?;
                     break;
                 }
