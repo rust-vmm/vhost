@@ -29,13 +29,14 @@ use vhost::vhost_user::message::{
 };
 use vhost::vhost_user::Backend;
 use vm_memory::bitmap::Bitmap;
-use vmm_sys_util::epoll::EventSet;
 use vmm_sys_util::event::{EventConsumer, EventNotifier};
 
 use vhost::vhost_user::GpuBackend;
 
 use super::vring::VringT;
 use super::GM;
+
+use crate::EventSet;
 
 /// Trait with interior mutability for vhost user backend servers to implement concrete services.
 ///
@@ -144,7 +145,7 @@ pub trait VhostUserBackend: Send + Sync {
     /// do with events happening on custom listeners.
     fn handle_event(
         &self,
-        device_event: u16,
+        device_event: usize,
         evset: EventSet,
         vrings: &[Self::Vring],
         thread_id: usize,
@@ -288,7 +289,7 @@ pub trait VhostUserBackendMut: Send + Sync {
     /// do with events happening on custom listeners.
     fn handle_event(
         &mut self,
-        device_event: u16,
+        device_event: usize,
         evset: EventSet,
         vrings: &[Self::Vring],
         thread_id: usize,
@@ -390,7 +391,7 @@ impl<T: VhostUserBackend> VhostUserBackend for Arc<T> {
 
     fn handle_event(
         &self,
-        device_event: u16,
+        device_event: usize,
         evset: EventSet,
         vrings: &[Self::Vring],
         thread_id: usize,
@@ -479,7 +480,7 @@ impl<T: VhostUserBackendMut> VhostUserBackend for Mutex<T> {
 
     fn handle_event(
         &self,
-        device_event: u16,
+        device_event: usize,
         evset: EventSet,
         vrings: &[Self::Vring],
         thread_id: usize,
@@ -571,7 +572,7 @@ impl<T: VhostUserBackendMut> VhostUserBackend for RwLock<T> {
 
     fn handle_event(
         &self,
-        device_event: u16,
+        device_event: usize,
         evset: EventSet,
         vrings: &[Self::Vring],
         thread_id: usize,
@@ -711,7 +712,7 @@ pub mod tests {
 
         fn handle_event(
             &mut self,
-            _device_event: u16,
+            _device_event: usize,
             _evset: EventSet,
             _vrings: &[VringRwLock],
             _thread_id: usize,
@@ -798,7 +799,7 @@ pub mod tests {
 
         let vring = VringRwLock::new(mem, 0x1000).unwrap();
         backend
-            .handle_event(0x1, EventSet::IN, &[vring], 0)
+            .handle_event(0x1, EventSet::Readable, &[vring], 0)
             .unwrap();
 
         backend.reset_device();
