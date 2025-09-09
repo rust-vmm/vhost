@@ -162,9 +162,7 @@ where
     ///
     /// *Note:* A convenience function [VhostUserDaemon::serve] exists that
     /// may be a better option than this for simple use-cases.
-    // TODO: the current implementation has limitations that only one incoming connection will be
-    // handled from the listener. Should it be enhanced to support reconnection?
-    pub fn start(&mut self, listener: Listener) -> Result<()> {
+    pub fn start(&mut self, listener: &mut Listener) -> Result<()> {
         let mut backend_listener = BackendListener::new(listener, self.handler.clone())
             .map_err(Error::CreateBackendListener)?;
         let backend_handler = self.accept(&mut backend_listener)?;
@@ -215,9 +213,9 @@ where
     /// *Note:* See [VhostUserDaemon::start] and [VhostUserDaemon::wait] if you
     /// need more flexibility.
     pub fn serve<P: AsRef<Path>>(&mut self, socket: P) -> Result<()> {
-        let listener = Listener::new(socket, true).map_err(Error::CreateVhostUserListener)?;
+        let mut listener = Listener::new(socket, true).map_err(Error::CreateVhostUserListener)?;
 
-        self.start(listener)?;
+        self.start(&mut listener)?;
         let result = self.wait();
 
         // Regardless of the result, we want to signal worker threads to exit
@@ -279,9 +277,9 @@ mod tests {
                 drop(socket)
             });
 
-            let listener = Listener::new(&path, false).unwrap();
+            let mut listener = Listener::new(&path, false).unwrap();
             barrier.wait();
-            daemon.start(listener).unwrap();
+            daemon.start(&mut listener).unwrap();
             barrier.wait();
             // Above process generates a `HandleRequest(PartialMessage)` error.
             daemon.wait().unwrap_err();

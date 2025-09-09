@@ -293,8 +293,8 @@ mod tests {
         P: AsRef<Path>,
         S: VhostUserBackendReqHandler,
     {
-        let listener = Listener::new(&path, true).unwrap();
-        let mut backend_listener = BackendListener::new(listener, backend).unwrap();
+        let mut listener = Listener::new(&path, true).unwrap();
+        let mut backend_listener = BackendListener::new(&mut listener, backend).unwrap();
         let frontend = Frontend::connect(&path, 1).unwrap();
         (frontend, backend_listener.accept().unwrap().unwrap())
     }
