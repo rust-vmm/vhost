@@ -128,7 +128,7 @@ impl Frontend {
         }
     }
 
-    fn node(&self) -> MutexGuard<FrontendInternal> {
+    fn node(&self) -> MutexGuard<'_, FrontendInternal> {
         self.node.lock().unwrap()
     }
 
