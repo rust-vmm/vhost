@@ -10,16 +10,16 @@ use super::message::*;
 use super::{BackendReqHandler, Result, VhostUserBackendReqHandler};
 
 /// Vhost-user backend side connection listener.
-pub struct BackendListener<S: VhostUserBackendReqHandler> {
-    listener: Listener,
+pub struct BackendListener<'a, S: VhostUserBackendReqHandler> {
+    listener: &'a mut Listener,
     backend: Option<Arc<S>>,
 }
 
 /// Sets up a listener for incoming frontend connections, and handles construction
 /// of a Backend on success.
-impl<S: VhostUserBackendReqHandler> BackendListener<S> {
+impl<'a, S: VhostUserBackendReqHandler> BackendListener<'a, S> {
     /// Create a unix domain socket for incoming frontend connections.
-    pub fn new(listener: Listener, backend: Arc<S>) -> Result<Self> {
+    pub fn new(listener: &'a mut Listener, backend: Arc<S>) -> Result<Self> {
         Ok(BackendListener {
             listener,
             backend: Some(backend),
@@ -55,9 +55,9 @@ mod tests {
     #[test]
     fn test_backend_listener_set_nonblocking() {
         let backend = Arc::new(Mutex::new(DummyBackendReqHandler::new()));
-        let listener =
+        let mut listener =
             Listener::new("/tmp/vhost_user_lib_unit_test_backend_nonblocking", true).unwrap();
-        let backend_listener = BackendListener::new(listener, backend).unwrap();
+        let backend_listener = BackendListener::new(&mut listener, backend).unwrap();
 
         backend_listener.set_nonblocking(true).unwrap();
         backend_listener.set_nonblocking(false).unwrap();
@@ -73,8 +73,8 @@ mod tests {
 
         let path = "/tmp/vhost_user_lib_unit_test_backend_accept";
         let backend = Arc::new(Mutex::new(DummyBackendReqHandler::new()));
-        let listener = Listener::new(path, true).unwrap();
-        let mut backend_listener = BackendListener::new(listener, backend).unwrap();
+        let mut listener = Listener::new(path, true).unwrap();
+        let mut backend_listener = BackendListener::new(&mut listener, backend).unwrap();
 
         backend_listener.set_nonblocking(true).unwrap();
         assert!(backend_listener.accept().unwrap().is_none());

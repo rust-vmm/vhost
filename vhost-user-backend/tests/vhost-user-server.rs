@@ -260,9 +260,9 @@ fn vhost_user_server_with_fn<F: FnOnce(Arc<Mutex<MockVhostBackend>>, Arc<Barrier
     let path1 = path.clone();
     let thread = thread::spawn(move || cb(&path1, barrier2));
 
-    let listener = Listener::new(&path, false).unwrap();
+    let mut listener = Listener::new(&path, false).unwrap();
     barrier.wait();
-    daemon.start(listener).unwrap();
+    daemon.start(&mut listener).unwrap();
     barrier.wait();
 
     server_fn(backend, barrier);

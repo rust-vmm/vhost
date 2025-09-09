@@ -7,6 +7,8 @@
   `From<UnixListener>` for `vhost_user::Listener`.
 
 ### Changed
+- [[#321](https://github.com/rust-vmm/vhost/pull/321)] Don't take ownership of listener in `BackendListener`.
+
 ### Deprecated
 ### Fixed
 - [[#304]](https://github.com/rust-vmm/vhost/pull/304) Fix building docs.
