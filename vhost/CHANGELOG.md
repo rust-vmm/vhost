@@ -17,6 +17,7 @@
 
 ### Added
 - [[#268]](https://github.com/rust-vmm/vhost/pull/268) Add support for `VHOST_USER_GET_SHARED_OBJECT`
+- [[#251]](https://github.com/rust-vmm/vhost/pull/251) Add `SHMEM_MAP` and `SHMEM_UNMAP` support
 
 ### Changed
 - [[#290]](https://github.com/rust-vmm/vhost/pull/290) Backends now
