@@ -90,7 +90,7 @@ impl VhostUserBackendMut for MockVhostBackend {
         Ok(())
     }
 
-    fn update_memory(&mut self, atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>) -> Result<()> {
+    fn update_memory(&mut self, atomic_mem: GM) -> Result<()> {
         let mem = atomic_mem.memory();
         let region = mem.find_region(GuestAddress(0x100000)).unwrap();
         assert_eq!(region.size(), 0x100000);
