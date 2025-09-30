@@ -30,7 +30,7 @@ use vhost::vhost_user::{
 use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use virtio_queue::{Error as VirtQueError, QueueT};
 use vm_memory::mmap::NewBitmap;
-use vm_memory::{GuestAddress, GuestAddressSpace, GuestMemory, GuestMemoryMmap, GuestRegionMmap};
+use vm_memory::{GuestAddress, GuestAddressSpace, GuestMemory, GuestRegionCollection};
 use vmm_sys_util::epoll::EventSet;
 
 use super::backend::VhostUserBackend;
@@ -314,11 +314,7 @@ where
         let mut mappings: Vec<AddrMapping> = Vec::new();
 
         for (region, file) in ctx.iter().zip(files) {
-            let guest_region = GuestRegionMmap::new(
-                region.mmap_region(file)?,
-                GuestAddress(region.guest_phys_addr),
-            )
-            .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?;
+            let guest_region = region.memory_region(file)?;
             mappings.push(AddrMapping {
                 #[cfg(feature = "postcopy")]
                 local_addr: guest_region.as_ptr() as u64,
@@ -329,7 +325,7 @@ where
             regions.push(guest_region);
         }
 
-        let mem = GuestMemoryMmap::from_regions(regions)
+        let mem = GuestRegionCollection::from_regions(regions)
             .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?;
 
         // Updating the inner GuestMemory object here will cause all our vrings to
@@ -601,13 +597,7 @@ where
         region: &VhostUserSingleMemoryRegion,
         file: File,
     ) -> VhostUserResult<()> {
-        let guest_region = Arc::new(
-            GuestRegionMmap::new(
-                region.mmap_region(file)?,
-                GuestAddress(region.guest_phys_addr),
-            )
-            .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?,
-        );
+        let guest_region = Arc::new(region.memory_region(file)?);
 
         let addr_mapping = AddrMapping {
             #[cfg(feature = "postcopy")]

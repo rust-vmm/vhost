@@ -17,13 +17,15 @@ use std::ops::Deref;
 
 use uuid::Uuid;
 
-use vm_memory::{mmap::NewBitmap, ByteValued, Error as MmapError, FileOffset, MmapRegion};
+use vm_memory::{
+    mmap::NewBitmap, ByteValued, FileOffset, GuestAddress, GuestRegionMmap, MmapRegion,
+};
 
 #[cfg(feature = "xen")]
-use vm_memory::{GuestAddress, MmapRange, MmapXenFlags};
+use vm_memory::{GuestRegionXen, MmapRange, MmapXenFlags};
 
 use super::{enum_value, Error, Result};
-use crate::{VhostUserMemoryRegionInfo, VringConfigData};
+use crate::{MemoryRegion, VhostUserMemoryRegionInfo, VringConfigData};
 
 /*
 TODO: Consider deprecating this. We don't actually have any preallocated buffers except in tests,
@@ -530,52 +532,61 @@ impl VhostUserMemoryRegion {
             && self.user_addr.checked_add(self.memory_size).is_some()
             && self.mmap_offset.checked_add(self.memory_size).is_some()
     }
-}
 
-#[cfg(not(feature = "xen"))]
-impl VhostUserMemoryRegion {
-    /// Creates mmap region from Self.
-    pub fn mmap_region<B: NewBitmap>(&self, file: File) -> Result<MmapRegion<B>> {
-        MmapRegion::<B>::from_file(
-            FileOffset::new(file, self.mmap_offset),
-            self.memory_size as usize,
-        )
-        .map_err(MmapError::MmapRegion)
-        .map_err(|e| Error::ReqHandlerError(io::Error::other(e)))
+    fn is_xen(&self) -> bool {
+        #[cfg(feature = "xen")]
+        {
+            !(self.xen_mmap_flags == 0 && self.xen_mmap_data == 0)
+        }
+        #[cfg(not(feature = "xen"))]
+        {
+            false
+        }
     }
 
-    fn is_valid(&self) -> bool {
-        self.is_valid_common()
-    }
-}
+    pub fn memory_region<B: NewBitmap>(&self, file: File) -> Result<MemoryRegion<B>> {
+        let size = self.memory_size as usize;
+        let guest_addr = GuestAddress(self.guest_phys_addr);
 
-#[cfg(feature = "xen")]
-impl VhostUserMemoryRegion {
-    /// Creates mmap region from Self.
-    pub fn mmap_region<B: NewBitmap>(&self, file: File) -> Result<MmapRegion<B>> {
-        let range = MmapRange::new(
-            self.memory_size as usize,
-            Some(FileOffset::new(file, self.mmap_offset)),
-            GuestAddress(self.guest_phys_addr),
-            self.xen_mmap_flags,
-            self.xen_mmap_data,
-        );
+        #[cfg(feature = "xen")]
+        if self.is_xen() {
+            let range = MmapRange::new(
+                size,
+                Some(FileOffset::new(file, self.mmap_offset)),
+                guest_addr,
+                self.xen_mmap_flags,
+                self.xen_mmap_data,
+            );
 
-        MmapRegion::<B>::from_range(range)
-            .map_err(MmapError::MmapRegion)
+            return GuestRegionXen::<B>::from_range(range)
+                .map_err(|e| Error::ReqHandlerError(io::Error::other(e)))
+                .map(MemoryRegion::Xen);
+        }
+
+        MmapRegion::from_file(FileOffset::new(file, self.mmap_offset), size)
             .map_err(|e| Error::ReqHandlerError(io::Error::other(e)))
+            .and_then(|region| {
+                GuestRegionMmap::new(region, guest_addr)
+                    .ok_or(Error::ReqHandlerError(io::Error::other(
+                        "invalid memory region",
+                    )))
+                    .map(MemoryRegion::Unix)
+            })
     }
 
     fn is_valid(&self) -> bool {
         if !self.is_valid_common() {
-            false
-        } else {
-            // Only of one of FOREIGN or GRANT should be set.
-            match MmapXenFlags::from_bits(self.xen_mmap_flags) {
-                Some(flags) => flags.is_valid(),
-                None => false,
-            }
+            return false;
         }
+
+        #[cfg(feature = "xen")]
+        if self.is_xen() {
+            // Only of one of FOREIGN or GRANT should be set.
+            return MmapXenFlags::from_bits(self.xen_mmap_flags)
+                .is_none_or(|flags| flags.is_valid());
+        }
+
+        true
     }
 }
 

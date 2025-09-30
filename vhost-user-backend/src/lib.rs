@@ -13,11 +13,11 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use vhost::vhost_user::{BackendListener, BackendReqHandler, Error as VhostUserError, Listener};
-use vm_memory::mmap::NewBitmap;
-use vm_memory::{GuestMemoryAtomic, GuestMemoryMmap};
-
 use self::handler::VhostUserHandler;
+use vhost::vhost_user::{BackendListener, BackendReqHandler, Error as VhostUserError, Listener};
+use vhost::MemoryRegion;
+use vm_memory::mmap::NewBitmap;
+use vm_memory::{GuestMemoryAtomic, GuestRegionCollection};
 
 mod backend;
 pub use self::backend::{VhostUserBackend, VhostUserBackendMut};
@@ -43,7 +43,7 @@ pub use self::vring::{
 compile_error!("Both `postcopy` and `xen` features can not be enabled at the same time.");
 
 /// An alias for `GuestMemoryAtomic<GuestMemoryMmap<B>>` to simplify code.
-type GM<B = ()> = GuestMemoryAtomic<GuestMemoryMmap<B>>;
+type GM<B = ()> = GuestMemoryAtomic<GuestRegionCollection<MemoryRegion<B>>>;
 
 #[derive(Debug)]
 /// Errors related to vhost-user daemon.
