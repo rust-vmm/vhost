@@ -223,7 +223,7 @@ impl VhostBackend for Frontend {
                 return error_code(VhostUserError::InvalidParam);
             }
 
-            ctx.append(&region.to_region(), region.mmap_handle);
+            ctx.append(&region.into(), region.mmap_handle);
         }
 
         let mut node = self.node();

@@ -86,6 +86,22 @@ pub struct VhostUserMemoryRegionInfo {
     pub xen_mmap_data: u32,
 }
 
+#[cfg(feature = "vhost-user")]
+impl From<&VhostUserMemoryRegionInfo> for VhostUserMemoryRegion {
+    fn from(region: &VhostUserMemoryRegionInfo) -> Self {
+        VhostUserMemoryRegion {
+            guest_phys_addr: region.guest_phys_addr,
+            memory_size: region.memory_size,
+            user_addr: region.userspace_addr,
+            mmap_offset: region.mmap_offset,
+            #[cfg(feature = "xen")]
+            xen_mmap_flags: region.xen_mmap_flags,
+            #[cfg(feature = "xen")]
+            xen_mmap_data: region.xen_mmap_data,
+        }
+    }
+}
+
 impl VhostUserMemoryRegionInfo {
     /// Creates Self from GuestRegionMmap.
     pub fn from_guest_region<B: Bitmap>(region: &GuestRegionMmap<B>) -> Result<Self> {
@@ -104,28 +120,6 @@ impl VhostUserMemoryRegionInfo {
             #[cfg(feature = "xen")]
             xen_mmap_data: region.xen_mmap_data(),
         })
-    }
-
-    /// Creates VhostUserMemoryRegion from Self.
-    #[cfg(feature = "vhost-user")]
-    pub fn to_region(&self) -> VhostUserMemoryRegion {
-        #[cfg(not(feature = "xen"))]
-        return VhostUserMemoryRegion::new(
-            self.guest_phys_addr,
-            self.memory_size,
-            self.userspace_addr,
-            self.mmap_offset,
-        );
-
-        #[cfg(feature = "xen")]
-        VhostUserMemoryRegion::with_xen(
-            self.guest_phys_addr,
-            self.memory_size,
-            self.userspace_addr,
-            self.mmap_offset,
-            self.xen_mmap_flags,
-            self.xen_mmap_data,
-        )
     }
 
     /// Creates VhostUserSingleMemoryRegion from Self.
