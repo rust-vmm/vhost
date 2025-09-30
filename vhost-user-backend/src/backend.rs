@@ -629,11 +629,7 @@ pub mod tests {
     use crate::VringRwLock;
     use std::sync::Mutex;
     use uuid::Uuid;
-    use vm_memory::{GuestAddress, GuestMemoryAtomic};
-    #[cfg(not(feature = "xen"))]
-    use vm_memory::GuestMemoryMmap;
-    #[cfg(feature = "xen")]
-    use vm_memory::GuestMemoryMmapXen as GuestMemoryMmap;
+    use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestRegionCollection, GuestRegionMmap};
 
     use vmm_sys_util::event::{new_event_consumer_and_notifier, EventFlag};
 
@@ -787,8 +783,12 @@ pub mod tests {
         backend.get_shared_object(uuid).unwrap();
 
         let mem = GuestMemoryAtomic::new(
-            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+            GuestRegionCollection::from_regions(vec![vhost::MemoryRegion::Unix(
+                GuestRegionMmap::from_range(GuestAddress(0x100000), 0x10000, None).unwrap(),
+            )])
+            .unwrap(),
         );
+
         backend.update_memory(mem).unwrap();
 
         backend.reset_device();
@@ -822,8 +822,12 @@ pub mod tests {
         let _ = backend.exit_event(0).unwrap();
 
         let mem = GuestMemoryAtomic::new(
-            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+            GuestRegionCollection::from_regions(vec![vhost::MemoryRegion::Unix(
+                GuestRegionMmap::from_range(GuestAddress(0x100000), 0x10000, None).unwrap(),
+            )])
+            .unwrap(),
         );
+
         backend.update_memory(mem.clone()).unwrap();
 
         let uuid = VhostUserSharedMsg {

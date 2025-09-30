@@ -16,16 +16,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use vhost::vhost_user::{BackendListener, BackendReqHandler, Error as VhostUserError, Listener};
-use vm_memory::mmap::NewBitmap;
-use vm_memory::GuestMemoryAtomic;
-
-#[cfg(not(feature = "xen"))]
-use vm_memory::GuestMemoryMmap;
-#[cfg(feature = "xen")]
-use vm_memory::GuestMemoryMmapXen as GuestMemoryMmap;
-
 use self::handler::VhostUserHandler;
+use vhost::vhost_user::{BackendListener, BackendReqHandler, Error as VhostUserError, Listener};
+use vhost::MemoryRegion;
+use vm_memory::mmap::NewBitmap;
+use vm_memory::{GuestMemoryAtomic, GuestRegionCollection};
 
 mod backend;
 pub use self::backend::{VhostUserBackend, VhostUserBackendMut};
@@ -56,7 +51,7 @@ pub use self::vring::{
 compile_error!("Both `postcopy` and `xen` features can not be enabled at the same time.");
 
 /// An alias for `GuestMemoryAtomic<GuestMemoryMmap<B>>` to simplify code.
-type GM<B = ()> = GuestMemoryAtomic<GuestMemoryMmap<B>>;
+type GM<B = ()> = GuestMemoryAtomic<GuestRegionCollection<MemoryRegion<B>>>;
 
 #[derive(Debug)]
 /// Errors related to vhost-user daemon.
@@ -336,16 +331,15 @@ mod tests {
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::sync::Barrier;
     use std::time::Duration;
-    use vm_memory::{GuestAddress, GuestMemoryAtomic};
-    #[cfg(not(feature = "xen"))]
-    use vm_memory::GuestMemoryMmap;
-    #[cfg(feature = "xen")]
-    use vm_memory::GuestMemoryMmapXen as GuestMemoryMmap;
+    use vm_memory::{GuestAddress, GuestRegionCollection, GuestRegionMmap};
 
     #[test]
     fn test_new_daemon() {
         let mem = GuestMemoryAtomic::new(
-            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+            GuestRegionCollection::from_regions(vec![vhost::MemoryRegion::Unix(
+                GuestRegionMmap::from_range(GuestAddress(0x100000), 0x10000, None).unwrap(),
+            )])
+            .unwrap(),
         );
         let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
         let mut daemon = VhostUserDaemon::new("test".to_owned(), backend, mem).unwrap();
@@ -378,7 +372,10 @@ mod tests {
     #[test]
     fn test_new_daemon_client() {
         let mem = GuestMemoryAtomic::new(
-            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+            GuestRegionCollection::from_regions(vec![vhost::MemoryRegion::Unix(
+                GuestRegionMmap::from_range(GuestAddress(0x100000), 0x10000, None).unwrap(),
+            )])
+            .unwrap(),
         );
         let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
         let mut daemon = VhostUserDaemon::new("test".to_owned(), backend, mem).unwrap();
@@ -413,7 +410,10 @@ mod tests {
     #[test]
     fn test_daemon_serve() {
         let mem = GuestMemoryAtomic::new(
-            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+            GuestRegionCollection::from_regions(vec![vhost::MemoryRegion::Unix(
+                GuestRegionMmap::from_range(GuestAddress(0x100000), 0x10000, None).unwrap(),
+            )])
+            .unwrap(),
         );
         let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
         let mut daemon = VhostUserDaemon::new("test".to_owned(), backend.clone(), mem).unwrap();
@@ -458,7 +458,10 @@ mod tests {
     #[test]
     fn test_shutdown_while_connected() {
         let mem = GuestMemoryAtomic::new(
-            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+            GuestRegionCollection::from_regions(vec![vhost::MemoryRegion::Unix(
+                GuestRegionMmap::from_range(GuestAddress(0x100000), 0x10000, None).unwrap(),
+            )])
+            .unwrap(),
         );
         let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
         let mut daemon = VhostUserDaemon::new("test".to_owned(), backend, mem).unwrap();
@@ -509,7 +512,10 @@ mod tests {
     #[test]
     fn test_double_shutdown() {
         let mem = GuestMemoryAtomic::new(
-            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+            GuestRegionCollection::from_regions(vec![vhost::MemoryRegion::Unix(
+                GuestRegionMmap::from_range(GuestAddress(0x100000), 0x10000, None).unwrap(),
+            )])
+            .unwrap(),
         );
         let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
         let mut daemon = VhostUserDaemon::new("test".to_owned(), backend, mem).unwrap();

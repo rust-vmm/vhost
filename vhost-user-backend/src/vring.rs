@@ -507,19 +507,17 @@ impl<M: 'static + GuestAddressSpace> VringT<M> for VringRwLock<M> {
 mod tests {
     use super::*;
     use vm_memory::bitmap::AtomicBitmap;
+    use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestRegionCollection, GuestRegionMmap};
     use vmm_sys_util::event::{new_event_consumer_and_notifier, EventFlag};
-
-    use vm_memory::{GuestAddress, GuestMemoryAtomic};
-    #[cfg(not(feature = "xen"))]
-    use vm_memory::GuestMemoryMmap;
-    #[cfg(feature = "xen")]
-    use vm_memory::GuestMemoryMmapXen as GuestMemoryMmap;
 
     #[test]
     fn test_new_vring() {
         let mem = GuestMemoryAtomic::new(
-            GuestMemoryMmap::<AtomicBitmap>::from_ranges(&[(GuestAddress(0x100000), 0x10000)])
-                .unwrap(),
+            GuestRegionCollection::from_regions(vec![vhost::MemoryRegion::Unix(
+                GuestRegionMmap::<AtomicBitmap>::from_range(GuestAddress(0x100000), 0x10000, None)
+                    .unwrap(),
+            )])
+            .unwrap(),
         );
         let vring = VringMutex::new(mem, 0x1000).unwrap();
 
@@ -553,7 +551,11 @@ mod tests {
     #[test]
     fn test_vring_set_fd() {
         let mem = GuestMemoryAtomic::new(
-            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+            GuestRegionCollection::from_regions(vec![vhost::MemoryRegion::Unix(
+                GuestRegionMmap::<AtomicBitmap>::from_range(GuestAddress(0x100000), 0x10000, None)
+                    .unwrap(),
+            )])
+            .unwrap(),
         );
         let vring = VringMutex::new(mem, 0x1000).unwrap();
 

@@ -12,15 +12,12 @@ use vhost::vhost_user::message::{
     VhostUserSharedMsg,
 };
 use vhost::vhost_user::{Backend, Frontend, Listener, VhostUserFrontend};
-use vhost::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
+use vhost::{MemoryRegion, VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
 use vhost_user_backend::{VhostUserBackendMut, VhostUserDaemon, VringRwLock};
 use vm_memory::{
     FileOffset, GuestAddress, GuestAddressSpace, GuestMemoryAtomic, GuestMemoryBackend,
+    GuestMemoryMmap, GuestMemoryRegion, GuestRegionCollection,
 };
-#[cfg(not(feature = "xen"))]
-use vm_memory::GuestMemoryMmap;
-#[cfg(feature = "xen")]
-use vm_memory::GuestMemoryMmapXen as GuestMemoryMmap;
 use vmm_sys_util::epoll::EventSet;
 use vmm_sys_util::event::{
     new_event_consumer_and_notifier, EventConsumer, EventFlag, EventNotifier,
@@ -94,10 +91,13 @@ impl VhostUserBackendMut for MockVhostBackend {
         Ok(())
     }
 
-    fn update_memory(&mut self, atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>) -> Result<()> {
+    fn update_memory(
+        &mut self,
+        atomic_mem: GuestMemoryAtomic<GuestRegionCollection<MemoryRegion<()>>>,
+    ) -> Result<()> {
         let mem = atomic_mem.memory();
         let region = mem.find_region(GuestAddress(0x100000)).unwrap();
-        assert_eq!(region.size(), 0x100000);
+        assert_eq!(region.len(), 0x100000);
         Ok(())
     }
 
@@ -251,7 +251,7 @@ fn vhost_user_server_with_fn<F: FnOnce(Arc<Mutex<MockVhostBackend>>, Arc<Barrier
     cb: fn(&Path, Arc<Barrier>),
     server_fn: F,
 ) {
-    let mem = GuestMemoryAtomic::new(GuestMemoryMmap::<()>::new());
+    let mem = GuestMemoryAtomic::new(GuestRegionCollection::<MemoryRegion<()>>::new());
     let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
     let mut daemon = VhostUserDaemon::new("test".to_owned(), backend.clone(), mem).unwrap();
 

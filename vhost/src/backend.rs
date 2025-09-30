@@ -14,12 +14,9 @@ use std::os::unix::io::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::sync::RwLock;
 
-use vm_memory::{bitmap::Bitmap, Address, GuestMemoryRegion};
-#[cfg(not(feature = "xen"))]
-use vm_memory::GuestRegionMmap;
 #[cfg(feature = "xen")]
-use vm_memory::GuestRegionMmapXen as GuestRegionMmap;
-
+use vm_memory::GuestRegionXen;
+use vm_memory::{bitmap::Bitmap, Address, GuestMemoryRegion, GuestRegionMmap};
 use vmm_sys_util::eventfd::EventFd;
 
 #[cfg(feature = "vhost-user")]
@@ -107,26 +104,47 @@ impl From<&VhostUserMemoryRegionInfo> for VhostUserMemoryRegion {
     }
 }
 
-impl VhostUserMemoryRegionInfo {
-    /// Creates Self from GuestRegionMmap.
-    pub fn from_guest_region<B: Bitmap>(region: &GuestRegionMmap<B>) -> Result<Self> {
+impl<B: Bitmap> TryFrom<&GuestRegionMmap<B>> for VhostUserMemoryRegionInfo {
+    type Error = Error;
+
+    fn try_from(region: &GuestRegionMmap<B>) -> Result<Self> {
         let file_offset = region
             .file_offset()
             .ok_or(Error::InvalidGuestMemoryRegion)?;
 
-        Ok(Self {
+        Ok(VhostUserMemoryRegionInfo {
             guest_phys_addr: region.start_addr().raw_value(),
             memory_size: region.len(),
             userspace_addr: region.as_ptr() as u64,
             mmap_offset: file_offset.start(),
             mmap_handle: file_offset.file().as_raw_fd(),
-            #[cfg(feature = "xen")]
+            ..Default::default()
+        })
+    }
+}
+
+#[cfg(feature = "xen")]
+impl<B: Bitmap> TryFrom<&GuestRegionXen<B>> for VhostUserMemoryRegionInfo {
+    type Error = Error;
+
+    fn try_from(region: &GuestRegionXen<B>) -> std::result::Result<Self, Self::Error> {
+        let file_offset = region
+            .file_offset()
+            .ok_or(Error::InvalidGuestMemoryRegion)?;
+
+        Ok(VhostUserMemoryRegionInfo {
+            guest_phys_addr: region.start_addr().raw_value(),
+            memory_size: region.len(),
+            userspace_addr: region.as_ptr() as u64,
+            mmap_offset: file_offset.start(),
+            mmap_handle: file_offset.file().as_raw_fd(),
             xen_mmap_flags: region.xen_mmap_flags(),
-            #[cfg(feature = "xen")]
             xen_mmap_data: region.xen_mmap_data(),
         })
     }
+}
 
+impl VhostUserMemoryRegionInfo {
     /// Creates VhostUserSingleMemoryRegion from Self.
     #[cfg(feature = "vhost-user")]
     pub fn to_single_region(&self) -> VhostUserSingleMemoryRegion {
