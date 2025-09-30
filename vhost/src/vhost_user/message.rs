@@ -534,16 +534,6 @@ impl VhostUserMemoryRegion {
 
 #[cfg(not(feature = "xen"))]
 impl VhostUserMemoryRegion {
-    /// Create a new instance.
-    pub fn new(guest_phys_addr: u64, memory_size: u64, user_addr: u64, mmap_offset: u64) -> Self {
-        VhostUserMemoryRegion {
-            guest_phys_addr,
-            memory_size,
-            user_addr,
-            mmap_offset,
-        }
-    }
-
     /// Creates mmap region from Self.
     pub fn mmap_region<B: NewBitmap>(&self, file: File) -> Result<MmapRegion<B>> {
         MmapRegion::<B>::from_file(
@@ -561,25 +551,6 @@ impl VhostUserMemoryRegion {
 
 #[cfg(feature = "xen")]
 impl VhostUserMemoryRegion {
-    /// Create a new instance.
-    pub fn with_xen(
-        guest_phys_addr: u64,
-        memory_size: u64,
-        user_addr: u64,
-        mmap_offset: u64,
-        xen_mmap_flags: u32,
-        xen_mmap_data: u32,
-    ) -> Self {
-        VhostUserMemoryRegion {
-            guest_phys_addr,
-            memory_size,
-            user_addr,
-            mmap_offset,
-            xen_mmap_flags,
-            xen_mmap_data,
-        }
-    }
-
     /// Creates mmap region from Self.
     pub fn mmap_region<B: NewBitmap>(&self, file: File) -> Result<MmapRegion<B>> {
         let range = MmapRange::new(
@@ -1095,20 +1066,6 @@ mod tests {
     use super::*;
     use std::mem;
 
-    #[cfg(feature = "xen")]
-    impl VhostUserMemoryRegion {
-        fn new(guest_phys_addr: u64, memory_size: u64, user_addr: u64, mmap_offset: u64) -> Self {
-            Self::with_xen(
-                guest_phys_addr,
-                memory_size,
-                user_addr,
-                mmap_offset,
-                MmapXenFlags::FOREIGN.bits(),
-                0,
-            )
-        }
-    }
-
     #[test]
     fn check_transfer_state_direction_code() {
         let load_code: u32 = VhostTransferStateDirection::LOAD.into();
@@ -1230,7 +1187,15 @@ mod tests {
 
     #[test]
     fn check_user_memory_region() {
-        let mut msg = VhostUserMemoryRegion::new(0, 0x1000, 0, 0);
+        let mut msg = VhostUserMemoryRegion {
+            guest_phys_addr: 0,
+            memory_size: 0x1000,
+            user_addr: 0,
+            mmap_offset: 0,
+            #[cfg(feature = "xen")]
+            xen_mmap_flags: MmapXenFlags::FOREIGN.bits(),
+            ..Default::default()
+        };
         assert!(msg.is_valid());
         msg.guest_phys_addr = 0xFFFFFFFFFFFFEFFF;
         assert!(msg.is_valid());
