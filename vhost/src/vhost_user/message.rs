@@ -23,7 +23,7 @@ use vm_memory::{mmap::NewBitmap, ByteValued, Error as MmapError, FileOffset, Mma
 use vm_memory::{GuestAddress, MmapRange, MmapXenFlags};
 
 use super::{enum_value, Error, Result};
-use crate::VringConfigData;
+use crate::{VhostUserMemoryRegionInfo, VringConfigData};
 
 /*
 TODO: Consider deprecating this. We don't actually have any preallocated buffers except in tests,
@@ -639,43 +639,12 @@ impl Deref for VhostUserSingleMemoryRegion {
     }
 }
 
-#[cfg(not(feature = "xen"))]
-impl VhostUserSingleMemoryRegion {
-    /// Create a new instance.
-    pub fn new(guest_phys_addr: u64, memory_size: u64, user_addr: u64, mmap_offset: u64) -> Self {
+#[cfg(feature = "vhost-user")]
+impl From<&VhostUserMemoryRegionInfo> for VhostUserSingleMemoryRegion {
+    fn from(value: &VhostUserMemoryRegionInfo) -> Self {
         VhostUserSingleMemoryRegion {
             padding: 0,
-            region: VhostUserMemoryRegion::new(
-                guest_phys_addr,
-                memory_size,
-                user_addr,
-                mmap_offset,
-            ),
-        }
-    }
-}
-
-#[cfg(feature = "xen")]
-impl VhostUserSingleMemoryRegion {
-    /// Create a new instance.
-    pub fn new(
-        guest_phys_addr: u64,
-        memory_size: u64,
-        user_addr: u64,
-        mmap_offset: u64,
-        xen_mmap_flags: u32,
-        xen_mmap_data: u32,
-    ) -> Self {
-        VhostUserSingleMemoryRegion {
-            padding: 0,
-            region: VhostUserMemoryRegion::with_xen(
-                guest_phys_addr,
-                memory_size,
-                user_addr,
-                mmap_offset,
-                xen_mmap_flags,
-                xen_mmap_data,
-            ),
+            region: value.into(),
         }
     }
 }

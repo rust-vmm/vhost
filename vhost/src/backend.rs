@@ -125,16 +125,7 @@ impl VhostUserMemoryRegionInfo {
     /// Creates VhostUserSingleMemoryRegion from Self.
     #[cfg(feature = "vhost-user")]
     pub fn to_single_region(&self) -> VhostUserSingleMemoryRegion {
-        VhostUserSingleMemoryRegion::new(
-            self.guest_phys_addr,
-            self.memory_size,
-            self.userspace_addr,
-            self.mmap_offset,
-            #[cfg(feature = "xen")]
-            self.xen_mmap_flags,
-            #[cfg(feature = "xen")]
-            self.xen_mmap_data,
-        )
+        self.into()
     }
 }
 
