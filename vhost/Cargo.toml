@@ -37,3 +37,10 @@ vm-memory = { workspace = true, features=["backend-mmap"] }
 [dev-dependencies]
 tempfile = "3.2.0"
 serial_test = "3.0"
+
+[package.metadata.cargo-all-features]
+skip_feature_sets = [
+    ["xen", "postcopy"]
+]
+
+denylist = ["test_utils"]
