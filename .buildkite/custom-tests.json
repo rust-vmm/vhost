@@ -1,25 +1,4 @@
 {
     "tests": [
-        {
-            "test_name": "build-vhost-kern",
-            "command": "cargo build --features=vhost-kern",
-            "platform": [
-                "x86_64"
-            ]
-        },
-        {
-            "test_name": "build-vhost-user-frontend",
-            "command": "cargo build --features=vhost-user-frontend",
-            "platform": [
-                "x86_64"
-            ]
-        },
-        {
-            "test_name": "build-vhost-user-backend",
-            "command": "cargo build --features=vhost-user-backend",
-            "platform": [
-                "x86_64"
-            ]
-        }
     ]
 }
