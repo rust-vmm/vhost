@@ -36,10 +36,15 @@ pub use self::vring::{
     VringMutex, VringRwLock, VringState, VringStateGuard, VringStateMutGuard, VringT,
 };
 
-/// Due to the way `xen` handles memory mappings we can not combine it with
-/// `postcopy` feature which relies on persistent memory mappings. Thus we
-/// disallow enabling both features at the same time.
-#[cfg(all(feature = "postcopy", feature = "xen"))]
+// Due to the way `xen` handles memory mappings we can not combine it with
+// `postcopy` feature which relies on persistent memory mappings. Thus we
+// disallow enabling both features at the same time.
+#[cfg(all(
+    not(RUSTDOC_disable_feature_compat_errors),
+    not(doc),
+    feature = "postcopy",
+    feature = "xen"
+))]
 compile_error!("Both `postcopy` and `xen` features can not be enabled at the same time.");
 
 /// An alias for `GuestMemoryAtomic<GuestMemoryMmap<B>>` to simplify code.
