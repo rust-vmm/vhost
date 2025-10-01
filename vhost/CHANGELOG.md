@@ -12,6 +12,8 @@
 ### Deprecated
 ### Fixed
 - [[#304]](https://github.com/rust-vmm/vhost/pull/304) Fix building docs.
+- [[#326]](https://github.com/rust-vmm/vhots/pull/326) Fix `get_vring_base()` returning 0 instead of
+  the vring base for vhost-kern backends when compiling in release mode.
 
 ## v0.14.0
 
