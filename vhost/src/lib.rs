@@ -51,10 +51,15 @@ pub mod vhost_user;
 #[cfg(feature = "vhost-vsock")]
 pub mod vsock;
 
-/// Due to the way `xen` handles memory mappings we can not combine it with
-/// `postcopy` feature which relies on persistent memory mappings. Thus we
-/// disallow enabling both features at the same time.
-#[cfg(all(not(doc), feature = "postcopy", feature = "xen"))]
+// Due to the way `xen` handles memory mappings we can not combine it with
+// `postcopy` feature which relies on persistent memory mappings. Thus we
+// disallow enabling both features at the same time.
+#[cfg(all(
+    not(RUSTDOC_disable_feature_compat_errors),
+    not(doc),
+    feature = "postcopy",
+    feature = "xen"
+))]
 compile_error!("Both `postcopy` and `xen` features can not be enabled at the same time.");
 
 /// Error codes for vhost operations

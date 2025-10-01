@@ -29,6 +29,9 @@ vhost = { path = "../vhost", version = "0.14.0", features = ["test-utils", "vhos
 vm-memory = { workspace = true, features = ["backend-mmap", "backend-atomic"] }
 tempfile = "3.2.0"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(RUSTDOC_disable_feature_compat_errors)'] }
+
 [package.metadata.cargo-all-features]
 skip_feature_sets = [
     ["xen", "postcopy"]
