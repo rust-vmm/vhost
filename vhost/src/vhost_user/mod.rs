@@ -18,7 +18,6 @@
 //! Most messages that can be sent via the Unix domain socket implementing vhost-user have an
 //! equivalent ioctl to the kernel implementation.
 
-use std::fs::File;
 use std::io::Error as IOError;
 
 pub mod message;
@@ -214,7 +213,8 @@ pub type HandlerResult<T> = std::result::Result<T, IOError>;
 
 /// Utility function to take the first element from option of a vector of files.
 /// Returns `None` if the vector contains no file or more than one file.
-pub(crate) fn take_single_file(files: Option<Vec<File>>) -> Option<File> {
+#[cfg(any(feature = "vhost-user-backend", feature = "vhost-user-frontend"))]
+pub(crate) fn take_single_file(files: Option<Vec<std::fs::File>>) -> Option<std::fs::File> {
     let mut files = files?;
     if files.len() != 1 {
         return None;
