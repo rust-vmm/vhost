@@ -12,6 +12,7 @@ edition = "2021"
 
 [package.metadata.docs.rs]
 all-features = true
+rustc-args  = ['--cfg RUSTDOC_disable_feature_compat_errors']
 
 [features]
 default = []

@@ -8,6 +8,10 @@ repository = "https://github.com/rust-vmm/vhost"
 edition = "2021"
 license = "Apache-2.0"
 
+[package.metadata.docs.rs]
+all-features = true
+rustc-args  = ['--cfg RUSTDOC_disable_feature_compat_errors']
+
 [features]
 xen = ["vm-memory/xen", "vhost/xen"]
 postcopy = ["vhost/postcopy", "userfaultfd"]
