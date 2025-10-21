@@ -23,7 +23,7 @@ mod backend;
 pub use self::backend::{VhostUserBackend, VhostUserBackendMut};
 
 mod event_loop;
-pub use self::event_loop::VringEpollHandler;
+pub use self::event_loop::{EventSet, VringEpollHandler};
 
 mod handler;
 pub use self::handler::VhostUserHandlerError;
