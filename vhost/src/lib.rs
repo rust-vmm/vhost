@@ -30,15 +30,23 @@
 //! that shares its virtqueues. Backend is the consumer of the virtqueues. Frontend and backend can be
 //! either a client (i.e. connecting) or server (listening) in the socket communication.
 
-#![deny(missing_docs)]
-
 #[cfg_attr(feature = "vhost-user", macro_use)]
 extern crate bitflags;
 #[cfg_attr(feature = "vhost-kern", macro_use)]
 extern crate vmm_sys_util;
 
 mod backend;
+
+use std::ops::Deref;
+
 pub use backend::*;
+use vm_memory::bitmap::{Bitmap, BS};
+#[cfg(feature = "xen")]
+use vm_memory::GuestRegionXen;
+use vm_memory::{
+    GuestAddress, GuestMemoryRegion, GuestMemoryRegionBytes, GuestRegionMmap, GuestUsize,
+    MemoryRegionAddress, VolatileSlice,
+};
 
 #[cfg(feature = "vhost-net")]
 pub mod net;
@@ -132,6 +140,75 @@ impl std::convert::From<vhost_user::Error> for Error {
 
 /// Result of vhost operations
 pub type Result<T> = std::result::Result<T, Error>;
+
+pub enum MemoryRegion<B> {
+    Unix(GuestRegionMmap<B>),
+    #[cfg(feature = "xen")]
+    Xen(GuestRegionXen<B>),
+}
+
+impl<B: Bitmap> MemoryRegion<B> {
+    pub fn bitmap(&self) -> &B {
+        match self {
+            MemoryRegion::Unix(r) => (*r).deref().bitmap(),
+            #[cfg(feature = "xen")]
+            MemoryRegion::Xen(r) => r.bitmap(),
+        }
+    }
+}
+
+impl<B: Bitmap> GuestMemoryRegion for MemoryRegion<B> {
+    type B = B;
+
+    fn len(&self) -> GuestUsize {
+        match self {
+            MemoryRegion::Unix(r) => r.len(),
+            #[cfg(feature = "xen")]
+            MemoryRegion::Xen(r) => r.len(),
+        }
+    }
+
+    fn start_addr(&self) -> GuestAddress {
+        match self {
+            MemoryRegion::Unix(r) => r.start_addr(),
+            #[cfg(feature = "xen")]
+            MemoryRegion::Xen(r) => r.start_addr(),
+        }
+    }
+
+    fn bitmap(&self) -> BS<'_, Self::B> {
+        match self {
+            MemoryRegion::Unix(r) => r.bitmap(),
+            #[cfg(feature = "xen")]
+            MemoryRegion::Xen(r) => <GuestRegionXen<B> as GuestMemoryRegion>::bitmap(r),
+        }
+    }
+
+    fn get_host_address(
+        &self,
+        addr: MemoryRegionAddress,
+    ) -> vm_memory::guest_memory::Result<*mut u8> {
+        match self {
+            MemoryRegion::Unix(r) => r.get_host_address(addr),
+            #[cfg(feature = "xen")]
+            MemoryRegion::Xen(r) => r.get_host_address(addr),
+        }
+    }
+
+    fn get_slice(
+        &self,
+        offset: MemoryRegionAddress,
+        count: usize,
+    ) -> vm_memory::guest_memory::Result<VolatileSlice<BS<Self::B>>> {
+        match self {
+            MemoryRegion::Unix(r) => r.get_slice(offset, count),
+            #[cfg(feature = "xen")]
+            MemoryRegion::Xen(r) => r.get_slice(offset, count),
+        }
+    }
+}
+
+impl<B: Bitmap> GuestMemoryRegionBytes for MemoryRegion<B> {}
 
 #[cfg(test)]
 mod tests {

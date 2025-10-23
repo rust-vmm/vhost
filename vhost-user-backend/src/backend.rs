@@ -685,7 +685,7 @@ pub mod tests {
             Ok(())
         }
 
-        fn update_memory(&mut self, _atomic_mem: GuestMemoryAtomic<GuestMemoryMmap>) -> Result<()> {
+        fn update_memory(&mut self, _atomic_mem: GM) -> Result<()> {
             Ok(())
         }
 
