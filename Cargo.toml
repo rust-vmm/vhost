@@ -8,6 +8,6 @@ members = [
 
 [workspace.dependencies]
 virtio-bindings = "0.2.6"
-virtio-queue = "0.16.0"
-vm-memory = "0.16.2"
+virtio-queue = "0.17.0"
+vm-memory = "0.17.1"
 vmm-sys-util = "0.15.0"
