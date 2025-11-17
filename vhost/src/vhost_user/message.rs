@@ -17,7 +17,7 @@ use std::ops::Deref;
 
 use uuid::Uuid;
 
-use vm_memory::{mmap::NewBitmap, ByteValued, Error as MmapError, FileOffset, MmapRegion};
+use vm_memory::{mmap::NewBitmap, ByteValued, FileOffset, MmapRegion};
 
 #[cfg(feature = "xen")]
 use vm_memory::{GuestAddress, MmapRange, MmapXenFlags};
@@ -550,7 +550,6 @@ impl VhostUserMemoryRegion {
             FileOffset::new(file, self.mmap_offset),
             self.memory_size as usize,
         )
-        .map_err(MmapError::MmapRegion)
         .map_err(|e| Error::ReqHandlerError(io::Error::other(e)))
     }
 
@@ -590,9 +589,7 @@ impl VhostUserMemoryRegion {
             self.xen_mmap_data,
         );
 
-        MmapRegion::<B>::from_range(range)
-            .map_err(MmapError::MmapRegion)
-            .map_err(|e| Error::ReqHandlerError(io::Error::other(e)))
+        MmapRegion::<B>::from_range(range).map_err(|e| Error::ReqHandlerError(io::Error::other(e)))
     }
 
     fn is_valid(&self) -> bool {

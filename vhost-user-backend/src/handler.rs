@@ -318,7 +318,9 @@ where
                 region.mmap_region(file)?,
                 GuestAddress(region.guest_phys_addr),
             )
-            .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?;
+            .ok_or(VhostUserError::ReqHandlerError(
+                io::ErrorKind::InvalidInput.into(),
+            ))?;
             mappings.push(AddrMapping {
                 #[cfg(feature = "postcopy")]
                 local_addr: guest_region.as_ptr() as u64,
@@ -606,7 +608,9 @@ where
                 region.mmap_region(file)?,
                 GuestAddress(region.guest_phys_addr),
             )
-            .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?,
+            .ok_or(VhostUserError::ReqHandlerError(
+                io::ErrorKind::InvalidInput.into(),
+            ))?,
         );
 
         let addr_mapping = AddrMapping {
