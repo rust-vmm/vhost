@@ -6,6 +6,7 @@
 ### Changed
 - [[#308](https://github.com/rust-vmm/vhost/pull/308)] Replace Eventfd with EventNotifier/EventConsumer.
 - [[#321](https://github.com/rust-vmm/vhost/pull/321)] Don't take ownership of listener in `VhostUserDaemon::start`.
+- [[316]](https://github.com/rust-vmm/vhost/pull/316) Use mio to replace Epoll. Expose event_loop::EventSet.
 
 ### Deprecated
 ### Fixed
