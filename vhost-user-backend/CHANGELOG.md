@@ -4,11 +4,15 @@
 
 ### Added
 ### Changed
-- [[#308](https://github.com/rust-vmm/vhost/pull/308)] Replace Eventfd with EventNotifier/EventConsumer.
-- [[#321](https://github.com/rust-vmm/vhost/pull/321)] Don't take ownership of listener in `VhostUserDaemon::start`.
-
 ### Deprecated
 ### Fixed
+
+## v0.21.0
+
+### Changed
+- [[#308]](https://github.com/rust-vmm/vhost/pull/308) Replace Eventfd with EventNotifier/EventConsumer.
+- [[#321]](https://github.com/rust-vmm/vhost/pull/321) Don't take ownership of listener in `VhostUserDaemon::start`.
+- [[#333]](https://github.com/rust-vmm/vhost/pull/333) Updated virtio-queue to 0.17.0, vm-memory to 0.17.1, vmm-sys-util to 0.15.0 and vhost to 0.15.0
 
 ## v0.20.0
 
