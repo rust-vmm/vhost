@@ -3,13 +3,20 @@
 ## [Unreleased]
 
 ### Added
+### Changed
+### Deprecated
+### Fixed
+
+## v0.15.0
+
+### Added
 - [[#311]](https://github.com/rust-vmm/vhost/pull/311) Implement
   `From<UnixListener>` for `vhost_user::Listener`.
 
 ### Changed
-- [[#321](https://github.com/rust-vmm/vhost/pull/321)] Don't take ownership of listener in `BackendListener`.
+- [[#321]](https://github.com/rust-vmm/vhost/pull/321) Don't take ownership of listener in `BackendListener`.
+- [[#334]](https://github.com/rust-vmm/vhost/pull/334) Updated vm-memory to 0.17.1 and vmm-sys-util to 0.15.0
 
-### Deprecated
 ### Fixed
 - [[#304]](https://github.com/rust-vmm/vhost/pull/304) Fix building docs.
 - [[#326]](https://github.com/rust-vmm/vhots/pull/326) Fix `get_vring_base()` returning 0 instead of
