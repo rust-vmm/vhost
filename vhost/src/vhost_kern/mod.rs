@@ -23,7 +23,7 @@ use vmm_sys_util::ioctl::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_
 use super::{
     Error, Result, VhostAccess, VhostBackend, VhostIotlbBackend, VhostIotlbMsg,
     VhostIotlbMsgParser, VhostIotlbType, VhostUserDirtyLogRegion, VhostUserMemoryRegionInfo,
-    VringConfigData, VHOST_MAX_MEMORY_REGIONS,
+    VringConfigData, VHOST_MAX_MEMORY_REGIONS, vring_flags,
 };
 
 pub mod vhost_binding;
@@ -54,6 +54,49 @@ fn io_result<T>(rc: isize, res: T) -> Result<T> {
     }
 }
 
+/// Check if the configuration data indicates packed virtqueue format.
+fn is_packed_vring(config_data: &VringConfigData) -> bool {
+    config_data.flags & vring_flags::VHOST_VRING_F_PACKED != 0
+}
+
+/// Helper function to validate that a memory region is accessible.
+fn validate_memory_region<M: GuestMemory>(
+    addr: u64,
+    size: GuestUsize,
+    memory: &M,
+) -> bool {
+    GuestAddress(addr)
+        .checked_add(size)
+        .map_or(false, |end_addr| memory.address_in_range(end_addr))
+}
+
+/// Validate virtqueue memory layout for both packed and split formats.
+fn validate_vring_memory<AS: GuestAddressSpace>(
+    config_data: &VringConfigData,
+    queue_size: u16,
+    memory: &AS::M,
+    is_packed: bool,
+) -> bool {
+    if is_packed {
+        // Packed ring: single descriptor ring + event suppression structures
+        let desc_ring_size = 16 * u64::from(queue_size) as GuestUsize;
+        let event_size = 4; // 4 bytes for event suppression structures
+
+        validate_memory_region(config_data.desc_table_addr, desc_ring_size, memory)
+            && validate_memory_region(config_data.avail_ring_addr, event_size, memory)
+            && validate_memory_region(config_data.used_ring_addr, event_size, memory)
+    } else {
+        // Split ring: separate descriptor, available, and used rings
+        let desc_table_size = 16 * u64::from(queue_size) as GuestUsize;
+        let avail_ring_size = 6 + 2 * u64::from(queue_size) as GuestUsize;
+        let used_ring_size = 6 + 8 * u64::from(queue_size) as GuestUsize;
+
+        validate_memory_region(config_data.desc_table_addr, desc_table_size, memory)
+            && validate_memory_region(config_data.avail_ring_addr, avail_ring_size, memory)
+            && validate_memory_region(config_data.used_ring_addr, used_ring_size, memory)
+    }
+}
+
 /// Represent an in-kernel vhost device backend.
 pub trait VhostKernBackend: AsRawFd {
     /// Associated type to access guest memory.
@@ -73,25 +116,10 @@ pub trait VhostKernBackend: AsRawFd {
         }
 
         let m = self.mem().memory();
-        let desc_table_size = 16 * u64::from(queue_size) as GuestUsize;
-        let avail_ring_size = 6 + 2 * u64::from(queue_size) as GuestUsize;
-        let used_ring_size = 6 + 8 * u64::from(queue_size) as GuestUsize;
-        if GuestAddress(config_data.desc_table_addr)
-            .checked_add(desc_table_size)
-            .is_none_or(|v| !m.address_in_range(v))
-        {
-            return false;
-        }
-        if GuestAddress(config_data.avail_ring_addr)
-            .checked_add(avail_ring_size)
-            .is_none_or(|v| !m.address_in_range(v))
-        {
-            return false;
-        }
-        if GuestAddress(config_data.used_ring_addr)
-            .checked_add(used_ring_size)
-            .is_none_or(|v| !m.address_in_range(v))
-        {
+
+        // Validate vring memory layout based on format
+        let is_packed = is_packed_vring(config_data);
+        if !validate_vring_memory::<Self::AS>(config_data, queue_size, &m, is_packed) {
             return false;
         }
 
@@ -464,5 +492,31 @@ impl VringConfigData {
             avail_user_addr: avail_addr as u64,
             log_guest_addr: self.get_log_addr(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_packed_vring_detection() {
+        // Test that packed vring detection works independently of vhost-user feature
+        let mut config = VringConfigData::default();
+        
+        // Test split virtqueue (default)
+        assert!(!is_packed_vring(&config));
+        
+        // Test packed virtqueue
+        config.flags = vring_flags::VHOST_VRING_F_PACKED;
+        assert!(is_packed_vring(&config));
+        
+        // Test with log flag combined
+        config.flags = vring_flags::VHOST_VRING_F_LOG | vring_flags::VHOST_VRING_F_PACKED;
+        assert!(is_packed_vring(&config));
+        
+        // Test with only log flag
+        config.flags = vring_flags::VHOST_VRING_F_LOG;
+        assert!(!is_packed_vring(&config));
     }
 }

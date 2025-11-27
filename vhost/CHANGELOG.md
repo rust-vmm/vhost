@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- [[#301]](https://github.com/rust-vmm/vhost/pull/301) Add support for packed virtqueues in vhost-user and vhost-kern backends
 ### Changed
 ### Deprecated
 ### Fixed
