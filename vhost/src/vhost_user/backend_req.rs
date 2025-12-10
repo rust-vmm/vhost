@@ -13,6 +13,12 @@ use super::{Error, HandlerResult, Result, VhostUserFrontendReqHandler};
 
 use vm_memory::ByteValued;
 
+impl From<Error> for io::Error {
+    fn from(e: Error) -> Self {
+        io::Error::other(e)
+    }
+}
+
 struct BackendInternal {
     sock: Endpoint<VhostUserMsgHeader<BackendReq>>,
 
@@ -111,9 +117,7 @@ impl Backend {
         body: &T,
         fds: Option<&[RawFd]>,
     ) -> io::Result<u64> {
-        self.node()
-            .send_message(request, body, fds)
-            .map_err(|e| io::Error::other(format!("{e}")))
+        Ok(self.node().send_message(request, body, fds)?)
     }
 
     /// Create a new instance from a `UnixStream` object.
