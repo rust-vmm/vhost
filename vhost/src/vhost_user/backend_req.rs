@@ -5,7 +5,7 @@ use std::io;
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 
 use super::connection::Endpoint;
 use super::message::*;
@@ -91,13 +91,13 @@ impl BackendInternal {
 #[derive(Clone)]
 pub struct Backend {
     // underlying Unix domain socket for communication
-    node: Arc<Mutex<BackendInternal>>,
+    inner: Arc<Mutex<BackendInternal>>,
 }
 
 impl Backend {
     fn new(ep: Endpoint<VhostUserMsgHeader<BackendReq>>) -> Self {
         Backend {
-            node: Arc::new(Mutex::new(BackendInternal {
+            inner: Arc::new(Mutex::new(BackendInternal {
                 sock: ep,
                 reply_ack_negotiated: false,
                 shared_object_negotiated: false,
@@ -107,17 +107,17 @@ impl Backend {
         }
     }
 
-    fn node(&self) -> MutexGuard<'_, BackendInternal> {
-        self.node.lock().unwrap()
-    }
-
     fn send_message<T: ByteValued>(
         &self,
         request: BackendReq,
         body: &T,
         fds: Option<&[RawFd]>,
     ) -> io::Result<u64> {
-        Ok(self.node().send_message(request, body, fds)?)
+        Ok(self
+            .inner
+            .lock()
+            .unwrap()
+            .send_message(request, body, fds)?)
     }
 
     /// Create a new instance from a `UnixStream` object.
@@ -133,7 +133,7 @@ impl Backend {
     /// the "REPLY_ACK" flag will be set in the message header for every backend to frontend request
     /// message.
     pub fn set_reply_ack_flag(&self, enable: bool) {
-        self.node().reply_ack_negotiated = enable;
+        self.inner.lock().unwrap().reply_ack_negotiated = enable;
     }
 
     /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_SHARED_OBJECT` protocol feature.
@@ -141,7 +141,7 @@ impl Backend {
     /// When the `VHOST_USER_PROTOCOL_F_SHARED_OBJECT` protocol feature has been negotiated,
     /// the backend is allowed to send "SHARED_OBJECT_*" messages to the frontend.
     pub fn set_shared_object_flag(&self, enable: bool) {
-        self.node().shared_object_negotiated = enable;
+        self.inner.lock().unwrap().shared_object_negotiated = enable;
     }
 
     /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_SHMEM` protocol feature.
@@ -149,19 +149,19 @@ impl Backend {
     /// When the `VHOST_USER_PROTOCOL_F_SHMEM` protocol feature has been negotiated,
     /// the backend is allowed to send "SHMEM_{MAP, UNMAP}" messages to the frontend.
     pub fn set_shmem_flag(&self, enable: bool) {
-        self.node().shmem_negotiated = enable;
+        self.inner.lock().unwrap().shmem_negotiated = enable;
     }
 
     /// Mark endpoint as failed with specified error code.
     pub fn set_failed(&self, error: i32) {
-        self.node().error = Some(error);
+        self.inner.lock().unwrap().error = Some(error);
     }
 }
 
 impl VhostUserFrontendReqHandler for Backend {
     /// Forward vhost-user shared-object add request to the frontend.
     fn shared_object_add(&self, uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
-        if !self.node().shared_object_negotiated {
+        if !self.inner.lock().unwrap().shared_object_negotiated {
             return Err(io::Error::other("Shared Object feature not negotiated"));
         }
         self.send_message(BackendReq::SHARED_OBJECT_ADD, uuid, None)
@@ -169,7 +169,7 @@ impl VhostUserFrontendReqHandler for Backend {
 
     /// Forward vhost-user shared-object remove request to the frontend.
     fn shared_object_remove(&self, uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
-        if !self.node().shared_object_negotiated {
+        if !self.inner.lock().unwrap().shared_object_negotiated {
             return Err(io::Error::other("Shared Object feature not negotiated"));
         }
         self.send_message(BackendReq::SHARED_OBJECT_REMOVE, uuid, None)
@@ -181,7 +181,7 @@ impl VhostUserFrontendReqHandler for Backend {
         uuid: &VhostUserSharedMsg,
         fd: &dyn AsRawFd,
     ) -> HandlerResult<u64> {
-        if !self.node().shared_object_negotiated {
+        if !self.inner.lock().unwrap().shared_object_negotiated {
             return Err(io::Error::other("Shared Object feature not negotiated"));
         }
         self.send_message(
@@ -193,7 +193,7 @@ impl VhostUserFrontendReqHandler for Backend {
 
     /// Forward vhost-user memory map file request to the frontend.
     fn shmem_map(&self, req: &VhostUserMMap, fd: &dyn AsRawFd) -> HandlerResult<u64> {
-        if !self.node().shmem_negotiated {
+        if !self.inner.lock().unwrap().shmem_negotiated {
             return Err(io::Error::other("SHMEM feature not negotiated"));
         }
         self.send_message(BackendReq::SHMEM_MAP, req, Some(&[fd.as_raw_fd()]))
@@ -201,7 +201,7 @@ impl VhostUserFrontendReqHandler for Backend {
 
     /// Forward vhost-user memory unmap file request to the frontend.
     fn shmem_unmap(&self, req: &VhostUserMMap) -> HandlerResult<u64> {
-        if !self.node().shmem_negotiated {
+        if !self.inner.lock().unwrap().shmem_negotiated {
             return Err(io::Error::other("SHMEM feature not negotiated"));
         }
         self.send_message(BackendReq::SHMEM_UNMAP, req, None)
@@ -225,9 +225,9 @@ mod tests {
     fn test_backend_req_set_failed() {
         let (_, backend) = frontend_backend_pair();
 
-        assert!(backend.node().error.is_none());
+        assert!(backend.inner.lock().unwrap().error.is_none());
         backend.set_failed(libc::EAGAIN);
-        assert_eq!(backend.node().error, Some(libc::EAGAIN));
+        assert_eq!(backend.inner.lock().unwrap().error, Some(libc::EAGAIN));
     }
 
     #[test]
@@ -241,7 +241,7 @@ mod tests {
         backend
             .shared_object_remove(&VhostUserSharedMsg::default())
             .unwrap_err();
-        backend.node().error = None;
+        backend.inner.lock().unwrap().error = None;
     }
 
     #[test]
