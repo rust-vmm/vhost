@@ -81,6 +81,7 @@ pub trait VhostUserBackendReqHandler {
         fd: File,
     ) -> Result<Option<File>>;
     fn check_device_state(&self) -> Result<()>;
+    fn get_shmem_config(&self) -> Result<VhostUserShMemConfig>;
     #[cfg(feature = "postcopy")]
     fn postcopy_advice(&self) -> Result<File>;
     #[cfg(feature = "postcopy")]
@@ -146,6 +147,7 @@ pub trait VhostUserBackendReqHandlerMut {
         fd: File,
     ) -> Result<Option<File>>;
     fn check_device_state(&mut self) -> Result<()>;
+    fn get_shmem_config(&mut self) -> Result<VhostUserShMemConfig>;
     #[cfg(feature = "postcopy")]
     fn postcopy_advice(&mut self) -> Result<File>;
     #[cfg(feature = "postcopy")]
@@ -287,6 +289,10 @@ impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
 
     fn check_device_state(&self) -> Result<()> {
         self.lock().unwrap().check_device_state()
+    }
+
+    fn get_shmem_config(&self) -> Result<VhostUserShMemConfig> {
+        self.lock().unwrap().get_shmem_config()
     }
 
     #[cfg(feature = "postcopy")]
@@ -679,6 +685,11 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
                 };
                 self.send_reply_message(&hdr, &msg)?;
             }
+            Ok(FrontendReq::GET_SHMEM_CONFIG) => {
+                self.check_proto_feature(VhostUserProtocolFeatures::SHMEM)?;
+                let msg = self.backend.get_shmem_config()?;
+                self.send_reply_message(&hdr, &msg)?;
+            }
             #[cfg(feature = "postcopy")]
             Ok(FrontendReq::POSTCOPY_ADVISE) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
@@ -1037,5 +1048,109 @@ mod tests {
         handler.set_failed(libc::EAGAIN);
         handler.check_state().unwrap_err();
         assert!(handler.as_raw_fd() >= 0);
+    }
+
+    // Helper to send GET_SHMEM_CONFIG request and receive response
+    fn send_get_shmem_config_request(
+        mut endpoint: Endpoint<VhostUserMsgHeader<FrontendReq>>,
+    ) -> VhostUserShMemConfig {
+        let hdr = VhostUserMsgHeader::new(FrontendReq::GET_SHMEM_CONFIG, 0, 0);
+        endpoint.send_message(&hdr, &VhostUserEmpty, None).unwrap();
+
+        let (reply_hdr, reply_config, rfds) = endpoint.recv_body::<VhostUserShMemConfig>().unwrap();
+        assert_eq!(reply_hdr.get_code().unwrap(), FrontendReq::GET_SHMEM_CONFIG);
+        assert!(reply_hdr.is_reply());
+        assert!(rfds.is_none());
+        reply_config
+    }
+
+    // Helper to create handler with SHMEM protocol feature enabled
+    fn create_handler_with_shmem(
+        backend: Arc<Mutex<DummyBackendReqHandler>>,
+        p1: UnixStream,
+    ) -> BackendReqHandler<Mutex<DummyBackendReqHandler>> {
+        let mut handler = BackendReqHandler::new(
+            Endpoint::<VhostUserMsgHeader<FrontendReq>>::from_stream(p1),
+            backend,
+        );
+        handler.acked_protocol_features = VhostUserProtocolFeatures::SHMEM.bits();
+        handler
+    }
+
+    #[test]
+    fn test_get_shmem_config_multiple_regions() {
+        let memory_sizes = [
+            0x1000, 0x2000, 0x3000, 0x4000, 0x5000, 0x6000, 0x7000, 0x8000,
+        ];
+        let config = VhostUserShMemConfig::new(8, &memory_sizes);
+
+        let (p1, p2) = UnixStream::pair().unwrap();
+        let mut dummy_backend = DummyBackendReqHandler::new();
+        dummy_backend.set_shmem_config(config);
+        let mut handler = create_handler_with_shmem(Arc::new(Mutex::new(dummy_backend)), p1);
+
+        let handle = std::thread::spawn(move || {
+            send_get_shmem_config_request(Endpoint::<VhostUserMsgHeader<FrontendReq>>::from_stream(
+                p2,
+            ))
+        });
+
+        handler.handle_request().unwrap();
+
+        let reply_config = handle.join().unwrap();
+        assert_eq!(reply_config.nregions, 8);
+        for i in 0..8 {
+            assert_eq!(reply_config.memory_sizes[i], (i as u64 + 1) * 0x1000);
+        }
+        for i in 8..256 {
+            assert_eq!(reply_config.memory_sizes[i], 0);
+        }
+    }
+
+    #[test]
+    fn test_get_shmem_config_non_continuous_regions() {
+        // Create a configuration with non-continuous regions
+        let memory_sizes = [0x10000, 0, 0x20000, 0, 0, 0, 0, 0];
+        let config = VhostUserShMemConfig::new(2, &memory_sizes);
+
+        let (p1, p2) = UnixStream::pair().unwrap();
+        let mut dummy_backend = DummyBackendReqHandler::new();
+        dummy_backend.set_shmem_config(config);
+        let mut handler = create_handler_with_shmem(Arc::new(Mutex::new(dummy_backend)), p1);
+
+        let handle = std::thread::spawn(move || {
+            send_get_shmem_config_request(Endpoint::<VhostUserMsgHeader<FrontendReq>>::from_stream(
+                p2,
+            ))
+        });
+
+        handler.handle_request().unwrap();
+
+        let reply_config = handle.join().unwrap();
+        assert_eq!(reply_config.nregions, 2);
+        assert_eq!(reply_config.memory_sizes[0], 0x10000);
+        assert_eq!(reply_config.memory_sizes[1], 0);
+        assert_eq!(reply_config.memory_sizes[2], 0x20000);
+        for i in 3..256 {
+            assert_eq!(reply_config.memory_sizes[i], 0);
+        }
+    }
+
+    #[test]
+    fn test_get_shmem_config_feature_not_negotiated() {
+        // Test that the request fails when SHMEM protocol feature is not negotiated
+        let (p1, p2) = UnixStream::pair().unwrap();
+        let backend = Arc::new(Mutex::new(DummyBackendReqHandler::new()));
+        let mut handler = BackendReqHandler::new(
+            Endpoint::<VhostUserMsgHeader<FrontendReq>>::from_stream(p1),
+            backend,
+        );
+        let mut frontend_endpoint = Endpoint::<VhostUserMsgHeader<FrontendReq>>::from_stream(p2);
+
+        std::thread::spawn(move || {
+            let hdr = VhostUserMsgHeader::new(FrontendReq::GET_SHMEM_CONFIG, 0, 0);
+            let _ = frontend_endpoint.send_message(&hdr, &VhostUserEmpty, None);
+        });
+        assert!(handler.handle_request().is_err());
     }
 }

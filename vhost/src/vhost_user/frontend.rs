@@ -79,6 +79,9 @@ pub trait VhostUserFrontend: VhostBackend {
     /// Remove a guest memory mapping from vhost.
     fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()>;
 
+    /// Get the shared memory region configuration from the backend.
+    fn get_shmem_config(&mut self) -> Result<VhostUserShMemConfig>;
+
     /// Sends VHOST_USER_POSTCOPY_ADVISE msg to the backend
     /// initiating the beginning of the postcopy process.
     /// Backend will return a userfaultfd.
@@ -566,6 +569,16 @@ impl VhostUserFrontend for Frontend {
         let body = region.to_single_region();
         let hdr = node.send_request_with_body(FrontendReq::REM_MEM_REG, &body, None)?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
+    }
+
+    fn get_shmem_config(&mut self) -> Result<VhostUserShMemConfig> {
+        let mut node = self.node();
+        node.check_proto_feature(VhostUserProtocolFeatures::SHMEM)?;
+
+        let hdr = node.send_request_header(FrontendReq::GET_SHMEM_CONFIG, None)?;
+        let config = node.recv_reply::<VhostUserShMemConfig>(&hdr)?;
+
+        Ok(config)
     }
 
     #[cfg(feature = "postcopy")]
@@ -1201,5 +1214,46 @@ mod tests {
         frontend.set_mem_table(&[]).unwrap_err();
         let tables = vec![VhostUserMemoryRegionInfo::default(); MAX_ATTACHED_FD_ENTRIES + 1];
         frontend.set_mem_table(&tables).unwrap_err();
+    }
+
+    #[test]
+    fn test_frontend_get_shmem_config() {
+        let (mut frontend, mut peer) = create_pair2();
+
+        let expected_config = VhostUserShMemConfig::new(2, &[0x1000, 0x2000]);
+        let hdr = VhostUserMsgHeader::new(
+            FrontendReq::GET_SHMEM_CONFIG,
+            0x4,
+            std::mem::size_of::<VhostUserShMemConfig>() as u32,
+        );
+        peer.send_message(&hdr, &expected_config, None).unwrap();
+
+        let config = frontend.get_shmem_config().unwrap();
+        assert_eq!(config.nregions, 2);
+        assert_eq!(config.memory_sizes[0], 0x1000);
+        assert_eq!(config.memory_sizes[1], 0x2000);
+
+        let (recv_hdr, rfds) = peer.recv_header().unwrap();
+        assert_eq!(recv_hdr.get_code().unwrap(), FrontendReq::GET_SHMEM_CONFIG);
+        assert!(rfds.is_none());
+    }
+
+    #[test]
+    fn test_frontend_get_shmem_config_no_regions() {
+        let (mut frontend, mut peer) = create_pair2();
+
+        let expected_config = VhostUserShMemConfig::default();
+        let hdr = VhostUserMsgHeader::new(
+            FrontendReq::GET_SHMEM_CONFIG,
+            0x4,
+            std::mem::size_of::<VhostUserShMemConfig>() as u32,
+        );
+        peer.send_message(&hdr, &expected_config, None).unwrap();
+
+        let config = frontend.get_shmem_config().unwrap();
+        assert_eq!(config.nregions, 0);
+        for i in 0..256 {
+            assert_eq!(config.memory_sizes[i], 0);
+        }
     }
 }

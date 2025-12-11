@@ -18,7 +18,7 @@ use crate::bitmap::{BitmapReplace, MemRegionBitmap, MmapLogReg};
 use userfaultfd::{Uffd, UffdBuilder};
 use vhost::vhost_user::message::{
     VhostTransferStateDirection, VhostTransferStatePhase, VhostUserConfigFlags, VhostUserLog,
-    VhostUserMemoryRegion, VhostUserProtocolFeatures, VhostUserSharedMsg,
+    VhostUserMemoryRegion, VhostUserProtocolFeatures, VhostUserShMemConfig, VhostUserSharedMsg,
     VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
     VhostUserVringState,
 };
@@ -674,6 +674,12 @@ where
     fn check_device_state(&mut self) -> VhostUserResult<()> {
         self.backend
             .check_device_state()
+            .map_err(VhostUserError::ReqHandlerError)
+    }
+
+    fn get_shmem_config(&mut self) -> VhostUserResult<VhostUserShMemConfig> {
+        self.backend
+            .get_shmem_config()
             .map_err(VhostUserError::ReqHandlerError)
     }
 

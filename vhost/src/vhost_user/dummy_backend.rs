@@ -27,6 +27,7 @@ pub struct DummyBackendReqHandler {
     pub vring_enabled: [bool; MAX_QUEUE_NUM],
     pub inflight_file: Option<File>,
     pub shared_file: Option<File>,
+    pub shmem_config: Option<VhostUserShMemConfig>,
 }
 
 impl DummyBackendReqHandler {
@@ -35,6 +36,12 @@ impl DummyBackendReqHandler {
             queue_num: MAX_QUEUE_NUM,
             ..Default::default()
         }
+    }
+
+    /// Set the shared memory configuration to be returned by `get_shmem_config`
+    pub fn set_shmem_config(&mut self, config: VhostUserShMemConfig) {
+        self.acked_protocol_features |= VhostUserProtocolFeatures::SHMEM.bits();
+        self.shmem_config = Some(config);
     }
 
     /// Helper to check if VirtioFeature enabled
@@ -327,6 +334,15 @@ impl VhostUserBackendReqHandlerMut for DummyBackendReqHandler {
             std::io::ErrorKind::Unsupported,
             "dummy back end does not support state transfer",
         )))
+    }
+
+    fn get_shmem_config(&mut self) -> Result<VhostUserShMemConfig> {
+        self.shmem_config.ok_or_else(|| {
+            Error::ReqHandlerError(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "dummy back end does not support shared memory regions",
+            ))
+        })
     }
 
     #[cfg(feature = "postcopy")]
