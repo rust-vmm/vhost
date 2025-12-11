@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- [[#339]](https://github.com/rust-vmm/vhost/pull/339) Add support for `GET_SHMEM_CONFIG` message
+
 ### Changed
 ### Deprecated
 ### Fixed
