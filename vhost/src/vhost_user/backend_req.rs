@@ -107,19 +107,6 @@ impl Backend {
         }
     }
 
-    fn send_message<T: ByteValued>(
-        &self,
-        request: BackendReq,
-        body: &T,
-        fds: Option<&[RawFd]>,
-    ) -> io::Result<u64> {
-        Ok(self
-            .inner
-            .lock()
-            .unwrap()
-            .send_message(request, body, fds)?)
-    }
-
     /// Create a new instance from a `UnixStream` object.
     pub fn from_stream(sock: UnixStream) -> Self {
         Self::new(Endpoint::<VhostUserMsgHeader<BackendReq>>::from_stream(
@@ -161,18 +148,20 @@ impl Backend {
 impl VhostUserFrontendReqHandler for Backend {
     /// Forward vhost-user shared-object add request to the frontend.
     fn shared_object_add(&self, uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
-        if !self.inner.lock().unwrap().shared_object_negotiated {
+        let mut guard = self.inner.lock().unwrap();
+        if !guard.shared_object_negotiated {
             return Err(io::Error::other("Shared Object feature not negotiated"));
         }
-        self.send_message(BackendReq::SHARED_OBJECT_ADD, uuid, None)
+        Ok(guard.send_message(BackendReq::SHARED_OBJECT_ADD, uuid, None)?)
     }
 
     /// Forward vhost-user shared-object remove request to the frontend.
     fn shared_object_remove(&self, uuid: &VhostUserSharedMsg) -> HandlerResult<u64> {
-        if !self.inner.lock().unwrap().shared_object_negotiated {
+        let mut guard = self.inner.lock().unwrap();
+        if !guard.shared_object_negotiated {
             return Err(io::Error::other("Shared Object feature not negotiated"));
         }
-        self.send_message(BackendReq::SHARED_OBJECT_REMOVE, uuid, None)
+        Ok(guard.send_message(BackendReq::SHARED_OBJECT_REMOVE, uuid, None)?)
     }
 
     /// Forward vhost-user shared-object lookup request to the frontend.
@@ -181,30 +170,33 @@ impl VhostUserFrontendReqHandler for Backend {
         uuid: &VhostUserSharedMsg,
         fd: &dyn AsRawFd,
     ) -> HandlerResult<u64> {
-        if !self.inner.lock().unwrap().shared_object_negotiated {
+        let mut guard = self.inner.lock().unwrap();
+        if !guard.shared_object_negotiated {
             return Err(io::Error::other("Shared Object feature not negotiated"));
         }
-        self.send_message(
+        Ok(guard.send_message(
             BackendReq::SHARED_OBJECT_LOOKUP,
             uuid,
             Some(&[fd.as_raw_fd()]),
-        )
+        )?)
     }
 
     /// Forward vhost-user memory map file request to the frontend.
     fn shmem_map(&self, req: &VhostUserMMap, fd: &dyn AsRawFd) -> HandlerResult<u64> {
-        if !self.inner.lock().unwrap().shmem_negotiated {
+        let mut guard = self.inner.lock().unwrap();
+        if !guard.shmem_negotiated {
             return Err(io::Error::other("SHMEM feature not negotiated"));
         }
-        self.send_message(BackendReq::SHMEM_MAP, req, Some(&[fd.as_raw_fd()]))
+        Ok(guard.send_message(BackendReq::SHMEM_MAP, req, Some(&[fd.as_raw_fd()]))?)
     }
 
     /// Forward vhost-user memory unmap file request to the frontend.
     fn shmem_unmap(&self, req: &VhostUserMMap) -> HandlerResult<u64> {
-        if !self.inner.lock().unwrap().shmem_negotiated {
+        let mut guard = self.inner.lock().unwrap();
+        if !guard.shmem_negotiated {
             return Err(io::Error::other("SHMEM feature not negotiated"));
         }
-        self.send_message(BackendReq::SHMEM_UNMAP, req, None)
+        Ok(guard.send_message(BackendReq::SHMEM_UNMAP, req, None)?)
     }
 }
 
