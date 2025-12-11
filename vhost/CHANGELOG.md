@@ -8,6 +8,7 @@
 ### Changed
 ### Deprecated
 ### Fixed
+- [[#338]](https://github.com/rust-vmm/vhost/pull/338) vhost: fix double-locking in Backend to Frontend request handlers
 
 ## v0.15.0
 
