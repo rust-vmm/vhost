@@ -437,9 +437,8 @@ mod tests {
             let _: () = backend.update_scanout(&request, &payload).unwrap();
         });
 
-        let mut recv_buf = [0u8; 4096];
-        let (hdr, req_body, recv_buf_len, fds) = frontend
-            .recv_payload_into_buf::<VhostUserGpuUpdate>(&mut recv_buf)
+        let (hdr, req_body, recv_buf, fds) = frontend
+            .recv_payload_into_buf::<VhostUserGpuUpdate>()
             .unwrap();
         assert!(fds.is_none());
         assert_hdr(
@@ -449,7 +448,7 @@ mod tests {
         );
         assert_eq!(req_body, request);
 
-        assert_eq!(&payload[..], &recv_buf[..recv_buf_len]);
+        assert_eq!(&payload[..], recv_buf);
 
         sender_thread.join().expect("Failed to send!");
     }
@@ -611,9 +610,8 @@ mod tests {
             let _: () = backend.cursor_update(&request, &payload).unwrap();
         });
 
-        let mut recv_buf = vec![0u8; 1 + size_of_val(&payload)];
-        let (hdr, req_body, recv_buf_len, fds) = frontend
-            .recv_payload_into_buf::<VhostUserGpuCursorUpdate>(&mut recv_buf)
+        let (hdr, req_body, recv_buf, fds) = frontend
+            .recv_payload_into_buf::<VhostUserGpuCursorUpdate>()
             .unwrap();
         assert!(fds.is_none());
         assert_hdr(
@@ -623,7 +621,7 @@ mod tests {
         );
         assert_eq!(req_body, request);
 
-        assert_eq!(&payload[..], &recv_buf[..recv_buf_len]);
+        assert_eq!(&payload[..], recv_buf);
 
         sender_thread.join().expect("Failed to send!");
     }
