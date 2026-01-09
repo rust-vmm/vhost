@@ -697,7 +697,7 @@ impl VhostUserMsgValidator for VhostUserSingleMemoryRegion {}
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct VhostUserShMemConfig {
-    /// Total number of shared memory regions
+    /// Total number of shared memory regions sent
     pub nregions: u32,
     /// Padding for correct alignment
     padding: u32,
@@ -724,6 +724,48 @@ impl VhostUserShMemConfig {
             padding: 0,
             memory_sizes,
         }
+    }
+
+    /// Serialize memory_sizes to bytes for the wire protocol payload
+    pub fn payload(&self) -> Vec<u8> {
+        let num_elements = self
+            .memory_sizes
+            .iter()
+            .rposition(|&x| x != 0)
+            .map(|i| i + 1)
+            .unwrap_or(0);
+
+        let mut payload = Vec::with_capacity(num_elements * 8);
+        for i in 0..num_elements {
+            payload.extend_from_slice(&self.memory_sizes[i].to_ne_bytes());
+        }
+        payload
+    }
+
+    /// Deserialize from payload bytes
+    pub fn from_payload(payload: &[u8]) -> Result<Self> {
+        if !payload.len().is_multiple_of(8) {
+            return Err(Error::InvalidMessage);
+        }
+
+        let num_elements = payload.len() / 8;
+        if num_elements > 256 {
+            return Err(Error::InvalidMessage);
+        }
+
+        let mut memory_sizes = [0u64; 256];
+        for (i, chunk) in payload.chunks_exact(8).enumerate() {
+            memory_sizes[i] = u64::from_ne_bytes(chunk.try_into().unwrap());
+        }
+
+        // Count non-zero elements to determine nregions
+        let nregions = memory_sizes.iter().filter(|&&x| x != 0).count() as u32;
+
+        Ok(Self {
+            nregions,
+            padding: 0,
+            memory_sizes,
+        })
     }
 }
 

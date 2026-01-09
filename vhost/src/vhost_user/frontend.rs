@@ -575,7 +575,9 @@ impl VhostUserFrontend for Frontend {
         node.check_proto_feature(VhostUserProtocolFeatures::SHMEM)?;
 
         let hdr = node.send_request_header(FrontendReq::GET_SHMEM_CONFIG, None)?;
-        let config = node.recv_reply::<VhostUserShMemConfig>(&hdr)?;
+        let (_count, payload, _) = node.recv_reply_with_payload::<VhostUserU64>(&hdr)?;
+        let config = VhostUserShMemConfig::from_payload(&payload)
+            .map_err(|_| VhostUserError::InvalidMessage)?;
 
         Ok(config)
     }
@@ -1210,12 +1212,15 @@ mod tests {
         let (mut frontend, mut peer) = create_pair2();
 
         let expected_config = VhostUserShMemConfig::new(2, &[0x1000, 0x2000]);
+        let count = VhostUserU64::new(expected_config.nregions as u64);
+        let payload = expected_config.payload();
         let hdr = VhostUserMsgHeader::new(
             FrontendReq::GET_SHMEM_CONFIG,
             0x4,
-            std::mem::size_of::<VhostUserShMemConfig>() as u32,
+            (std::mem::size_of::<VhostUserU64>() + payload.len()) as u32,
         );
-        peer.send_message(&hdr, &expected_config, None).unwrap();
+        peer.send_message_with_payload(&hdr, &count, &payload, None)
+            .unwrap();
 
         let config = frontend.get_shmem_config().unwrap();
         assert_eq!(config.nregions, 2);
@@ -1232,12 +1237,15 @@ mod tests {
         let (mut frontend, mut peer) = create_pair2();
 
         let expected_config = VhostUserShMemConfig::default();
+        let count = VhostUserU64::new(expected_config.nregions as u64);
+        let payload = expected_config.payload();
         let hdr = VhostUserMsgHeader::new(
             FrontendReq::GET_SHMEM_CONFIG,
             0x4,
-            std::mem::size_of::<VhostUserShMemConfig>() as u32,
+            (std::mem::size_of::<VhostUserU64>() + payload.len()) as u32,
         );
-        peer.send_message(&hdr, &expected_config, None).unwrap();
+        peer.send_message_with_payload(&hdr, &count, &payload, None)
+            .unwrap();
 
         let config = frontend.get_shmem_config().unwrap();
         assert_eq!(config.nregions, 0);

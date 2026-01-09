@@ -687,8 +687,10 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
             }
             Ok(FrontendReq::GET_SHMEM_CONFIG) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::SHMEM)?;
-                let msg = self.backend.get_shmem_config().unwrap_or_default();
-                self.send_reply_message(&hdr, &msg)?;
+                let config = self.backend.get_shmem_config().unwrap_or_default();
+                let msg = VhostUserU64::new(config.nregions as u64);
+                let payload = config.payload();
+                self.send_reply_with_payload(&hdr, &msg, &payload)?;
             }
             #[cfg(feature = "postcopy")]
             Ok(FrontendReq::POSTCOPY_ADVISE) => {
@@ -1057,11 +1059,13 @@ mod tests {
         let hdr = VhostUserMsgHeader::new(FrontendReq::GET_SHMEM_CONFIG, 0, 0);
         endpoint.send_message(&hdr, &VhostUserEmpty, None).unwrap();
 
-        let (reply_hdr, reply_config, rfds) = endpoint.recv_body::<VhostUserShMemConfig>().unwrap();
+        let (reply_hdr, _count, payload, rfds) =
+            endpoint.recv_payload_into_buf::<VhostUserU64>().unwrap();
         assert_eq!(reply_hdr.get_code().unwrap(), FrontendReq::GET_SHMEM_CONFIG);
         assert!(reply_hdr.is_reply());
         assert!(rfds.is_none());
-        reply_config
+
+        VhostUserShMemConfig::from_payload(&payload).unwrap()
     }
 
     // Helper to create handler with SHMEM protocol feature enabled
