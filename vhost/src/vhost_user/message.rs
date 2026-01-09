@@ -70,6 +70,9 @@ pub(super) trait MsgHeader: ByteValued + Copy + Default + VhostUserMsgValidator 
 
     /// The maximum size of a msg that can be encapsulated by this MsgHeader
     const MAX_MSG_SIZE: usize;
+
+    /// Get message size.
+    fn get_size(&self) -> u32;
 }
 
 enum_value! {
@@ -247,6 +250,11 @@ pub(super) struct VhostUserMsgHeader<R: Req> {
 impl<R: Req> MsgHeader for VhostUserMsgHeader<R> {
     type Request = R;
     const MAX_MSG_SIZE: usize = MAX_MSG_SIZE;
+
+    /// Get message size.
+    fn get_size(&self) -> u32 {
+        self.size
+    }
 }
 
 impl<R: Req> Debug for VhostUserMsgHeader<R> {
@@ -340,11 +348,6 @@ impl<R: Req> VhostUserMsgHeader<R> {
         } else {
             false
         }
-    }
-
-    /// Get message size.
-    pub fn get_size(&self) -> u32 {
-        self.size
     }
 
     /// Set message size.

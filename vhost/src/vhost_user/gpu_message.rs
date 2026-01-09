@@ -135,11 +135,6 @@ impl<R: Req> VhostUserGpuMsgHeader<R> {
         }
     }
 
-    /// Get message size.
-    pub fn get_size(&self) -> u32 {
-        self.size
-    }
-
     /// Set message size.
     pub fn set_size(&mut self, size: u32) {
         self.size = size;
@@ -169,6 +164,11 @@ impl<T: Req> VhostUserMsgValidator for VhostUserGpuMsgHeader<T> {
 impl<R: Req> MsgHeader for VhostUserGpuMsgHeader<R> {
     type Request = R;
     const MAX_MSG_SIZE: usize = u32::MAX as usize;
+
+    /// Get message size.
+    fn get_size(&self) -> u32 {
+        self.size
+    }
 }
 
 // Bit mask for vhost-user-gpu protocol feature flags.
