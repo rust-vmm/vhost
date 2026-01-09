@@ -70,6 +70,9 @@ pub(super) trait MsgHeader: ByteValued + Copy + Default + VhostUserMsgValidator 
 
     /// The maximum size of a msg that can be encapsulated by this MsgHeader
     const MAX_MSG_SIZE: usize;
+
+    /// Get message size.
+    fn get_size(&self) -> u32;
 }
 
 enum_value! {
@@ -169,6 +172,8 @@ enum_value! {
         /// After transferring state, check the backend for any errors that may have
         /// occurred during the transfer
         CHECK_DEVICE_STATE = 43,
+        /// Get shared memory regions configuration from the backend.
+        GET_SHMEM_CONFIG = 44,
     }
 }
 
@@ -245,6 +250,11 @@ pub(super) struct VhostUserMsgHeader<R: Req> {
 impl<R: Req> MsgHeader for VhostUserMsgHeader<R> {
     type Request = R;
     const MAX_MSG_SIZE: usize = MAX_MSG_SIZE;
+
+    /// Get message size.
+    fn get_size(&self) -> u32 {
+        self.size
+    }
 }
 
 impl<R: Req> Debug for VhostUserMsgHeader<R> {
@@ -338,11 +348,6 @@ impl<R: Req> VhostUserMsgHeader<R> {
         } else {
             false
         }
-    }
-
-    /// Get message size.
-    pub fn get_size(&self) -> u32 {
-        self.size
     }
 
     /// Set message size.
@@ -687,6 +692,86 @@ impl VhostUserSingleMemoryRegion {
 // SAFETY: Safe because all fields of VhostUserSingleMemoryRegion are POD.
 unsafe impl ByteValued for VhostUserSingleMemoryRegion {}
 impl VhostUserMsgValidator for VhostUserSingleMemoryRegion {}
+
+/// Get shared memory regions configuration.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct VhostUserShMemConfig {
+    /// Total number of shared memory regions sent
+    pub nregions: u32,
+    /// Padding for correct alignment
+    padding: u32,
+    /// Size of each memory region
+    pub memory_sizes: [u64; 256],
+}
+
+impl Default for VhostUserShMemConfig {
+    fn default() -> Self {
+        Self {
+            nregions: 0,
+            padding: 0,
+            memory_sizes: [0; 256],
+        }
+    }
+}
+
+impl VhostUserShMemConfig {
+    /// Create a new instance
+    pub fn new(nregions: u32, memory: &[u64]) -> Self {
+        let memory_sizes: [u64; 256] = std::array::from_fn(|i| *memory.get(i).unwrap_or(&0));
+        Self {
+            nregions,
+            padding: 0,
+            memory_sizes,
+        }
+    }
+
+    /// Serialize memory_sizes to bytes for the wire protocol payload
+    pub fn payload(&self) -> Vec<u8> {
+        let num_elements = self
+            .memory_sizes
+            .iter()
+            .rposition(|&x| x != 0)
+            .map(|i| i + 1)
+            .unwrap_or(0);
+
+        let mut payload = Vec::with_capacity(num_elements * 8);
+        for i in 0..num_elements {
+            payload.extend_from_slice(&self.memory_sizes[i].to_ne_bytes());
+        }
+        payload
+    }
+
+    /// Deserialize from payload bytes
+    pub fn from_payload(payload: &[u8]) -> Result<Self> {
+        if !payload.len().is_multiple_of(8) {
+            return Err(Error::InvalidMessage);
+        }
+
+        let num_elements = payload.len() / 8;
+        if num_elements > 256 {
+            return Err(Error::InvalidMessage);
+        }
+
+        let mut memory_sizes = [0u64; 256];
+        for (i, chunk) in payload.chunks_exact(8).enumerate() {
+            memory_sizes[i] = u64::from_ne_bytes(chunk.try_into().unwrap());
+        }
+
+        // Count non-zero elements to determine nregions
+        let nregions = memory_sizes.iter().filter(|&&x| x != 0).count() as u32;
+
+        Ok(Self {
+            nregions,
+            padding: 0,
+            memory_sizes,
+        })
+    }
+}
+
+// SAFETY: Safe because all fields of VhostUserSingleMemoryRegion are POD.
+unsafe impl ByteValued for VhostUserShMemConfig {}
+impl VhostUserMsgValidator for VhostUserShMemConfig {}
 
 /// Vring state descriptor.
 #[repr(C, packed)]

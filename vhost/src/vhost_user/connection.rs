@@ -546,7 +546,7 @@ impl<H: MsgHeader> Endpoint<H> {
     /// accepted and all other file descriptor will be discard silently.
     ///
     /// # Return:
-    /// * - (message header, message body, size of payload, [received files]) on success.
+    /// * - (message header, message body, payload, [received files]) on success.
     /// * - SocketRetry: temporary error caused by signals or short of resources.
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
@@ -555,15 +555,13 @@ impl<H: MsgHeader> Endpoint<H> {
     #[allow(clippy::type_complexity)]
     pub fn recv_payload_into_buf<T: ByteValued + Sized + VhostUserMsgValidator + Default>(
         &mut self,
-        buf: &mut [u8],
-    ) -> Result<(H, T, usize, Option<Vec<File>>)> {
-        let mut hdr = H::default();
+    ) -> Result<(H, T, Vec<u8>, Option<Vec<File>>)> {
         let mut body: T = Default::default();
+        let (hdr, files) = self.recv_header()?;
+
+        let payload_size = hdr.get_size() as usize - mem::size_of::<T>();
+        let mut buf: Vec<u8> = vec![0; payload_size];
         let mut iovs = [
-            iovec {
-                iov_base: (&mut hdr as *mut H) as *mut c_void,
-                iov_len: mem::size_of::<H>(),
-            },
             iovec {
                 iov_base: (&mut body as *mut T) as *mut c_void,
                 iov_len: mem::size_of::<T>(),
@@ -573,19 +571,16 @@ impl<H: MsgHeader> Endpoint<H> {
                 iov_len: buf.len(),
             },
         ];
-        // SAFETY: Safe because we own hdr and body and have a mutable borrow of buf, and
-        // hdr and body are ByteValued, and it's safe to fill a byte slice with
-        // arbitrary data.
-        let (bytes, files) = unsafe { self.recv_into_iovec_all(&mut iovs[..])? };
-
-        let total = mem::size_of::<H>() + mem::size_of::<T>();
-        if bytes < total {
+        // SAFETY: Safe because we own body and buf, and body is ByteValued, and it's safe
+        // to fill a byte slice with arbitrary data.
+        let (bytes, more_files) = unsafe { self.recv_into_iovec_all(&mut iovs)? };
+        if bytes < hdr.get_size() as usize {
             return Err(Error::PartialMessage);
-        } else if !hdr.is_valid() || !body.is_valid() {
+        } else if !body.is_valid() || more_files.is_some() {
             return Err(Error::InvalidMessage);
         }
 
-        Ok((hdr, body, bytes - total, files))
+        Ok((hdr, body, buf, files))
     }
 }
 

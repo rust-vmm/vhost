@@ -79,6 +79,9 @@ pub trait VhostUserFrontend: VhostBackend {
     /// Remove a guest memory mapping from vhost.
     fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()>;
 
+    /// Get the shared memory region configuration from the backend.
+    fn get_shmem_config(&mut self) -> Result<VhostUserShMemConfig>;
+
     /// Sends VHOST_USER_POSTCOPY_ADVISE msg to the backend
     /// initiating the beginning of the postcopy process.
     /// Backend will return a userfaultfd.
@@ -567,6 +570,18 @@ impl VhostUserFrontend for Frontend {
         node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
+    fn get_shmem_config(&mut self) -> Result<VhostUserShMemConfig> {
+        let mut node = self.node();
+        node.check_proto_feature(VhostUserProtocolFeatures::SHMEM)?;
+
+        let hdr = node.send_request_header(FrontendReq::GET_SHMEM_CONFIG, None)?;
+        let (_count, payload, _) = node.recv_reply_with_payload::<VhostUserU64>(&hdr)?;
+        let config = VhostUserShMemConfig::from_payload(&payload)
+            .map_err(|_| VhostUserError::InvalidMessage)?;
+
+        Ok(config)
+    }
+
     #[cfg(feature = "postcopy")]
     fn postcopy_advise(&mut self) -> Result<File> {
         let mut node = self.node();
@@ -756,23 +771,13 @@ impl FrontendInternal {
         &mut self,
         hdr: &VhostUserMsgHeader<FrontendReq>,
     ) -> VhostUserResult<(T, Vec<u8>, Option<Vec<File>>)> {
-        if mem::size_of::<T>() > MAX_MSG_SIZE
-            || hdr.get_size() as usize <= mem::size_of::<T>()
-            || hdr.get_size() as usize > MAX_MSG_SIZE
-            || hdr.is_reply()
-        {
+        if mem::size_of::<T>() > MAX_MSG_SIZE || hdr.is_reply() {
             return Err(VhostUserError::InvalidParam);
         }
         self.check_state()?;
 
-        let mut buf: Vec<u8> = vec![0; hdr.get_size() as usize - mem::size_of::<T>()];
-        let (reply, body, bytes, files) = self.main_sock.recv_payload_into_buf::<T>(&mut buf)?;
-        if !reply.is_reply_for(hdr)
-            || reply.get_size() as usize != mem::size_of::<T>() + bytes
-            || files.is_some()
-            || !body.is_valid()
-            || bytes != buf.len()
-        {
+        let (reply, body, buf, files) = self.main_sock.recv_payload_into_buf::<T>()?;
+        if !reply.is_reply_for(hdr) || files.is_some() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
 
@@ -1200,5 +1205,52 @@ mod tests {
         frontend.set_mem_table(&[]).unwrap_err();
         let tables = vec![VhostUserMemoryRegionInfo::default(); MAX_ATTACHED_FD_ENTRIES + 1];
         frontend.set_mem_table(&tables).unwrap_err();
+    }
+
+    #[test]
+    fn test_frontend_get_shmem_config() {
+        let (mut frontend, mut peer) = create_pair2();
+
+        let expected_config = VhostUserShMemConfig::new(2, &[0x1000, 0x2000]);
+        let count = VhostUserU64::new(expected_config.nregions as u64);
+        let payload = expected_config.payload();
+        let hdr = VhostUserMsgHeader::new(
+            FrontendReq::GET_SHMEM_CONFIG,
+            0x4,
+            (std::mem::size_of::<VhostUserU64>() + payload.len()) as u32,
+        );
+        peer.send_message_with_payload(&hdr, &count, &payload, None)
+            .unwrap();
+
+        let config = frontend.get_shmem_config().unwrap();
+        assert_eq!(config.nregions, 2);
+        assert_eq!(config.memory_sizes[0], 0x1000);
+        assert_eq!(config.memory_sizes[1], 0x2000);
+
+        let (recv_hdr, rfds) = peer.recv_header().unwrap();
+        assert_eq!(recv_hdr.get_code().unwrap(), FrontendReq::GET_SHMEM_CONFIG);
+        assert!(rfds.is_none());
+    }
+
+    #[test]
+    fn test_frontend_get_shmem_config_no_regions() {
+        let (mut frontend, mut peer) = create_pair2();
+
+        let expected_config = VhostUserShMemConfig::default();
+        let count = VhostUserU64::new(expected_config.nregions as u64);
+        let payload = expected_config.payload();
+        let hdr = VhostUserMsgHeader::new(
+            FrontendReq::GET_SHMEM_CONFIG,
+            0x4,
+            (std::mem::size_of::<VhostUserU64>() + payload.len()) as u32,
+        );
+        peer.send_message_with_payload(&hdr, &count, &payload, None)
+            .unwrap();
+
+        let config = frontend.get_shmem_config().unwrap();
+        assert_eq!(config.nregions, 0);
+        for i in 0..256 {
+            assert_eq!(config.memory_sizes[i], 0);
+        }
     }
 }
