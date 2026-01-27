@@ -345,6 +345,6 @@ impl VhostUserBackendReqHandlerMut for DummyBackendReqHandler {
         Ok(())
     }
     fn set_log_base(&mut self, _log: &VhostUserLog, _file: File) -> Result<()> {
-        Err(Error::InvalidMessage)
+        Ok(())
     }
 }

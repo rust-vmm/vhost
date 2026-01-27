@@ -427,7 +427,7 @@ mod tests {
             backend.handle_request().unwrap();
 
             // set_log_base,set_log_fd()
-            backend.handle_request().unwrap_err();
+            backend.handle_request().unwrap();
             backend.handle_request().unwrap_err();
 
             // set_vring_xxx
