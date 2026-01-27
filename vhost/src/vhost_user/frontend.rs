@@ -258,7 +258,8 @@ impl VhostBackend for Frontend {
                 &log,
                 Some(&[region.mmap_handle]),
             )?;
-            node.wait_for_ack(&hdr).map_err(|e| e.into())
+            let _ = node.recv_reply::<VhostUserLog>(&hdr)?;
+            Ok(())
         } else {
             let _ = node.send_request_with_body(FrontendReq::SET_LOG_BASE, &val, None)?;
             Ok(())

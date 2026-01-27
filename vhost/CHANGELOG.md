@@ -9,6 +9,7 @@
 ### Deprecated
 ### Fixed
 - [[#338]](https://github.com/rust-vmm/vhost/pull/338) vhost: fix double-locking in Backend to Frontend request handlers
+- [[#342]](https://github.com/rust-vmm/vhost/pull/342) vhost-user: frontend: Read the full reply for set_log_base
 
 ## v0.15.0
 
