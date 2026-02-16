@@ -189,7 +189,13 @@ mod tests {
         vsock.set_vring_kick(0, &eventfd).unwrap();
         vsock.set_vring_err(0, &eventfd).unwrap();
         assert_eq!(vsock.get_vring_base(0).unwrap(), 1);
-        vsock.set_guest_cid(0xdead).unwrap();
+        match vsock.set_guest_cid(0xdead) {
+            Ok(()) => {}
+            Err(Error::IoctlError(e)) if e.raw_os_error() == Some(libc::EADDRINUSE) => {
+                println!("set_guest_cid: CID already in use (e.g. by the same test running for another target/architecture in CI), skipping");
+            }
+            Err(e) => panic!("set_guest_cid failed: {:?}", e),
+        }
         //vsock.start().unwrap();
         //vsock.stop().unwrap();
     }
