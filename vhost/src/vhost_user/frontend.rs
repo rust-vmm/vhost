@@ -79,6 +79,20 @@ pub trait VhostUserFrontend: VhostBackend {
     /// Remove a guest memory mapping from vhost.
     fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()>;
 
+    /// Begin transfer of internal state from/to the back-end
+    /// for the purpose of migration.
+    fn set_device_state_fd(
+        &self,
+        direction: VhostTransferStateDirection,
+        phase: VhostTransferStatePhase,
+        fd: File,
+    ) -> Result<Option<File>>;
+
+    /// Inquire the back-end to report any potential errors
+    /// that have occurred after transferring state from/to
+    /// the back-end via vhost_set_device_state_fd().
+    fn check_device_state(&self) -> Result<u64>;
+
     /// Sends VHOST_USER_POSTCOPY_ADVISE msg to the backend
     /// initiating the beginning of the postcopy process.
     /// Backend will return a userfaultfd.
@@ -568,6 +582,48 @@ impl VhostUserFrontend for Frontend {
         node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
+    fn set_device_state_fd(
+        &self,
+        direction: VhostTransferStateDirection,
+        phase: VhostTransferStatePhase,
+        file: File,
+    ) -> Result<Option<File>> {
+        let mut node = self.node();
+        node.check_proto_feature(VhostUserProtocolFeatures::DEVICE_STATE)?;
+
+        let body = VhostUserTransferDeviceState::new(direction, phase);
+        if !body.is_valid() {
+            return error_code(VhostUserError::InvalidParam);
+        }
+
+        let hdr = node.send_request_with_body(
+            FrontendReq::SET_DEVICE_STATE_FD,
+            &body,
+            Some(&[file.as_raw_fd()]),
+        )?;
+
+        let (body, files) = node.recv_reply_with_optional_files::<VhostUserU64>(&hdr)?;
+        let msg = body.value;
+        if msg == 0x100 && files.is_none() {
+            return Ok(None);
+        } else if msg == 0 && files.is_some() {
+            return match take_single_file(files) {
+                Some(file) => Ok(Some(file)),
+                None => error_code(VhostUserError::IncorrectFds),
+            };
+        }
+
+        error_code(VhostUserError::InvalidMessage)
+    }
+
+    fn check_device_state(&self) -> Result<u64> {
+        let mut node = self.node();
+        node.check_proto_feature(VhostUserProtocolFeatures::DEVICE_STATE)?;
+        let hdr = node.send_request_header(FrontendReq::CHECK_DEVICE_STATE, None)?;
+        let body = node.recv_reply::<VhostUserU64>(&hdr)?;
+        Ok(body.value)
+    }
+
     #[cfg(feature = "postcopy")]
     fn postcopy_advise(&mut self) -> Result<File> {
         let mut node = self.node();
@@ -737,7 +793,7 @@ impl FrontendInternal {
         Ok(body)
     }
 
-    fn recv_reply_with_files<T: ByteValued + Sized + VhostUserMsgValidator + Default>(
+    fn recv_reply_with_optional_files<T: ByteValued + Sized + VhostUserMsgValidator + Default>(
         &mut self,
         hdr: &VhostUserMsgHeader<FrontendReq>,
     ) -> VhostUserResult<(T, Option<Vec<File>>)> {
@@ -747,9 +803,21 @@ impl FrontendInternal {
         self.check_state()?;
 
         let (reply, body, files) = self.main_sock.recv_body::<T>()?;
-        if !reply.is_reply_for(hdr) || files.is_none() || !body.is_valid() {
+        if !reply.is_reply_for(hdr) || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
+        Ok((body, files))
+    }
+
+    fn recv_reply_with_files<T: ByteValued + Sized + VhostUserMsgValidator + Default>(
+        &mut self,
+        hdr: &VhostUserMsgHeader<FrontendReq>,
+    ) -> VhostUserResult<(T, Option<Vec<File>>)> {
+        let (body, files) = self.recv_reply_with_optional_files(hdr)?;
+        if files.is_none() {
+            return Err(VhostUserError::InvalidMessage);
+        }
+
         Ok((body, files))
     }
 
