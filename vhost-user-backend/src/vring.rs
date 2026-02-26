@@ -129,6 +129,11 @@ impl<M: GuestAddressSpace> VringState<M> {
         })
     }
 
+    /// Whether the vring is enabled or not
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
     /// Get an immutable reference to the underlying raw `Queue` object.
     pub fn get_queue(&self) -> &Queue {
         &self.queue

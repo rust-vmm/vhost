@@ -660,6 +660,10 @@ pub mod tests {
 
             backend
         }
+
+        pub fn events(&self) -> u64 {
+            self.events
+        }
     }
 
     impl VhostUserBackendMut for MockVhostBackend {

@@ -9,6 +9,8 @@
 ### Deprecated
 ### Fixed
 
+- [[#343]](https://github.com/rust-vmm/vhost/pull/343) Avoid losing vring kicks
+
 ## v0.21.0
 
 ### Changed
