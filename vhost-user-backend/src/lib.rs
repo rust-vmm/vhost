@@ -23,7 +23,7 @@ mod backend;
 pub use self::backend::{VhostUserBackend, VhostUserBackendMut};
 
 mod event_loop;
-pub use self::event_loop::VringEpollHandler;
+pub use self::event_loop::{EventSet, VringPollHandler};
 
 mod handler;
 pub use self::handler::VhostUserHandlerError;
@@ -239,13 +239,13 @@ where
         }
     }
 
-    /// Retrieve the vring epoll handler.
+    /// Retrieve the vring poll handler.
     ///
     /// This is necessary to perform further actions like registering and unregistering some extra
     /// event file descriptors.
-    pub fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<T>>> {
+    pub fn get_poll_handlers(&self) -> Vec<Arc<VringPollHandler<T>>> {
         // Do not expect poisoned lock.
-        self.handler.lock().unwrap().get_epoll_handlers()
+        self.handler.lock().unwrap().get_poll_handlers()
     }
 }
 
@@ -267,7 +267,7 @@ mod tests {
         let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
         let mut daemon = VhostUserDaemon::new("test".to_owned(), backend, mem).unwrap();
 
-        let handlers = daemon.get_epoll_handlers();
+        let handlers = daemon.get_poll_handlers();
         assert_eq!(handlers.len(), 2);
 
         let barrier = Arc::new(Barrier::new(2));
@@ -300,7 +300,7 @@ mod tests {
         let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
         let mut daemon = VhostUserDaemon::new("test".to_owned(), backend, mem).unwrap();
 
-        let handlers = daemon.get_epoll_handlers();
+        let handlers = daemon.get_poll_handlers();
         assert_eq!(handlers.len(), 2);
 
         let barrier = Arc::new(Barrier::new(2));

@@ -13,11 +13,10 @@ use vhost::vhost_user::message::{
 };
 use vhost::vhost_user::{Backend, Frontend, Listener, VhostUserFrontend};
 use vhost::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
-use vhost_user_backend::{VhostUserBackendMut, VhostUserDaemon, VringRwLock};
+use vhost_user_backend::{EventSet, VhostUserBackendMut, VhostUserDaemon, VringRwLock};
 use vm_memory::{
     FileOffset, GuestAddress, GuestAddressSpace, GuestMemory, GuestMemoryAtomic, GuestMemoryMmap,
 };
-use vmm_sys_util::epoll::EventSet;
 use vmm_sys_util::event::{
     new_event_consumer_and_notifier, EventConsumer, EventFlag, EventNotifier,
 };
@@ -117,7 +116,7 @@ impl VhostUserBackendMut for MockVhostBackend {
 
     fn handle_event(
         &mut self,
-        _device_event: u16,
+        _device_event: usize,
         _evset: EventSet,
         _vrings: &[VringRwLock],
         _thread_id: usize,
