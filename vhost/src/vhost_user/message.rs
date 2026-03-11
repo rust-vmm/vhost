@@ -1478,6 +1478,8 @@ mod tests {
         msg.flags |= 0x80000000;
         assert!(!msg.is_valid());
         msg.flags &= !0x80000000;
+
+        assert!(msg.is_valid());
     }
 
     #[test]
