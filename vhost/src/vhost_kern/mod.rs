@@ -16,7 +16,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 
 use libc::{c_void, ssize_t, write};
 
-use vm_memory::{Address, GuestAddress, GuestAddressSpace, GuestMemory, GuestUsize};
+use vm_memory::{Address, GuestAddress, GuestAddressSpace, GuestMemoryBackend, GuestUsize};
 use vmm_sys_util::eventfd::EventFd;
 use vmm_sys_util::ioctl::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
 
@@ -35,6 +35,12 @@ pub mod net;
 pub mod vdpa;
 #[cfg(feature = "vhost-vsock")]
 pub mod vsock;
+
+/// Helper trait to signify `GuestAddressSpace`s that are physical, which is required for
+/// vhost_kern.
+pub trait PhysicalGuestAddressSpace: GuestAddressSpace<M: GuestMemoryBackend> {}
+
+impl<AS: GuestAddressSpace> PhysicalGuestAddressSpace for AS where AS::M: GuestMemoryBackend {}
 
 #[inline]
 fn ioctl_result<T>(rc: i32, res: T) -> Result<T> {
@@ -57,7 +63,7 @@ fn io_result<T>(rc: isize, res: T) -> Result<T> {
 /// Represent an in-kernel vhost device backend.
 pub trait VhostKernBackend: AsRawFd {
     /// Associated type to access guest memory.
-    type AS: GuestAddressSpace;
+    type AS: PhysicalGuestAddressSpace;
 
     /// Get the object to access the guest's memory.
     fn mem(&self) -> &Self::AS;
@@ -439,7 +445,7 @@ impl VhostIotlbMsgParser for vhost_msg_v2 {
 impl VringConfigData {
     /// Convert the config (guest address space) into vhost_vring_addr
     /// (host address space).
-    pub fn to_vhost_vring_addr<AS: GuestAddressSpace>(
+    pub fn to_vhost_vring_addr<AS: PhysicalGuestAddressSpace>(
         &self,
         queue_index: usize,
         mem: &AS,

@@ -9,13 +9,15 @@ use std::os::raw::{c_uchar, c_uint};
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::{AsRawFd, RawFd};
 
-use vm_memory::GuestAddressSpace;
 use vmm_sys_util::eventfd::EventFd;
 use vmm_sys_util::fam::*;
 use vmm_sys_util::ioctl::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
 
 use super::vhost_binding::*;
-use super::{ioctl_result, Error, Result, VhostKernBackend, VhostKernFeatures};
+use super::{
+    ioctl_result, Error, PhysicalGuestAddressSpace as GuestAddressSpace, Result, VhostKernBackend,
+    VhostKernFeatures,
+};
 use crate::vdpa::*;
 use crate::{VhostAccess, VhostIotlbBackend, VhostIotlbMsg, VhostIotlbType, VringConfigData};
 
@@ -347,7 +349,7 @@ mod tests {
     const VHOST_VDPA_PATH: &str = "/dev/vhost-vdpa-0";
 
     use std::alloc::{alloc, dealloc, Layout};
-    use vm_memory::{GuestAddress, GuestMemory, GuestMemoryMmap};
+    use vm_memory::{GuestAddress, GuestMemoryBackend, GuestMemoryMmap};
     use vmm_sys_util::eventfd::EventFd;
 
     use super::*;

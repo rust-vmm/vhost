@@ -6,6 +6,8 @@
 - [[#339]](https://github.com/rust-vmm/vhost/pull/339) Add support for `GET_SHMEM_CONFIG` message
 
 ### Changed
+- [[#348]](https://github.com/rust-vmm/vhost/pull/348) Updated vm-memory to 0.18.0
+
 ### Deprecated
 ### Fixed
 
