@@ -3,12 +3,19 @@
 ## [Unreleased]
 
 ### Added
-- [[#339]](https://github.com/rust-vmm/vhost/pull/339) Add support for `GET_SHMEM_CONFIG` message
-
 ### Changed
 ### Deprecated
 ### Fixed
 
+## v0.22.0
+
+### Added
+- [[#339]](https://github.com/rust-vmm/vhost/pull/339) Add support for `GET_SHMEM_CONFIG` message
+
+### Changed
+- Updated vhost to 0.16.0
+
+### Fixed
 - [[#343]](https://github.com/rust-vmm/vhost/pull/343) Avoid losing vring kicks
 
 ## v0.21.0

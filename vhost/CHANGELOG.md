@@ -3,11 +3,21 @@
 ## [Unreleased]
 
 ### Added
+### Changed
+### Deprecated
+### Fixed
+
+## v0.16.0
+
+### Added
 - [[#251]](https://github.com/rust-vmm/vhost/pull/251) Add `SHMEM_MAP` and `SHMEM_UNMAP` support
+- [[#336]](https://github.com/rust-vmm/vhost/pull/336) Add frontend support for device state transfer (`VHOST_USER_PROTOCOL_F_DEVICE_STATE`)
 - [[#339]](https://github.com/rust-vmm/vhost/pull/339) Add support for `GET_SHMEM_CONFIG` message
 
 ### Changed
-### Deprecated
+- [[#338]](https://github.com/rust-vmm/vhost/pull/338) Implement `From<Error>` for `io::Error`, rename `Backend::node` to `inner` and inline `lock()` calls
+- [[#347]](https://github.com/rust-vmm/vhost/pull/347) Shift feature bits to accommodate `GET_VRING_BASE_INFLIGHT` spec change
+
 ### Fixed
 - [[#338]](https://github.com/rust-vmm/vhost/pull/338) vhost: fix double-locking in Backend to Frontend request handlers
 - [[#342]](https://github.com/rust-vmm/vhost/pull/342) vhost-user: frontend: Read the full reply for set_log_base
