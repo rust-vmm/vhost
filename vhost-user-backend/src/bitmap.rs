@@ -7,7 +7,7 @@ use std::os::fd::{AsRawFd, BorrowedFd};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, RwLock};
 use std::{io, ptr};
-use vm_memory::bitmap::{Bitmap, BitmapSlice, WithBitmapSlice};
+use vm_memory::bitmap::{AtomicBitmap, Bitmap, BitmapSlice, WithBitmapSlice};
 use vm_memory::mmap::NewBitmap;
 use vm_memory::{Address, GuestMemoryRegion};
 
@@ -44,7 +44,22 @@ impl BitmapReplace for () {
     }
 }
 
+impl BitmapReplace for AtomicBitmap {
+    type InnerBitmap = ();
+
+    // this implementation must not be used if the backend sets `VHOST_USER_PROTOCOL_F_LOG_SHMFD`
+    fn replace(&self, _bitmap: ()) {
+        panic!("AtomicBitmap must not be used if VHOST_USER_PROTOCOL_F_LOG_SHMFD is set");
+    }
+}
+
 impl MemRegionBitmap for () {
+    fn new<R: GuestMemoryRegion>(_region: &R, _logmem: Arc<MmapLogReg>) -> io::Result<Self> {
+        Err(io::Error::from(io::ErrorKind::Unsupported))
+    }
+}
+
+impl MemRegionBitmap for AtomicBitmap {
     fn new<R: GuestMemoryRegion>(_region: &R, _logmem: Arc<MmapLogReg>) -> io::Result<Self> {
         Err(io::Error::from(io::ErrorKind::Unsupported))
     }
