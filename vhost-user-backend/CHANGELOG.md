@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- Support for using AtomicBitmap (from vm_memory)
+  when migration is not needed.
+
 ### Changed
 ### Deprecated
 ### Fixed
