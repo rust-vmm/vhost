@@ -1,0 +1,19 @@
+name: Publish vhost to crates.io
+
+on:
+  push:
+    tags: ['vhost-v*']  # Triggers when pushing tags starting with 'vhost-v'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # environment: release  # Optional: for enhanced security
+    permissions:
+      id-token: write     # Required for OIDC token exchange
+    steps:
+    - uses: actions/checkout@v4
+    - uses: rust-lang/crates-io-auth-action@v1
+      id: auth
+    - run: cargo publish --package vhost
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
