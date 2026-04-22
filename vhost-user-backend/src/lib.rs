@@ -9,7 +9,10 @@
 extern crate log;
 
 use std::fmt::{Display, Formatter};
+use std::net::Shutdown;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -90,6 +93,27 @@ impl Display for Error {
 /// Result of vhost-user daemon operations.
 pub type Result<T> = std::result::Result<T, Error>;
 
+struct ConnectionState {
+    conn: UnixStream,
+    shutdown_requested: AtomicBool,
+}
+
+/// Thread-safe handle to request shutdown of a running [`VhostUserDaemon`].
+///
+/// Safe to call multiple times or after the connection has already closed.
+#[derive(Clone)]
+pub struct ShutdownHandle {
+    state: Arc<ConnectionState>,
+}
+
+impl ShutdownHandle {
+    /// Request the daemon to shut down.
+    pub fn shutdown(&self) {
+        self.state.shutdown_requested.store(true, Ordering::Release);
+        let _ = self.state.conn.shutdown(Shutdown::Both);
+    }
+}
+
 /// Implement a simple framework to run a vhost-user service daemon.
 ///
 /// This structure is the public API the backend is allowed to interact with in order to run
@@ -98,6 +122,7 @@ pub struct VhostUserDaemon<T: VhostUserBackend> {
     name: String,
     handler: Arc<Mutex<VhostUserHandler<T>>>,
     main_thread: Option<thread::JoinHandle<Result<()>>>,
+    conn_state: Option<Arc<ConnectionState>>,
 }
 
 impl<T> VhostUserDaemon<T>
@@ -124,12 +149,18 @@ where
             name,
             handler,
             main_thread: None,
+            conn_state: None,
         })
+    }
+
+    fn reset_connection_state(&mut self) {
+        self.conn_state = None;
     }
 
     /// Run a dedicated thread handling all requests coming through the socket.
     /// This runs in an infinite loop that should be terminating once the other
-    /// end of the socket (the VMM) hangs up.
+    /// end of the socket (the VMM) hangs up or [`request_shutdown`](Self::request_shutdown)
+    /// is called.
     ///
     /// This function is the common code for starting a new daemon, no matter if
     /// it acts as a client or a server.
@@ -137,13 +168,26 @@ where
         &mut self,
         mut handler: BackendReqHandler<Mutex<VhostUserHandler<T>>>,
     ) -> Result<()> {
+        let state = Arc::new(ConnectionState {
+            conn: handler.try_clone_connection().map_err(Error::StartDaemon)?,
+            shutdown_requested: AtomicBool::new(false),
+        });
+
+        let thread_state = state.clone();
         let handle = thread::Builder::new()
             .name(self.name.clone())
-            .spawn(move || loop {
-                handler.handle_request().map_err(Error::HandleRequest)?;
+            .spawn(move || {
+                let result = loop {
+                    if let Err(e) = handler.handle_request().map_err(Error::HandleRequest) {
+                        break Err(e);
+                    }
+                };
+                let _ = thread_state.conn.shutdown(Shutdown::Both);
+                result
             })
             .map_err(Error::StartDaemon)?;
 
+        self.conn_state = Some(state);
         self.main_thread = Some(handle);
 
         Ok(())
@@ -192,14 +236,40 @@ where
     /// *Note:* A convenience function [VhostUserDaemon::serve] exists that
     /// may be a better option than this for simple use-cases.
     pub fn wait(&mut self) -> Result<()> {
-        if let Some(handle) = self.main_thread.take() {
-            match handle.join().map_err(Error::WaitDaemon)? {
-                Ok(()) => Ok(()),
-                Err(Error::HandleRequest(VhostUserError::SocketBroken(_))) => Ok(()),
-                Err(e) => Err(e),
-            }
-        } else {
-            Ok(())
+        let Some(handle) = self.main_thread.take() else {
+            self.reset_connection_state();
+            return Ok(());
+        };
+
+        let shutdown_requested = || {
+            self.conn_state
+                .as_ref()
+                .is_some_and(|s| s.shutdown_requested.load(Ordering::Acquire))
+        };
+
+        let result = match handle.join().map_err(Error::WaitDaemon)? {
+            Ok(()) => Ok(()),
+            Err(Error::HandleRequest(VhostUserError::SocketBroken(_))) => Ok(()),
+            Err(Error::HandleRequest(_)) if shutdown_requested() => Ok(()),
+            Err(error) => Err(error),
+        };
+
+        self.reset_connection_state();
+
+        result
+    }
+
+    /// Returns a handle to shut down the daemon, or `None` if not connected.
+    pub fn shutdown_handle(&self) -> Option<ShutdownHandle> {
+        self.conn_state
+            .as_ref()
+            .map(|s| ShutdownHandle { state: s.clone() })
+    }
+
+    /// Shut down the connection to unblock the daemon thread.
+    pub fn request_shutdown(&self) {
+        if let Some(handle) = self.shutdown_handle() {
+            handle.shutdown();
         }
     }
 
@@ -246,6 +316,14 @@ where
     pub fn get_epoll_handlers(&self) -> Vec<Arc<VringEpollHandler<T>>> {
         // Do not expect poisoned lock.
         self.handler.lock().unwrap().get_epoll_handlers()
+    }
+}
+
+impl<T: VhostUserBackend> Drop for VhostUserDaemon<T> {
+    fn drop(&mut self) {
+        if let Some(state) = self.conn_state.take() {
+            let _ = state.conn.shutdown(Shutdown::Both);
+        }
     }
 }
 
@@ -370,5 +448,97 @@ mod tests {
             let fd = backend.exit_event(thread_id).unwrap();
             assert!(fd.0.consume().is_ok(), "No exit event was raised!");
         }
+    }
+
+    #[test]
+    fn test_shutdown_while_connected() {
+        let mem = GuestMemoryAtomic::new(
+            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+        );
+        let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
+        let mut daemon = VhostUserDaemon::new("test".to_owned(), backend, mem).unwrap();
+
+        let barrier = Arc::new(Barrier::new(2));
+        let tmpdir = tempfile::tempdir().unwrap();
+        let path = tmpdir.path().join("socket");
+
+        thread::scope(|s| {
+            let barrier_client = barrier.clone();
+            let path_client = path.clone();
+            let _client = s.spawn(move || {
+                barrier_client.wait();
+                let stream = UnixStream::connect(&path_client).unwrap();
+                barrier_client.wait();
+                drop(stream);
+            });
+
+            let mut listener = Listener::new(&path, false).unwrap();
+            barrier.wait();
+            daemon.start(&mut listener).unwrap();
+
+            let handle = daemon.shutdown_handle().expect("daemon started");
+            handle.shutdown();
+
+            daemon.wait().unwrap();
+            assert!(daemon.shutdown_handle().is_none());
+            barrier.wait();
+
+            let barrier = Arc::new(Barrier::new(2));
+            let barrier_client = barrier.clone();
+            let path_client = path.clone();
+            let _client = s.spawn(move || {
+                barrier_client.wait();
+                let stream = UnixStream::connect(&path_client).unwrap();
+                barrier_client.wait();
+                drop(stream);
+            });
+
+            barrier.wait();
+            daemon.start(&mut listener).unwrap();
+            barrier.wait();
+            daemon.wait().unwrap_err();
+            assert!(daemon.shutdown_handle().is_none());
+        });
+    }
+
+    #[test]
+    fn test_double_shutdown() {
+        let mem = GuestMemoryAtomic::new(
+            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+        );
+        let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
+        let mut daemon = VhostUserDaemon::new("test".to_owned(), backend, mem).unwrap();
+
+        let barrier = Arc::new(Barrier::new(2));
+        let tmpdir = tempfile::tempdir().unwrap();
+        let path = tmpdir.path().join("socket");
+
+        thread::scope(|s| {
+            let barrier_client = barrier.clone();
+            let path_client = path.clone();
+            let _client = s.spawn(move || {
+                barrier_client.wait();
+                let stream = UnixStream::connect(&path_client).unwrap();
+                barrier_client.wait();
+                drop(stream);
+            });
+
+            let mut listener = Listener::new(&path, false).unwrap();
+            barrier.wait();
+            daemon.start(&mut listener).unwrap();
+
+            let handle = daemon.shutdown_handle().expect("daemon started");
+            handle.shutdown();
+            handle.shutdown();
+
+            daemon.wait().unwrap();
+            barrier.wait();
+        });
+    }
+
+    #[test]
+    fn test_shutdown_handle_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<ShutdownHandle>();
     }
 }
