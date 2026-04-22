@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- [[#355]](https://github.com/rust-vmm/vhost/pull/355) Add socket-cloning helpers for backend request handlers.
 ### Changed
 ### Deprecated
 ### Fixed

@@ -129,6 +129,10 @@ impl<H: MsgHeader> Endpoint<H> {
         }
     }
 
+    pub fn try_clone_sock(&self) -> std::io::Result<UnixStream> {
+        self.sock.try_clone()
+    }
+
     /// Sends bytes from scatter-gather vectors over the socket with optional attached file
     /// descriptors.
     ///

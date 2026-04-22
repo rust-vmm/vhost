@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- [[#355]](https://github.com/rust-vmm/vhost/pull/355) Add an explicit shutdown handle for active daemon connections.
 ### Changed
 ### Deprecated
 ### Fixed

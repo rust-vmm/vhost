@@ -391,6 +391,12 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
         ))
     }
 
+    /// Clone the connection socket. Calling [`UnixStream::shutdown`] on the
+    /// returned stream will unblock a concurrent `handle_request()`.
+    pub fn try_clone_connection(&self) -> std::io::Result<UnixStream> {
+        self.main_sock.try_clone_sock()
+    }
+
     /// Mark endpoint as failed with specified error code.
     pub fn set_failed(&mut self, error: i32) {
         self.error = Some(error);
