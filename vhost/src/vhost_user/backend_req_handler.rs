@@ -3,6 +3,7 @@
 
 use std::fs::File;
 use std::mem;
+use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::slice;
@@ -852,9 +853,14 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
 
     fn set_backend_req_fd(&mut self, files: Option<Vec<File>>) -> Result<()> {
         let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
-        // SAFETY: Safe because we have ownership of the files that were
-        // checked when received. We have to trust that they are Unix sockets
-        // since we have no way to check this. If not, it will fail later.
+        // Validate that the received file descriptor is an AF_UNIX SOCK_STREAM
+        // socket as required by the vhost-user backend request channel.
+        validate_unix_stream_socket_fd(file.as_fd())?;
+        // SAFETY:
+        // Ownership of the file descriptor is transferred from `File` via
+        // `into_raw_fd()`, ensuring this code is the sole owner of the FD.
+        // The descriptor has been validated to be an AF_UNIX SOCK_STREAM socket,
+        // so it is safe to construct a `UnixStream` from it.
         let sock = unsafe { UnixStream::from_raw_fd(file.into_raw_fd()) };
         let backend = Backend::from_stream(sock);
         self.backend.set_backend_req_fd(backend);
@@ -863,9 +869,14 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
 
     fn set_gpu_socket(&mut self, files: Option<Vec<File>>) -> Result<()> {
         let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
-        // SAFETY: Safe because we have ownership of the files that were
-        // checked when received. We have to trust that they are Unix sockets
-        // since we have no way to check this. If not, it will fail later.
+        // Validate that the received file descriptor is an AF_UNIX SOCK_STREAM
+        // socket as required by the vhost-user GPU channel.
+        validate_unix_stream_socket_fd(file.as_fd())?;
+        // SAFETY:
+        // Ownership of the file descriptor is transferred from `File` via
+        // `into_raw_fd()`, ensuring this code is the sole owner of the FD.
+        // The descriptor has been validated to be an AF_UNIX SOCK_STREAM socket,
+        // so it is safe to construct a `UnixStream` from it.
         let sock = unsafe { UnixStream::from_raw_fd(file.into_raw_fd()) };
         let gpu_backend = GpuBackend::from_stream(sock);
         self.backend.set_gpu_socket(gpu_backend)
@@ -1036,8 +1047,52 @@ impl<S: VhostUserBackendReqHandler> AsRawFd for BackendReqHandler<S> {
     }
 }
 
+// Retrieve a SOL_SOCKET socket option value using `getsockopt`.
+fn get_socket_opt(fd: BorrowedFd<'_>, opt: libc::c_int) -> std::io::Result<libc::c_int> {
+    let mut value: libc::c_int = 0;
+    let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+
+    // SAFETY:
+    // - `value` and `len` point to valid writable memory.
+    // - `len` is initialized to `size_of::<libc::c_int>()`, matching the size
+    //   of `value`, so `getsockopt()` will not write past the end of `value`.
+    // - `fd.as_raw_fd()` is valid because `BorrowedFd` guarantees a live file
+    //   descriptor for the duration of the call.
+    let rc = unsafe {
+        libc::getsockopt(
+            fd.as_raw_fd(),
+            libc::SOL_SOCKET,
+            opt,
+            std::ptr::addr_of_mut!(value).cast::<libc::c_void>(),
+            std::ptr::addr_of_mut!(len),
+        )
+    };
+
+    if rc == -1 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(value)
+    }
+}
+
+// Validate that the given file descriptor is an AF_UNIX SOCK_STREAM socket.
+fn validate_unix_stream_socket_fd(fd: BorrowedFd<'_>) -> Result<()> {
+    let domain = get_socket_opt(fd, libc::SO_DOMAIN).map_err(Error::InvalidSocketFd)?;
+    if domain != libc::AF_UNIX {
+        return Err(Error::NotUnixSocket);
+    }
+
+    let sock_type = get_socket_opt(fd, libc::SO_TYPE).map_err(Error::InvalidSocketFd)?;
+    if sock_type != libc::SOCK_STREAM {
+        return Err(Error::NotStreamSocket);
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    use std::net::TcpListener;
     use std::os::unix::io::AsRawFd;
 
     use super::*;
@@ -1158,5 +1213,24 @@ mod tests {
             let _ = frontend_endpoint.send_message(&hdr, &VhostUserEmpty, None);
         });
         assert!(handler.handle_request().is_err());
+    }
+
+    #[test]
+    fn test_validate_unix_stream_socket_fd() {
+        // Valid AF_UNIX SOCK_STREAM socket
+        let (sock1, _sock2) = UnixStream::pair().unwrap();
+        assert!(validate_unix_stream_socket_fd(sock1.as_fd()).is_ok());
+
+        // AF_INET socket (wrong domain)
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        assert!(validate_unix_stream_socket_fd(listener.as_fd()).is_err());
+
+        // Non-socket file descriptor
+        let file = File::open("/dev/null").unwrap();
+        assert!(validate_unix_stream_socket_fd(file.as_fd()).is_err());
+
+        // AF_UNIX but SOCK_DGRAM (wrong type)
+        let dgram = std::os::unix::net::UnixDatagram::unbound().unwrap();
+        assert!(validate_unix_stream_socket_fd(dgram.as_fd()).is_err());
     }
 }

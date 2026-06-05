@@ -4,6 +4,8 @@
 
 ### Added
 - [[#355]](https://github.com/rust-vmm/vhost/pull/355) Add socket-cloning helpers for backend request handlers.
+- [[#360]](https://github.com/rust-vmm/vhost/pull/360) Validate AF_UNIX SOCK_STREAM socket file descriptors and 
+  add Error::InvalidSocketFd, Error::NotUnixSocket and Error::NotStreamSocket.
 ### Changed
 ### Deprecated
 ### Fixed

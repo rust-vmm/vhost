@@ -68,6 +68,12 @@ pub enum Error {
     InactiveOperation(VhostUserProtocolFeatures),
     /// Invalid message format, flag or content.
     InvalidMessage,
+    /// Invalid `AF_UNIX SOCK_STREAM` socket file descriptor.
+    InvalidSocketFd(std::io::Error),
+    /// Socket is not `AF_UNIX`
+    NotUnixSocket,
+    /// Socket is not `SOCK_STREAM`
+    NotStreamSocket,
     /// Only part of a message have been sent or received successfully
     PartialMessage,
     /// The peer disconnected from the socket.
@@ -110,6 +116,9 @@ impl std::fmt::Display for Error {
                 write!(f, "inactive protocol operation: {}", bits.bits())
             }
             Error::InvalidMessage => write!(f, "invalid message"),
+            Error::InvalidSocketFd(e) => write!(f, "invalid AF_UNIX SOCK_STREAM socket fd: {e}"),
+            Error::NotUnixSocket => write!(f, "socket is not AF_UNIX"),
+            Error::NotStreamSocket => write!(f, "socket is not SOCK_STREAM"),
             Error::PartialMessage => write!(f, "partial message"),
             Error::Disconnected => write!(f, "peer disconnected"),
             Error::OversizedMsg => write!(f, "oversized message"),
@@ -157,6 +166,9 @@ impl Error {
             Error::InvalidParam | Error::InvalidOperation(_) => false,
             Error::InactiveFeature(_) | Error::InactiveOperation(_) => false,
             Error::InvalidMessage | Error::IncorrectFds | Error::OversizedMsg => false,
+            Error::InvalidSocketFd(_) => false,
+            Error::NotUnixSocket => false,
+            Error::NotStreamSocket => false,
             Error::SocketError(_) | Error::SocketConnect(_) => false,
             Error::FeatureMismatch => false,
             Error::ReqHandlerError(_) => false,
@@ -268,6 +280,7 @@ mod tests {
     use message::VhostUserSharedMsg;
     use std::fs::File;
     use std::os::unix::io::AsRawFd;
+    use std::os::unix::net::UnixStream;
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Barrier, Mutex};
     use std::thread;
@@ -490,6 +503,7 @@ mod tests {
         assert_eq!(num, 2);
 
         let eventfd = vmm_sys_util::eventfd::EventFd::new(0).unwrap();
+        let (tx, _) = UnixStream::pair().unwrap();
         let mem = [VhostUserMemoryRegionInfo::new(
             0,
             0x10_0000,
@@ -510,7 +524,7 @@ mod tests {
         assert_eq!(offset, 0x100);
         assert_eq!(&reply_payload, &[0xa5; 4]);
 
-        frontend.set_backend_request_fd(&eventfd).unwrap();
+        frontend.set_backend_request_fd(&tx).unwrap();
         frontend.set_vring_enable(0, true).unwrap();
 
         frontend
