@@ -8,6 +8,7 @@
   add Error::InvalidSocketFd, Error::NotUnixSocket and Error::NotStreamSocket.
 ### Changed
 - [[#364]](https://github.com/rust-vmm/vhost/pull/364) Updated vm-memory to 0.18.0
+- [[#366]](https://github.com/rust-vmm/vhost/pull/366) Update virtio-bindings to v0.2.7
 ### Deprecated
 ### Fixed
 - [[#367]](https://github.com/rust-vmm/vhost/pull/367) Fix `SHMEM` protocol feature bit position (bit 21 → bit 22)
