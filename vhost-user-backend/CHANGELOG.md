@@ -3,13 +3,18 @@
 ## [Unreleased]
 
 ### Added
-- [[#355]](https://github.com/rust-vmm/vhost/pull/355) Add an explicit shutdown handle for active daemon connections.
 ### Changed
-- [[#364]](https://github.com/rust-vmm/vhost/pull/364) Updated vm-memory to 0.18.0
-- [[#366]](https://github.com/rust-vmm/vhost/pull/366) Update virtio-bindings to v0.2.7
-
 ### Deprecated
 ### Fixed
+
+## v0.23.0
+
+### Added
+- [[#355]](https://github.com/rust-vmm/vhost/pull/355) Add an explicit shutdown handle for active daemon connections.
+
+### Changed
+- [[#364]](https://github.com/rust-vmm/vhost/pull/364) Updated vm-memory to 0.18.0 and virtio-queue to 0.18.0
+- [[#366]](https://github.com/rust-vmm/vhost/pull/366) Update virtio-bindings to v0.2.7
 
 ## v0.22.0
 
