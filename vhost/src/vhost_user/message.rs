@@ -442,9 +442,12 @@ bitflags! {
         const DEVICE_STATE = 0x0008_0000;
         /// Support suspend in-flight I/O requests and record them
         const GET_VRING_BASE_INFLIGHT = 0x0010_0000;
+        /// Use Guest Physical Addresses instead of userspace addresses in memory
+        /// region messages (SET_MEM_TABLE, ADD_MEM_REG, etc.).
+        const GPA_ADDRESSES = 0x0020_0000;
         /// Allow the backend to request file descriptors be mapped into virtio shared memory
         /// regions.
-        const SHMEM = 0x0020_0000;
+        const SHMEM = 0x0040_0000;
     }
 }
 

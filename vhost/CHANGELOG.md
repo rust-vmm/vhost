@@ -10,6 +10,8 @@
 - [[#364]](https://github.com/rust-vmm/vhost/pull/364) Updated vm-memory to 0.18.0
 ### Deprecated
 ### Fixed
+- [[#367]](https://github.com/rust-vmm/vhost/pull/367) Fix `SHMEM` protocol feature bit position (bit 21 → bit 22)
+  to align with the vhost-user spec, and add missing `GPA_ADDRESSES` at bit 21.
 
 ## v0.16.0
 
