@@ -6,7 +6,7 @@
 #![allow(dead_code)]
 
 use std::fs::File;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Read};
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -593,6 +593,22 @@ impl<H: MsgHeader> Endpoint<H> {
         }
 
         Ok((hdr, body, bytes - total, files))
+    }
+
+    /// Read exactly `size` bytes from the socket.
+    /// Handles partial reads automatically - needed for large payloads (e.g., gfxstream
+    /// framebuffers) where a single recv() might not get all the data.
+    /// # Return
+    /// * - Vec<u8> with exactly `size` bytes on success
+    /// * - Error on I/O failure or EOF before `size` bytes received
+    pub fn recv_payload_exact(&mut self, size: usize) -> Result<Vec<u8>> {
+        if size > H::MAX_MSG_SIZE {
+            return Err(Error::OversizedMsg);
+        }
+
+        let mut buf = vec![0u8; size];
+        self.sock.read_exact(&mut buf).map_err(Error::SocketError)?;
+        Ok(buf)
     }
 }
 
