@@ -52,8 +52,10 @@ mod backend_req;
 #[cfg(feature = "vhost-user-backend")]
 pub use self::backend_req::Backend;
 mod gpu_backend_req;
+mod gpu_frontend_req;
 pub mod gpu_message;
 pub use self::gpu_backend_req::GpuBackend;
+pub use self::gpu_frontend_req::GpuFrontend;
 
 /// Errors for vhost-user operations
 #[derive(Debug)]

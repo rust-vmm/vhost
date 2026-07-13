@@ -59,6 +59,9 @@ pub trait VhostUserFrontend: VhostBackend {
     /// Setup backend communication channel.
     fn set_backend_request_fd(&mut self, fd: &dyn AsRawFd) -> Result<()>;
 
+    /// Setup GPU protocol socket.
+    fn set_gpu_socket(&mut self, fd: &dyn AsRawFd) -> Result<()>;
+
     /// Retrieve a given dma-buf fd from a given backend
     fn get_shared_object(&mut self, uuid: &VhostUserSharedMsg) -> Result<File>;
 
@@ -503,6 +506,13 @@ impl VhostUserFrontend for Frontend {
         node.check_proto_feature(VhostUserProtocolFeatures::BACKEND_REQ)?;
         let fds = [fd.as_raw_fd()];
         let hdr = node.send_request_header(FrontendReq::SET_BACKEND_REQ_FD, Some(&fds))?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
+    }
+
+    fn set_gpu_socket(&mut self, fd: &dyn AsRawFd) -> Result<()> {
+        let mut node = self.node();
+        let fds = [fd.as_raw_fd()];
+        let hdr = node.send_request_header(FrontendReq::GPU_SET_SOCKET, Some(&fds))?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
