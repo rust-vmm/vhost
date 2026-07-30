@@ -424,6 +424,9 @@ impl<H: MsgHeader> Endpoint<H> {
         &mut self,
         buf_size: usize,
     ) -> Result<(usize, Vec<u8>, Option<Vec<File>>)> {
+        if buf_size > H::MAX_MSG_SIZE {
+            return Err(Error::OversizedMsg);
+        }
         let mut buf = vec![0u8; buf_size];
         let (bytes, files) = {
             let mut iovs = [iovec {
