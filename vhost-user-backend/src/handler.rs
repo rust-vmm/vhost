@@ -377,6 +377,10 @@ where
             .ok_or(VhostUserError::InvalidParam)?;
 
         if num == 0 || num as usize > self.max_queue_size {
+            log::error!(
+                "vring {index} requested queue size {num} out of range (1-{})",
+                self.max_queue_size
+            );
             return Err(VhostUserError::InvalidParam);
         }
         vring.set_queue_size(num as u16);
