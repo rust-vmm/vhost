@@ -55,8 +55,8 @@ impl VringConfigData {
 
     /// Get the log address, default to zero if not available.
     pub fn get_log_addr(&self) -> u64 {
-        if self.flags & 0x1 != 0 && self.log_addr.is_some() {
-            self.log_addr.unwrap()
+        if self.flags & 0x1 != 0 {
+            self.log_addr.unwrap_or(0)
         } else {
             0
         }
