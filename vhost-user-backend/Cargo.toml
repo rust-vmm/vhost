@@ -21,6 +21,7 @@ libc = "0.2.39"
 log = "0.4.17"
 userfaultfd = { version = "0.9.0", optional = true }
 vhost = { path = "../vhost", version = "0.17.0", features = ["vhost-user-backend"] }
+mio = { version = "1.0.4", features = ["os-poll", "os-ext"] }
 virtio-bindings = { workspace = true }
 virtio-queue = { workspace = true }
 vm-memory = { workspace = true, features = ["backend-mmap", "backend-atomic", "backend-bitmap"] }
