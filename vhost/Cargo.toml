@@ -37,7 +37,7 @@ vm-memory = { workspace = true, features=["backend-mmap"] }
 
 [dev-dependencies]
 tempfile = "3.2.0"
-serial_test = "3.0"
+serial_test = "4.0"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(RUSTDOC_disable_feature_compat_errors)'] }
