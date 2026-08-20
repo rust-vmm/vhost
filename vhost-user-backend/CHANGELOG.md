@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- [[#374]](https://github.com/rust-vmm/vhost/pull/374) Call backend event handler on vring enabled
+
 ### Changed
 ### Deprecated
 ### Fixed
