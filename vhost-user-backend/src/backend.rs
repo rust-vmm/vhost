@@ -84,6 +84,23 @@ pub trait VhostUserBackend: Send + Sync {
         Ok(())
     }
 
+    /// Called when a vring becomes both ready and enabled, before any kick is
+    /// delivered on it.
+    ///
+    /// A backend is otherwise only handed a vring from `handle_event`, which
+    /// runs in response to the driver ringing the doorbell. A queue the driver
+    /// has no reason to kick -- a receive queue whose buffers were posted once
+    /// at startup, for example -- is therefore never seen by the backend at
+    /// all. This hook gives a backend one chance to inspect such a queue when
+    /// it is brought up, which is where reconnect reconciliation and inflight
+    /// I/O resubmission belong.
+    ///
+    /// A default implementation is provided as we cannot expect all backends to
+    /// implement this function.
+    fn vring_started(&self, _index: u32, _vring: &Self::Vring) -> Result<()> {
+        Ok(())
+    }
+
     /// Update guest memory regions.
     fn update_memory(&self, mem: GM<Self::Bitmap>) -> Result<()>;
 
@@ -234,6 +251,23 @@ pub trait VhostUserBackendMut: Send + Sync {
         Ok(())
     }
 
+    /// Called when a vring becomes both ready and enabled, before any kick is
+    /// delivered on it.
+    ///
+    /// A backend is otherwise only handed a vring from `handle_event`, which
+    /// runs in response to the driver ringing the doorbell. A queue the driver
+    /// has no reason to kick -- a receive queue whose buffers were posted once
+    /// at startup, for example -- is therefore never seen by the backend at
+    /// all. This hook gives a backend one chance to inspect such a queue when
+    /// it is brought up, which is where reconnect reconciliation and inflight
+    /// I/O resubmission belong.
+    ///
+    /// A default implementation is provided as we cannot expect all backends to
+    /// implement this function.
+    fn vring_started(&mut self, _index: u32, _vring: &Self::Vring) -> Result<()> {
+        Ok(())
+    }
+
     /// Update guest memory regions.
     fn update_memory(&mut self, mem: GM<Self::Bitmap>) -> Result<()>;
 
@@ -378,6 +412,10 @@ impl<T: VhostUserBackend> VhostUserBackend for Arc<T> {
         self.deref().set_config(offset, buf)
     }
 
+    fn vring_started(&self, index: u32, vring: &Self::Vring) -> Result<()> {
+        self.deref().vring_started(index, vring)
+    }
+
     fn update_memory(&self, mem: GM<Self::Bitmap>) -> Result<()> {
         self.deref().update_memory(mem)
     }
@@ -469,6 +507,10 @@ impl<T: VhostUserBackendMut> VhostUserBackend for Mutex<T> {
 
     fn set_config(&self, offset: u32, buf: &[u8]) -> Result<()> {
         self.lock().unwrap().set_config(offset, buf)
+    }
+
+    fn vring_started(&self, index: u32, vring: &Self::Vring) -> Result<()> {
+        self.lock().unwrap().vring_started(index, vring)
     }
 
     fn update_memory(&self, mem: GM<Self::Bitmap>) -> Result<()> {
@@ -565,6 +607,10 @@ impl<T: VhostUserBackendMut> VhostUserBackend for RwLock<T> {
 
     fn set_config(&self, offset: u32, buf: &[u8]) -> Result<()> {
         self.write().unwrap().set_config(offset, buf)
+    }
+
+    fn vring_started(&self, index: u32, vring: &Self::Vring) -> Result<()> {
+        self.write().unwrap().vring_started(index, vring)
     }
 
     fn update_memory(&self, mem: GM<Self::Bitmap>) -> Result<()> {

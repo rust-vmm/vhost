@@ -213,7 +213,11 @@ where
     /// Adds or removes the vring's kick fd to the epoll instance based on the vring status.
     /// Ensures that notifications are handled only while the vring is both started and enabled
     /// and that no notifications are lost.
+    ///
+    /// Notifies the backend through `vring_started` when the registration is newly established,
+    /// so a backend can inspect a queue that is up but that the driver has no reason to kick.
     fn update_vring_registration(&self, vring: &T::Vring, index: u8) -> VhostUserResult<()> {
+        let mut newly_started = false;
         let vring_state = vring.get_ref();
         if let Some(fd) = vring_state.get_kick() {
             for (thread_index, queues_mask) in self.queues_per_thread.iter().enumerate() {
@@ -221,16 +225,16 @@ where
                 if shifted_queues_mask & 1u64 == 1u64 {
                     let evt_idx = queues_mask.count_ones() - shifted_queues_mask.count_ones();
                     if vring_state.get_queue().ready() && vring_state.is_enabled() {
-                        if let Err(e) = self.handlers[thread_index].register_event(
+                        match self.handlers[thread_index].register_event(
                             fd.as_raw_fd(),
                             EventSet::IN,
                             u64::from(evt_idx),
                         ) {
-                            if e.kind() != io::ErrorKind::AlreadyExists {
-                                // This could happen if we're asked by the frontend to enable an
-                                // already enabled queue, don't fail in that case.
-                                return Err(VhostUserError::ReqHandlerError(e));
-                            }
+                            Ok(()) => newly_started = true,
+                            // This could happen if we're asked by the frontend to enable an
+                            // already enabled queue, don't fail in that case.
+                            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+                            Err(e) => return Err(VhostUserError::ReqHandlerError(e)),
                         }
                     } else {
                         let _ = self.handlers[thread_index].unregister_event(
@@ -243,6 +247,17 @@ where
                 }
             }
         }
+
+        // Release the borrow before calling out: a backend acting on the vring it is handed
+        // will typically want a write guard on it.
+        drop(vring_state);
+
+        if newly_started {
+            self.backend
+                .vring_started(u32::from(index), vring)
+                .map_err(VhostUserError::ReqHandlerError)?;
+        }
+
         Ok(())
     }
 
