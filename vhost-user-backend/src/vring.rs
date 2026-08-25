@@ -14,7 +14,11 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use virtio_queue::{Error as VirtQueError, Queue, QueueT};
-use vm_memory::{GuestAddress, GuestAddressSpace, GuestMemoryAtomic, GuestMemoryMmap};
+use vm_memory::{GuestAddress, GuestAddressSpace, GuestMemoryAtomic};
+#[cfg(not(feature = "xen"))]
+use vm_memory::GuestMemoryMmap;
+#[cfg(feature = "xen")]
+use vm_memory::GuestMemoryMmapXen as GuestMemoryMmap;
 use vmm_sys_util::event::{EventConsumer, EventNotifier};
 
 /// Trait for objects returned by `VringT::get_ref()`.

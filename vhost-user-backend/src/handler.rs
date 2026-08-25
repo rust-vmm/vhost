@@ -30,9 +30,13 @@ use vhost::vhost_user::{
 use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use virtio_queue::{Error as VirtQueError, QueueT};
 use vm_memory::mmap::NewBitmap;
-use vm_memory::{
-    GuestAddress, GuestAddressSpace, GuestMemoryBackend, GuestMemoryMmap, GuestRegionMmap,
-};
+use vm_memory::{GuestAddress, GuestAddressSpace, GuestMemoryBackend};
+
+#[cfg(not(feature = "xen"))]
+use vm_memory::{GuestRegionMmap, GuestMemoryMmap};
+#[cfg(feature = "xen")]
+use vm_memory::{GuestRegionMmapXen as GuestRegionMmap, GuestMemoryMmapXen as GuestMemoryMmap};
+
 use vmm_sys_util::epoll::EventSet;
 
 use super::backend::VhostUserBackend;
@@ -822,7 +826,11 @@ mod tests {
     use std::thread;
     use std::time::Duration;
     use vhost::vhost_user::message::VhostUserVirtioFeatures;
-    use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
+    use vm_memory::{GuestAddress, GuestMemoryAtomic};
+    #[cfg(not(feature = "xen"))]
+    use vm_memory::GuestMemoryMmap;
+    #[cfg(feature = "xen")]
+    use vm_memory::GuestMemoryMmapXen as GuestMemoryMmap;
     use vmm_sys_util::event::{new_event_consumer_and_notifier, EventFlag};
 
     #[test]

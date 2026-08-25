@@ -233,7 +233,11 @@ mod tests {
     use super::super::vring::VringRwLock;
     use super::*;
     use std::sync::{Arc, Mutex};
-    use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
+    use vm_memory::{GuestAddress, GuestMemoryAtomic};
+    #[cfg(not(feature = "xen"))]
+    use vm_memory::GuestMemoryMmap;
+    #[cfg(feature = "xen")]
+    use vm_memory::GuestMemoryMmapXen as GuestMemoryMmap;
     use vmm_sys_util::event::{new_event_consumer_and_notifier, EventFlag};
 
     #[test]

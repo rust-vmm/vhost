@@ -17,10 +17,12 @@ use std::ops::Deref;
 
 use uuid::Uuid;
 
-use vm_memory::{mmap::NewBitmap, ByteValued, FileOffset, MmapRegion};
+use vm_memory::{mmap::NewBitmap, ByteValued, FileOffset};
 
+#[cfg(not(feature = "xen"))]
+use vm_memory::MmapRegion;
 #[cfg(feature = "xen")]
-use vm_memory::{GuestAddress, MmapRange, MmapXenFlags};
+use vm_memory::{GuestAddress, GuestRegionXen, MmapRangeXen, MmapXenFlags};
 
 use super::{enum_value, Error, Result};
 use crate::VringConfigData;
@@ -594,8 +596,8 @@ impl VhostUserMemoryRegion {
     }
 
     /// Creates mmap region from Self.
-    pub fn mmap_region<B: NewBitmap>(&self, file: File) -> Result<MmapRegion<B>> {
-        let range = MmapRange::new(
+    pub fn mmap_region<B: NewBitmap>(&self, file: File) -> Result<GuestRegionXen<B>> {
+        let range = MmapRangeXen::new(
             self.memory_size as usize,
             Some(FileOffset::new(file, self.mmap_offset)),
             GuestAddress(self.guest_phys_addr),
@@ -603,7 +605,7 @@ impl VhostUserMemoryRegion {
             self.xen_mmap_data,
         );
 
-        MmapRegion::<B>::from_range(range).map_err(|e| Error::ReqHandlerError(io::Error::other(e)))
+        GuestRegionXen::<B>::from_range(range).map_err(|e| Error::ReqHandlerError(io::Error::other(e)))
     }
 
     fn is_valid(&self) -> bool {

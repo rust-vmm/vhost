@@ -14,7 +14,12 @@ use std::os::unix::io::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::sync::RwLock;
 
-use vm_memory::{bitmap::Bitmap, Address, GuestMemoryRegion, GuestRegionMmap};
+use vm_memory::{bitmap::Bitmap, Address, GuestMemoryRegion};
+#[cfg(not(feature = "xen"))]
+use vm_memory::GuestRegionMmap;
+#[cfg(feature = "xen")]
+use vm_memory::GuestRegionMmapXen as GuestRegionMmap;
+
 use vmm_sys_util::eventfd::EventFd;
 
 #[cfg(feature = "vhost-user")]

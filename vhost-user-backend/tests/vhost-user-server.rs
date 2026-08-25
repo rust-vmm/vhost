@@ -16,8 +16,11 @@ use vhost::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
 use vhost_user_backend::{VhostUserBackendMut, VhostUserDaemon, VringRwLock};
 use vm_memory::{
     FileOffset, GuestAddress, GuestAddressSpace, GuestMemoryAtomic, GuestMemoryBackend,
-    GuestMemoryMmap,
 };
+#[cfg(not(feature = "xen"))]
+use vm_memory::GuestMemoryMmap;
+#[cfg(feature = "xen")]
+use vm_memory::GuestMemoryMmapXen as GuestMemoryMmap;
 use vmm_sys_util::epoll::EventSet;
 use vmm_sys_util::event::{
     new_event_consumer_and_notifier, EventConsumer, EventFlag, EventNotifier,

@@ -18,7 +18,12 @@ use std::thread;
 
 use vhost::vhost_user::{BackendListener, BackendReqHandler, Error as VhostUserError, Listener};
 use vm_memory::mmap::NewBitmap;
-use vm_memory::{GuestMemoryAtomic, GuestMemoryMmap};
+use vm_memory::GuestMemoryAtomic;
+
+#[cfg(not(feature = "xen"))]
+use vm_memory::GuestMemoryMmap;
+#[cfg(feature = "xen")]
+use vm_memory::GuestMemoryMmapXen as GuestMemoryMmap;
 
 use self::handler::VhostUserHandler;
 
@@ -335,7 +340,11 @@ mod tests {
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::sync::Barrier;
     use std::time::Duration;
-    use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
+    use vm_memory::{GuestAddress, GuestMemoryAtomic};
+    #[cfg(not(feature = "xen"))]
+    use vm_memory::GuestMemoryMmap;
+    #[cfg(feature = "xen")]
+    use vm_memory::GuestMemoryMmapXen as GuestMemoryMmap;
 
     #[test]
     fn test_new_daemon() {
