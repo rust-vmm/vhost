@@ -13,8 +13,9 @@ use std::result::Result;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+use crate::GM;
 use virtio_queue::{Error as VirtQueError, Queue, QueueT};
-use vm_memory::{GuestAddress, GuestAddressSpace, GuestMemoryAtomic, GuestMemoryMmap};
+use vm_memory::{GuestAddress, GuestAddressSpace};
 use vmm_sys_util::event::{EventConsumer, EventNotifier};
 
 /// Trait for objects returned by `VringT::get_ref()`.
@@ -107,7 +108,7 @@ pub trait VringT<M: GuestAddressSpace>:
 ///
 /// This struct maintains all information of a virito queue, and could be used as an `VringT`
 /// object for single-threaded context.
-pub struct VringState<M: GuestAddressSpace = GuestMemoryAtomic<GuestMemoryMmap>> {
+pub struct VringState<M: GuestAddressSpace = GM> {
     queue: Queue,
     kick: Option<EventConsumer>,
     call: Option<EventNotifier>,
@@ -274,7 +275,7 @@ impl<M: GuestAddressSpace> VringState<M> {
 
 /// A `VringState` object protected by Mutex for multi-threading context.
 #[derive(Clone)]
-pub struct VringMutex<M: GuestAddressSpace = GuestMemoryAtomic<GuestMemoryMmap>> {
+pub struct VringMutex<M: GuestAddressSpace = GM> {
     state: Arc<Mutex<VringState<M>>>,
 }
 
@@ -389,7 +390,7 @@ impl<M: 'static + GuestAddressSpace> VringT<M> for VringMutex<M> {
 
 /// A `VringState` object protected by RwLock for multi-threading context.
 #[derive(Clone)]
-pub struct VringRwLock<M: GuestAddressSpace = GuestMemoryAtomic<GuestMemoryMmap>> {
+pub struct VringRwLock<M: GuestAddressSpace = GM> {
     state: Arc<RwLock<VringState<M>>>,
 }
 
@@ -506,13 +507,17 @@ impl<M: 'static + GuestAddressSpace> VringT<M> for VringRwLock<M> {
 mod tests {
     use super::*;
     use vm_memory::bitmap::AtomicBitmap;
+    use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestRegionCollection, GuestRegionMmap};
     use vmm_sys_util::event::{new_event_consumer_and_notifier, EventFlag};
 
     #[test]
     fn test_new_vring() {
         let mem = GuestMemoryAtomic::new(
-            GuestMemoryMmap::<AtomicBitmap>::from_ranges(&[(GuestAddress(0x100000), 0x10000)])
-                .unwrap(),
+            GuestRegionCollection::from_regions(vec![vhost::MemoryRegion::Unix(
+                GuestRegionMmap::<AtomicBitmap>::from_range(GuestAddress(0x100000), 0x10000, None)
+                    .unwrap(),
+            )])
+            .unwrap(),
         );
         let vring = VringMutex::new(mem, 0x1000).unwrap();
 
@@ -546,7 +551,11 @@ mod tests {
     #[test]
     fn test_vring_set_fd() {
         let mem = GuestMemoryAtomic::new(
-            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+            GuestRegionCollection::from_regions(vec![vhost::MemoryRegion::Unix(
+                GuestRegionMmap::<AtomicBitmap>::from_range(GuestAddress(0x100000), 0x10000, None)
+                    .unwrap(),
+            )])
+            .unwrap(),
         );
         let vring = VringMutex::new(mem, 0x1000).unwrap();
 

@@ -30,9 +30,7 @@ use vhost::vhost_user::{
 use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use virtio_queue::{Error as VirtQueError, QueueT};
 use vm_memory::mmap::NewBitmap;
-use vm_memory::{
-    GuestAddress, GuestAddressSpace, GuestMemoryBackend, GuestMemoryMmap, GuestRegionMmap,
-};
+use vm_memory::{GuestAddress, GuestAddressSpace, GuestMemoryBackend, GuestRegionCollection};
 use vmm_sys_util::epoll::EventSet;
 
 use super::backend::VhostUserBackend;
@@ -338,13 +336,7 @@ where
         let mut mappings: Vec<AddrMapping> = Vec::new();
 
         for (region, file) in ctx.iter().zip(files) {
-            let guest_region = GuestRegionMmap::new(
-                region.mmap_region(file)?,
-                GuestAddress(region.guest_phys_addr),
-            )
-            .ok_or(VhostUserError::ReqHandlerError(
-                io::ErrorKind::InvalidInput.into(),
-            ))?;
+            let guest_region = region.memory_region(file)?;
             mappings.push(AddrMapping {
                 #[cfg(feature = "postcopy")]
                 local_addr: guest_region.as_ptr() as u64,
@@ -355,7 +347,7 @@ where
             regions.push(guest_region);
         }
 
-        let mem = GuestMemoryMmap::from_regions(regions)
+        let mem = GuestRegionCollection::from_regions(regions)
             .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?;
 
         // Updating the inner GuestMemory object here will cause all our vrings to
@@ -623,15 +615,7 @@ where
         region: &VhostUserSingleMemoryRegion,
         file: File,
     ) -> VhostUserResult<()> {
-        let guest_region = Arc::new(
-            GuestRegionMmap::new(
-                region.mmap_region(file)?,
-                GuestAddress(region.guest_phys_addr),
-            )
-            .ok_or(VhostUserError::ReqHandlerError(
-                io::ErrorKind::InvalidInput.into(),
-            ))?,
-        );
+        let guest_region = Arc::new(region.memory_region(file)?);
 
         let addr_mapping = AddrMapping {
             #[cfg(feature = "postcopy")]
@@ -822,13 +806,16 @@ mod tests {
     use std::thread;
     use std::time::Duration;
     use vhost::vhost_user::message::VhostUserVirtioFeatures;
-    use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
+    use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestRegionCollection, GuestRegionMmap};
     use vmm_sys_util::event::{new_event_consumer_and_notifier, EventFlag};
 
     #[test]
     fn test_no_lost_kicks() {
         let mem = GuestMemoryAtomic::new(
-            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+            GuestRegionCollection::from_regions(vec![vhost::MemoryRegion::Unix(
+                GuestRegionMmap::from_range(GuestAddress(0x100000), 0x10000, None).unwrap(),
+            )])
+            .unwrap(),
         );
         let backend = Arc::new(Mutex::new(MockVhostBackend::new()));
         let mut handler = VhostUserHandler::new(backend.clone(), mem.clone()).unwrap();
