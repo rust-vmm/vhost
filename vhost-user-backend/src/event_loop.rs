@@ -3,14 +3,18 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
-use std::io::{self, Result};
+use std::io::{self, ErrorKind, Result};
 use std::marker::PhantomData;
 use std::os::fd::IntoRawFd;
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::sync::Mutex;
 
 use vmm_sys_util::epoll::{ControlOperation, Epoll, EpollEvent, EventSet};
-use vmm_sys_util::event::EventNotifier;
+use vmm_sys_util::event::{
+    new_event_consumer_and_notifier, EventConsumer, EventFlag, EventNotifier,
+};
 
 use super::backend::VhostUserBackend;
 use super::vring::VringT;
@@ -28,6 +32,14 @@ pub enum VringEpollError {
     HandleEventReadKick(io::Error),
     /// Failed to handle the event from the backend.
     HandleEventBackendHandling(io::Error),
+    /// Vring index out or range.
+    VringIndexOutOfRange(usize),
+    /// Failed to create event consumer and notifier pair.
+    NewEventConsumerNotifier(io::Error),
+    /// Could not register vring enabled event fd.
+    RegisterVringEnabledEvent(io::Error),
+    /// Failed to consume event from vring enabled event fd.
+    HandleVringEnabledEventConsume(io::Error),
 }
 
 impl Display for VringEpollError {
@@ -41,6 +53,18 @@ impl Display for VringEpollError {
             }
             VringEpollError::HandleEventBackendHandling(e) => {
                 write!(f, "failed to handle epoll event: {e}")
+            }
+            VringEpollError::VringIndexOutOfRange(idx) => {
+                write!(f, "vring index out of range: {idx}")
+            }
+            VringEpollError::NewEventConsumerNotifier(e) => {
+                write!(f, "failed to create event consumer and notifier: {e}")
+            }
+            VringEpollError::RegisterVringEnabledEvent(e) => {
+                write!(f, "cannot register vring enabled event fd: {e}")
+            }
+            VringEpollError::HandleVringEnabledEventConsume(e) => {
+                write!(f, "failed to consume vring enabled event: {e}")
             }
         }
     }
@@ -63,6 +87,8 @@ pub struct VringEpollHandler<T: VhostUserBackend> {
     vrings: Vec<T::Vring>,
     thread_id: usize,
     exit_event_fd: Option<EventNotifier>,
+    vring_enabled_event_fd: (EventConsumer, EventNotifier),
+    vrings_with_pending_events: Mutex<HashSet<u16>>,
     phantom: PhantomData<T::Bitmap>,
 }
 
@@ -102,12 +128,26 @@ where
             None
         };
 
+        let vring_enabled_event_fd =
+            new_event_consumer_and_notifier(EventFlag::NONBLOCK | EventFlag::CLOEXEC)
+                .map_err(VringEpollError::NewEventConsumerNotifier)?;
+        let vring_enabled_event = backend.num_queues() as u64;
+        epoll
+            .ctl(
+                ControlOperation::Add,
+                vring_enabled_event_fd.0.as_raw_fd(),
+                EpollEvent::new(EventSet::IN, vring_enabled_event),
+            )
+            .map_err(VringEpollError::RegisterVringEnabledEvent)?;
+
         Ok(VringEpollHandler {
             epoll,
             backend,
             vrings,
             thread_id,
             exit_event_fd,
+            vring_enabled_event_fd,
+            vrings_with_pending_events: Mutex::new(HashSet::new()),
             phantom: PhantomData,
         })
     }
@@ -139,11 +179,24 @@ where
     }
 
     pub(crate) fn register_event(&self, fd: RawFd, ev_type: EventSet, data: u64) -> Result<()> {
+        if data < self.backend.num_queues() as u64 {
+            self.vrings_with_pending_events
+                .lock()
+                .unwrap()
+                .insert(data as u16);
+            self.vring_enabled_event_fd.1.notify()?;
+        }
         self.epoll
             .ctl(ControlOperation::Add, fd, EpollEvent::new(ev_type, data))
     }
 
     pub(crate) fn unregister_event(&self, fd: RawFd, ev_type: EventSet, data: u64) -> Result<()> {
+        if data < self.backend.num_queues() as u64 {
+            self.vrings_with_pending_events
+                .lock()
+                .unwrap()
+                .remove(&(data as u16));
+        }
         self.epoll
             .ctl(ControlOperation::Delete, fd, EpollEvent::new(ev_type, data))
     }
@@ -197,8 +250,8 @@ where
     }
 
     fn handle_event(&self, device_event: u16, evset: EventSet) -> VringEpollResult<bool> {
-        if self.exit_event_fd.is_some() && device_event as usize == self.backend.num_queues() {
-            return Ok(true);
+        if device_event as usize == self.backend.num_queues() {
+            return self.handle_num_queues_event(evset);
         }
 
         if (device_event as usize) < self.vrings.len() {
@@ -218,6 +271,35 @@ where
             .map_err(VringEpollError::HandleEventBackendHandling)?;
 
         Ok(false)
+    }
+
+    fn handle_num_queues_event(&self, evset: EventSet) -> VringEpollResult<bool> {
+        // The num_queues event can be triggered by the exit event fd or a vring becoming enabled.
+        // The vring_enabled_event_fd is guaranteed to be non-blocking so reading from it will
+        // determine which fd triggered the event.
+        match self.vring_enabled_event_fd.0.consume() {
+            Ok(()) => {
+                let vrings_with_pending_events =
+                    std::mem::take(&mut *self.vrings_with_pending_events.lock().unwrap());
+                for device_event in vrings_with_pending_events {
+                    let vring_idx = device_event as usize;
+                    if vring_idx >= self.backend.num_queues() {
+                        return Err(VringEpollError::VringIndexOutOfRange(vring_idx));
+                    }
+                    self.backend
+                        .handle_event(device_event, evset, &self.vrings, self.thread_id)
+                        .map_err(VringEpollError::HandleEventBackendHandling)?;
+                }
+                // There may have been a notification in the exit fd too, but it wasn't consumed and
+                // it's not safe to attempt to because that fd may not be non-blocking. Returning
+                // false ensures there will be another iteration of the main loop which will trigger
+                // the same event if exit fd is readable.
+                Ok(false)
+            }
+            // With no notification in the vring enabled fd the only other option is the exit fd.
+            Err(e) if e.kind() == ErrorKind::WouldBlock => Ok(true),
+            Err(e) => Err(VringEpollError::HandleVringEnabledEventConsume(e)),
+        }
     }
 }
 

@@ -870,6 +870,9 @@ mod tests {
         thread::sleep(Duration::from_millis(200));
 
         let events = backend.lock().unwrap().events();
-        assert_eq!(events, 1, "Backend SHOULD have been kicked after enabling");
+        assert!(
+            events >= 1,
+            "Backend SHOULD have been kicked after enabling"
+        );
     }
 }
