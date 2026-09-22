@@ -951,6 +951,12 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
                 | FrontendReq::SET_BACKEND_REQ_FD
                 | FrontendReq::SET_INFLIGHT_FD
                 | FrontendReq::ADD_MEM_REG
+                // Needed for spec compatibility against older incorrect implementations:
+                // "No file descriptors SHOULD be passed in the ancillary data. For compatibility
+                // with existing incorrect implementations, the back-end MAY accept messages with
+                // one file descriptor. If a file descriptor is passed, the back-end MUST close it
+                // without using it otherwise."
+                | FrontendReq::REM_MEM_REG
                 | FrontendReq::SET_DEVICE_STATE_FD
                 | FrontendReq::GPU_SET_SOCKET,
             ) => Ok(()),

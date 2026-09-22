@@ -6,6 +6,8 @@
 ### Changed
 ### Deprecated
 ### Fixed
+- [[#378]](https://github.com/rust-vmm/vhost/pull/378) Allow `REM_MEM_REG` requests to carry a file
+  descriptor for spec compliance against older incorrect implementations.
 
 ## v0.17.0
 
