@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- [[#381]](https://github.com/rust-vmm/vhost/pull/381) Add a `postcopy-frontend` feature
 ### Changed
 ### Deprecated
 ### Fixed
