@@ -100,21 +100,21 @@ pub trait VhostUserFrontend: VhostBackend {
     /// Sends VHOST_USER_POSTCOPY_ADVISE msg to the backend
     /// initiating the beginning of the postcopy process.
     /// Backend will return a userfaultfd.
-    #[cfg(feature = "postcopy")]
+    #[cfg(feature = "postcopy-frontend")]
     fn postcopy_advise(&mut self) -> Result<File>;
 
     /// Sends VHOST_USER_POSTCOPY_LISTEN msg to the backend
     /// telling it to register its memory regions with
     /// userfaultfd previously received through the
     /// [`VhostUserFrontend::postcopy_advise`] call.
-    #[cfg(feature = "postcopy")]
+    #[cfg(feature = "postcopy-frontend")]
     fn postcopy_listen(&mut self) -> Result<()>;
 
     /// Sends VHOST_USER_POSTCOPY_END msg to the backend
     /// indicating the end of the postcopy process.
     /// Backend will destroy the userfaultfd object previously
     /// sent by [`VhostUserFrontend::postcopy_advise`].
-    #[cfg(feature = "postcopy")]
+    #[cfg(feature = "postcopy-frontend")]
     fn postcopy_end(&mut self) -> Result<()>;
 }
 
@@ -643,7 +643,7 @@ impl VhostUserFrontend for Frontend {
         Ok(())
     }
 
-    #[cfg(feature = "postcopy")]
+    #[cfg(feature = "postcopy-frontend")]
     fn postcopy_advise(&mut self) -> Result<File> {
         let mut node = self.node();
         node.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
@@ -657,7 +657,7 @@ impl VhostUserFrontend for Frontend {
         }
     }
 
-    #[cfg(feature = "postcopy")]
+    #[cfg(feature = "postcopy-frontend")]
     fn postcopy_listen(&mut self) -> Result<()> {
         let mut node = self.node();
         node.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
@@ -665,7 +665,7 @@ impl VhostUserFrontend for Frontend {
         node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
-    #[cfg(feature = "postcopy")]
+    #[cfg(feature = "postcopy-frontend")]
     fn postcopy_end(&mut self) -> Result<()> {
         let mut node = self.node();
         node.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;

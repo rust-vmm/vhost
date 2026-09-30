@@ -34,8 +34,14 @@ or server (listening) in the socket communication.
 ## Postcopy support
 
 To enabled POSTCOPY_* messages support there is a `postcopy` feature.
-Due to how Xen handles memory mappings the `postcopy` feature is not compatible
-with `xen` feature. Enabling both at the same time will result in a compilation error.
+
+A frontend built together with backends that don't support postcopy should only
+enable the `postcopy-frontend` feature, which adds the postcopy requests to the
+frontend alone.
+
+Due to how Xen handles memory mappings the `postcopy` and `postcopy-frontend`
+features are not compatible with `xen` feature. Enabling both at the same time
+will result in a compilation error.
 
 ## Xen support
 
