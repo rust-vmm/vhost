@@ -25,7 +25,8 @@ vhost-user = []
 vhost-user-frontend = ["vhost-user"]
 vhost-user-backend = ["vhost-user"]
 xen = ["vm-memory/xen"]
-postcopy = []
+postcopy = ["postcopy-frontend"]
+postcopy-frontend = []
 
 [dependencies]
 bitflags = "2.4"
@@ -44,7 +45,9 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(RUSTDOC_disable_feature_co
 
 [package.metadata.cargo-all-features]
 skip_feature_sets = [
-    ["xen", "postcopy"]
+    ["xen", "postcopy"],
+    ["xen", "postcopy-frontend"],
+    ["postcopy", "postcopy-frontend"],
 ]
 
 denylist = ["test_utils"]
