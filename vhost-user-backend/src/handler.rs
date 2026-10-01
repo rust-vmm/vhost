@@ -200,6 +200,24 @@ impl<T: VhostUserBackend> VhostUserHandler<T> {
             )));
         };
 
+        // A huge page would populate its neighbouring pages without them faulting.
+        //
+        // SAFETY: The range is a mapping we own, and madvise() doesn't cause a pagefault.
+        let ret = unsafe {
+            libc::madvise(
+                mapping.local_addr as *mut libc::c_void,
+                mapping.size as usize,
+                libc::MADV_NOHUGEPAGE,
+            )
+        };
+        if ret != 0 {
+            warn!(
+                "failed to disable transparent huge pages for postcopy region at {:#x}: {}",
+                mapping.gpa_base,
+                io::Error::last_os_error()
+            );
+        }
+
         uffd.register(
             mapping.local_addr as *mut libc::c_void,
             mapping.size as usize,
@@ -805,6 +823,23 @@ where
     #[cfg(feature = "postcopy")]
     fn postcopy_end(&mut self) -> VhostUserResult<()> {
         self.uffd = None;
+        for mapping in self.mappings.iter() {
+            // SAFETY: The range is a mapping we own
+            let ret = unsafe {
+                libc::madvise(
+                    mapping.local_addr as *mut libc::c_void,
+                    mapping.size as usize,
+                    libc::MADV_HUGEPAGE,
+                )
+            };
+            if ret != 0 {
+                warn!(
+                    "failed to re-enable transparent huge pages for postcopy region at {:#x}: {}",
+                    mapping.gpa_base,
+                    io::Error::last_os_error()
+                );
+            }
+        }
         Ok(())
     }
 
