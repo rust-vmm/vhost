@@ -7,7 +7,11 @@
 - [[#381]](https://github.com/rust-vmm/vhost/pull/381) Add
   `VhostUserBackendReqHandler::postcopy_ack_mem_regions()` (and its
   `VhostUserBackendReqHandlerMut` counterpart).
+- [[#381]](https://github.com/rust-vmm/vhost/pull/381) Add `VhostUserFrontend::postcopy_ack_mem_regions()`.
 ### Changed
+- [[#381]](https://github.com/rust-vmm/vhost/pull/381) `VhostBackend::set_mem_table()` (and its
+  `VhostBackendMut` counterpart) and `VhostUserFrontend::add_mem_region()` return the bases of the
+  backend's mappings while postcopy is listening, and `None` otherwise.
 - [[#381]](https://github.com/rust-vmm/vhost/pull/381) `VhostUserBackendReqHandler::set_mem_table()`
   and `add_mem_region()` (and their `VhostUserBackendReqHandlerMut` counterparts) take a
   `postcopy_listening` parameter, and return the bases of the backend's mappings while postcopy is

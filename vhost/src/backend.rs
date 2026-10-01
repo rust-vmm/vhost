@@ -258,7 +258,13 @@ pub trait VhostBackend: std::marker::Sized {
     fn reset_owner(&self) -> Result<()>;
 
     /// Set the guest memory mappings for vhost to use.
-    fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()>;
+    ///
+    /// Returns the bases of the backend's mappings if the backend replies with them, which a
+    /// vhost-user backend does while postcopy is listening.
+    fn set_mem_table(
+        &self,
+        regions: &[VhostUserMemoryRegionInfo],
+    ) -> Result<Option<Vec<VhostUserMemoryRegionBase>>>;
 
     /// Set base address for page modification logging.
     fn set_log_base(&self, base: u64, region: Option<VhostUserDirtyLogRegion>) -> Result<()>;
@@ -344,7 +350,13 @@ pub trait VhostBackendMut: std::marker::Sized {
     fn reset_owner(&mut self) -> Result<()>;
 
     /// Set the guest memory mappings for vhost to use.
-    fn set_mem_table(&mut self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()>;
+    ///
+    /// Returns the bases of the backend's mappings if the backend replies with them, which a
+    /// vhost-user backend does while postcopy is listening.
+    fn set_mem_table(
+        &mut self,
+        regions: &[VhostUserMemoryRegionInfo],
+    ) -> Result<Option<Vec<VhostUserMemoryRegionBase>>>;
 
     /// Set base address for page modification logging.
     fn set_log_base(&mut self, base: u64, region: Option<VhostUserDirtyLogRegion>) -> Result<()>;
@@ -416,7 +428,10 @@ impl<T: VhostBackendMut> VhostBackend for RwLock<T> {
         self.write().unwrap().reset_owner()
     }
 
-    fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
+    fn set_mem_table(
+        &self,
+        regions: &[VhostUserMemoryRegionInfo],
+    ) -> Result<Option<Vec<VhostUserMemoryRegionBase>>> {
         self.write().unwrap().set_mem_table(regions)
     }
 
@@ -476,7 +491,10 @@ impl<T: VhostBackendMut> VhostBackend for RefCell<T> {
         self.borrow_mut().reset_owner()
     }
 
-    fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
+    fn set_mem_table(
+        &self,
+        regions: &[VhostUserMemoryRegionInfo],
+    ) -> Result<Option<Vec<VhostUserMemoryRegionBase>>> {
         self.borrow_mut().set_mem_table(regions)
     }
 
@@ -566,8 +584,11 @@ mod tests {
             Ok(())
         }
 
-        fn set_mem_table(&mut self, _regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
-            Ok(())
+        fn set_mem_table(
+            &mut self,
+            _regions: &[VhostUserMemoryRegionInfo],
+        ) -> Result<Option<Vec<VhostUserMemoryRegionBase>>> {
+            Ok(None)
         }
 
         fn set_log_base(
