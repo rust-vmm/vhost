@@ -14,6 +14,8 @@
   specified by the spec, and only publish them once the frontend acks the reply.
 - [[#381]](https://github.com/rust-vmm/vhost/pull/381) `POSTCOPY_LISTEN` no longer registers any memory
   region by itself.
+- [[#381]](https://github.com/rust-vmm/vhost/pull/381) Disable transparent huge pages on guest memory
+  during postcopy.
 
 ## v0.23.0
 
