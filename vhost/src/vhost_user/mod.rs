@@ -55,7 +55,10 @@ mod gpu_backend_req;
 pub mod gpu_message;
 pub use self::gpu_backend_req::GpuBackend;
 
-#[cfg(all(feature = "vhost-user-backend", feature = "postcopy"))]
+#[cfg(any(
+    all(feature = "vhost-user-frontend", feature = "postcopy-frontend"),
+    all(feature = "vhost-user-backend", feature = "postcopy")
+))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum PostcopyState {
     #[default]
@@ -576,6 +579,58 @@ mod tests {
         frontend.remove_mem_region(&region).unwrap();
 
         mbar.wait();
+    }
+
+    #[cfg(feature = "postcopy")]
+    #[test]
+    fn test_postcopy_mem_regions() {
+        let path = temp_path();
+        let backend_be = Arc::new(Mutex::new(DummyBackendReqHandler::new()));
+        let (mut frontend, mut backend) = create_backend(path, backend_be);
+        let handle = thread::spawn(move || while backend.handle_request().is_ok() {});
+
+        frontend.set_owner().unwrap();
+        frontend.get_features().unwrap();
+        frontend.set_features(VIRTIO_FEATURES & !0x1).unwrap();
+        frontend.get_protocol_features().unwrap();
+        frontend
+            .set_protocol_features(
+                VhostUserProtocolFeatures::PAGEFAULT
+                    | VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS
+                    | VhostUserProtocolFeatures::REPLY_ACK,
+            )
+            .unwrap();
+        // Postcopy memory updates must not ask for a REPLY_ACK even if other requests do.
+        frontend.set_hdr_flags(VhostUserHeaderFlag::NEED_REPLY);
+
+        let _uffd = frontend.postcopy_advise().unwrap();
+        frontend.postcopy_listen().unwrap();
+
+        let file = TempFile::new().unwrap();
+        let fd = file.as_file().as_raw_fd();
+        let table = [
+            VhostUserMemoryRegionInfo::new(0x10_0000, 0x1000, 0x1234_0000, 0, fd),
+            VhostUserMemoryRegionInfo::new(0x20_0000, 0x2000, 0x5678_0000, 0x1000, fd),
+        ];
+        let bases = frontend.set_mem_table(&table).unwrap();
+        assert_eq!(bases, Some(vec![0x1234_0000, 0x5678_0000]));
+        frontend
+            .postcopy_ack_mem_regions(FrontendReq::SET_MEM_TABLE)
+            .unwrap();
+
+        let region = VhostUserMemoryRegionInfo::new(0x30_0000, 0x1000, 0x9abc_0000, 0, fd);
+        let base = frontend.add_mem_region(&region).unwrap();
+        assert_eq!(base, Some(0x9abc_0000));
+        frontend
+            .postcopy_ack_mem_regions(FrontendReq::ADD_MEM_REG)
+            .unwrap();
+
+        // POSTCOPY_END waits for its REPLY_ACK, so the backend has handled the acks by then.
+        frontend.postcopy_end().unwrap();
+        assert_eq!(frontend.set_mem_table(&table).unwrap(), None);
+
+        drop(frontend);
+        handle.join().unwrap();
     }
 
     #[test]
