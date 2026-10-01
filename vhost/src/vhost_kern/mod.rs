@@ -22,8 +22,8 @@ use vmm_sys_util::ioctl::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_
 
 use super::{
     Error, Result, VhostAccess, VhostBackend, VhostIotlbBackend, VhostIotlbMsg,
-    VhostIotlbMsgParser, VhostIotlbType, VhostUserDirtyLogRegion, VhostUserMemoryRegionInfo,
-    VringConfigData, VHOST_MAX_MEMORY_REGIONS,
+    VhostIotlbMsgParser, VhostIotlbType, VhostUserDirtyLogRegion, VhostUserMemoryRegionBase,
+    VhostUserMemoryRegionInfo, VringConfigData, VHOST_MAX_MEMORY_REGIONS,
 };
 
 pub mod vhost_binding;
@@ -140,7 +140,10 @@ impl<T: VhostKernBackend> VhostBackend for T {
     }
 
     /// Set the guest memory mappings for vhost to use.
-    fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
+    fn set_mem_table(
+        &self,
+        regions: &[VhostUserMemoryRegionInfo],
+    ) -> Result<Option<Vec<VhostUserMemoryRegionBase>>> {
         if regions.is_empty() || regions.len() > VHOST_MAX_MEMORY_REGIONS {
             return Err(Error::InvalidGuestMemory);
         }
@@ -162,7 +165,7 @@ impl<T: VhostKernBackend> VhostBackend for T {
         // of this function. The kernel will make its own copy of the memory
         // tables. As always, check the return value.
         let ret = unsafe { ioctl_with_ptr(self, VHOST_SET_MEM_TABLE(), vhost_memory.as_ptr()) };
-        ioctl_result(ret, ())
+        ioctl_result(ret, None)
     }
 
     /// Set base address for page modification logging.
