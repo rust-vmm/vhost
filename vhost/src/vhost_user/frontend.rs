@@ -276,7 +276,19 @@ impl VhostBackend for Frontend {
                 &log,
                 Some(&[region.mmap_handle]),
             )?;
-            let _ = node.recv_reply::<VhostUserLog>(&hdr)?;
+            // The spec gives this reply no payload, but back-ends differ: this crate's back-end
+            // echoes the VhostUserLog (16 bytes), libvhost-user replies with a u64 (8 bytes).
+            // Read the body by the size in the reply's header, as QEMU's frontend does, rather
+            // than waiting for bytes that may never come.
+            node.check_state()?;
+            let (reply, rfds) = node.main_sock.recv_header()?;
+            let len = reply.get_size() as usize;
+            if !reply.is_reply_for(&hdr) || rfds.is_some() || len > mem::size_of::<VhostUserLog>() {
+                return error_code(VhostUserError::InvalidMessage);
+            }
+            if len > 0 && node.main_sock.recv_data(len)?.0 != len {
+                return error_code(VhostUserError::PartialMessage);
+            }
             Ok(())
         } else {
             let _ = node.send_request_with_body(FrontendReq::SET_LOG_BASE, &val, None)?;
@@ -1400,5 +1412,44 @@ mod tests {
         let reply_body = VhostUserU64::new(0);
         peer.send_message(&reply_hdr, &reply_body, None).unwrap();
         assert!(frontend.check_device_state().is_ok());
+    }
+
+    #[test]
+    fn test_frontend_set_log_base_reply_size() {
+        // A back-end may answer SET_LOG_BASE with no body (as the spec says), a u64
+        // (libvhost-user, e.g. qemu-storage-daemon) or the echoed VhostUserLog (this crate's
+        // back-end). Each must be read by the size in its header; reading a fixed-size body
+        // used to block forever on the shorter replies, so bound each call with a timeout.
+        let (frontend, mut peer) = create_pair2();
+        let log_fd = EventFd::new(0).unwrap();
+        let region = VhostUserDirtyLogRegion {
+            mmap_size: 0x1000,
+            mmap_offset: 0,
+            mmap_handle: log_fd.as_raw_fd(),
+        };
+        let body = [0u8; 24];
+
+        for (size, ok) in [(0, true), (8, true), (16, true), (24, false)] {
+            let hdr = VhostUserMsgHeader::new(FrontendReq::SET_LOG_BASE, 0x4, size as u32);
+            peer.send_header(&hdr, None).unwrap();
+            if size > 0 {
+                peer.send_slice(&body[..size], None).unwrap();
+            }
+
+            let (tx, rx) = std::sync::mpsc::channel();
+            let frontend = frontend.clone();
+            std::thread::spawn(move || {
+                let _ = tx.send(frontend.set_log_base(0, Some(region)).is_ok());
+            });
+            let res = rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap_or_else(|_| panic!("set_log_base blocked on a {size}-byte reply"));
+            assert_eq!(res, ok, "{size}-byte reply");
+
+            let (hdr, rfds) = peer.recv_header().unwrap();
+            assert_eq!(hdr.get_code().unwrap(), FrontendReq::SET_LOG_BASE);
+            assert_eq!(rfds.map(|f| f.len()), Some(1));
+            peer.recv_data(hdr.get_size() as usize).unwrap();
+        }
     }
 }
