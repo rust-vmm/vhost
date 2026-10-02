@@ -8,6 +8,8 @@
 ### Fixed
 - [[#378]](https://github.com/rust-vmm/vhost/pull/378) Allow `REM_MEM_REG` requests to carry a file
   descriptor for spec compliance against older incorrect implementations.
+- [[#217]](https://github.com/rust-vmm/vhost/issues/217) Read the `SET_LOG_BASE` reply by the size in
+  its header, so the frontend no longer blocks on back-ends (e.g. libvhost-user) that send a shorter reply.
 
 ## v0.17.0
 
