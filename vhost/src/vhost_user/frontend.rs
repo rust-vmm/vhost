@@ -332,7 +332,9 @@ impl VhostBackend for Frontend {
                 &log,
                 Some(&[region.mmap_handle]),
             )?;
-            let _ = node.recv_reply::<VhostUserLog>(&hdr)?;
+            // The spec gives this reply no payload, but back-ends differ: this crate's echoes the
+            // VhostUserLog, libvhost-user sends a u64. Read whatever size the header declares.
+            node.recv_reply_ignoring_body::<VhostUserLog>(&hdr)?;
             Ok(())
         } else {
             let _ = node.send_request_with_body(FrontendReq::SET_LOG_BASE, &val, None)?;
@@ -927,6 +929,30 @@ impl FrontendInternal {
         Ok(body)
     }
 
+    fn recv_reply_ignoring_body<T>(
+        &mut self,
+        hdr: &VhostUserMsgHeader<FrontendReq>,
+    ) -> VhostUserResult<()> {
+        if hdr.is_reply() {
+            return Err(VhostUserError::InvalidParam);
+        }
+        self.check_state()?;
+
+        let (reply, rfds) = self.main_sock.recv_header()?;
+        let size = reply.get_size() as usize;
+        if !reply.is_reply_for(hdr) || rfds.is_some() || size > mem::size_of::<T>() {
+            return Err(VhostUserError::InvalidMessage);
+        }
+        let mut received = 0;
+        while received < size {
+            match self.main_sock.recv_data(size - received)?.0 {
+                0 => return Err(VhostUserError::PartialMessage),
+                bytes => received += bytes,
+            }
+        }
+        Ok(())
+    }
+
     fn recv_reply_with_optional_files<T: ByteValued + Sized + VhostUserMsgValidator + Default>(
         &mut self,
         hdr: &VhostUserMsgHeader<FrontendReq>,
@@ -1515,5 +1541,56 @@ mod tests {
         let reply_body = VhostUserU64::new(0);
         peer.send_message(&reply_hdr, &reply_body, None).unwrap();
         assert!(frontend.check_device_state().is_ok());
+    }
+
+    #[test]
+    fn test_frontend_set_log_base_reply_size() {
+        // A fixed-size read used to block forever on a shorter reply, so each call is bounded.
+        let (frontend, mut peer) = create_pair2();
+        let log_fd = EventFd::new(0).unwrap();
+        let region = VhostUserDirtyLogRegion {
+            mmap_size: 0x1000,
+            mmap_offset: 0,
+            mmap_handle: log_fd.as_raw_fd(),
+        };
+        let body = [0u8; 24];
+
+        for (size, ok) in [(0, true), (8, true), (16, true), (24, false)] {
+            let hdr = VhostUserMsgHeader::new(FrontendReq::SET_LOG_BASE, 0x4, size as u32);
+            peer.send_header(&hdr, None).unwrap();
+            if size > 0 {
+                peer.send_slice(&body[..size], None).unwrap();
+            }
+
+            let (tx, rx) = std::sync::mpsc::channel();
+            let frontend = frontend.clone();
+            std::thread::spawn(move || {
+                let _ = tx.send(frontend.set_log_base(0, Some(region)).is_ok());
+            });
+            let res = rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap_or_else(|_| panic!("set_log_base blocked on a {size}-byte reply"));
+            assert_eq!(res, ok, "{size}-byte reply");
+
+            let (hdr, rfds) = peer.recv_header().unwrap();
+            assert_eq!(hdr.get_code().unwrap(), FrontendReq::SET_LOG_BASE);
+            assert_eq!(rfds.map(|f| f.len()), Some(1));
+            peer.recv_data(hdr.get_size() as usize).unwrap();
+        }
+
+        let (frontend, mut peer) = create_pair2();
+        let hdr = VhostUserMsgHeader::new(FrontendReq::SET_LOG_BASE, 0x4, 16);
+        peer.send_header(&hdr, None).unwrap();
+        peer.send_slice(&body[..8], None).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(frontend.set_log_base(0, Some(region)).is_ok());
+        });
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        peer.send_slice(&body[8..16], None).unwrap();
+        let res = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("set_log_base blocked on a reply sent in two parts");
+        assert!(res, "a reply body sent in two parts is read whole");
     }
 }
