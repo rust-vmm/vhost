@@ -671,7 +671,13 @@ where
         &mut self,
         region: &VhostUserSingleMemoryRegion,
         file: File,
-    ) -> VhostUserResult<()> {
+        postcopy_listening: Option<bool>,
+    ) -> VhostUserResult<Option<VhostUserMemoryRegionBase>> {
+        #[cfg(not(feature = "postcopy"))]
+        if postcopy_listening.is_some() {
+            return Err(VhostUserError::InvalidOperation("postcopy not enabled"));
+        }
+
         let guest_region = Arc::new(
             GuestRegionMmap::new(
                 region.mmap_region(file)?,
@@ -689,6 +695,19 @@ where
             size: region.memory_size,
             gpa_base: region.guest_phys_addr,
         };
+        #[cfg(feature = "postcopy")]
+        if postcopy_listening == Some(true) {
+            self.postcopy_register(&addr_mapping)?;
+            let mem = match &self.pending_mem {
+                Some(pending_mem) => pending_mem.insert_region(guest_region),
+                None => self.atomic_mem.memory().insert_region(guest_region),
+            }
+            .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?;
+            let base = addr_mapping.local_addr;
+            self.pending_mem = Some(mem);
+            self.mappings.push(addr_mapping);
+            return Ok(Some(base));
+        }
 
         let mem = self
             .atomic_mem
@@ -704,7 +723,7 @@ where
 
         self.mappings.push(addr_mapping);
 
-        Ok(())
+        Ok(None)
     }
 
     fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> VhostUserResult<()> {
