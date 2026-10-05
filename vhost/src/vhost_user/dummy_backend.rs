@@ -318,8 +318,16 @@ impl VhostUserBackendReqHandlerMut for DummyBackendReqHandler {
         Ok(MAX_MEM_SLOTS as u64)
     }
 
-    fn add_mem_region(&mut self, _region: &VhostUserSingleMemoryRegion, _fd: File) -> Result<()> {
-        Ok(())
+    fn add_mem_region(
+        &mut self,
+        _region: &VhostUserSingleMemoryRegion,
+        _fd: File,
+        postcopy_listening: Option<bool>,
+    ) -> Result<Option<VhostUserMemoryRegionBase>> {
+        if postcopy_listening == Some(true) {
+            return Ok(Some(_region.user_addr));
+        }
+        Ok(None)
     }
 
     fn remove_mem_region(&mut self, _region: &VhostUserSingleMemoryRegion) -> Result<()> {
