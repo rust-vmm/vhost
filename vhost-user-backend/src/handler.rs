@@ -187,6 +187,26 @@ impl<T: VhostUserBackend> VhostUserHandler<T> {
 
         Err(VhostUserHandlerError::MissingMemoryMapping)
     }
+
+    // Register a region mapped while postcopy is listening with userfaultfd.This
+    // must happen before the region is visible to the vrings and the backend, or they could
+    // populate pages behind the frontend's back.
+    #[cfg(feature = "postcopy")]
+    fn postcopy_register(&self, mapping: &AddrMapping) -> VhostUserResult<()> {
+        let Some(ref uffd) = self.uffd else {
+            return Err(VhostUserError::ReqHandlerError(io::Error::other(
+                "No registered UFFD handler",
+            )));
+        };
+
+        uffd.register(
+            mapping.local_addr as *mut libc::c_void,
+            mapping.size as usize,
+        )
+        .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?;
+
+        Ok(())
+    }
 }
 
 impl<T> VhostUserHandler<T>
@@ -738,18 +758,14 @@ where
 
     #[cfg(feature = "postcopy")]
     fn postcopy_listen(&mut self) -> VhostUserResult<()> {
-        let Some(ref uffd) = self.uffd else {
+        if self.uffd.is_none() {
             return Err(VhostUserError::ReqHandlerError(io::Error::other(
                 "No registered UFFD handler",
             )));
-        };
+        }
 
         for mapping in self.mappings.iter() {
-            uffd.register(
-                mapping.local_addr as *mut libc::c_void,
-                mapping.size as usize,
-            )
-            .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?;
+            self.postcopy_register(mapping)?;
         }
 
         Ok(())
