@@ -26,6 +26,7 @@ use vhost::vhost_user::GpuBackend;
 use vhost::vhost_user::{
     Backend, Error as VhostUserError, Result as VhostUserResult, VhostUserBackendReqHandlerMut,
 };
+use vhost::VhostUserMemoryRegionBase;
 
 use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use virtio_queue::{Error as VirtQueError, QueueT};
@@ -105,6 +106,9 @@ pub struct VhostUserHandler<T: VhostUserBackend> {
     vrings: Vec<T::Vring>,
     #[cfg(feature = "postcopy")]
     uffd: Option<Uffd>,
+    // memory mapped while postcopy is listening, published once the frontend acks it
+    #[cfg(feature = "postcopy")]
+    pending_mem: Option<GuestMemoryMmap<T::Bitmap>>,
     worker_threads: Vec<thread::JoinHandle<VringEpollResult<()>>>,
 }
 
@@ -166,6 +170,8 @@ where
             vrings,
             #[cfg(feature = "postcopy")]
             uffd: None,
+            #[cfg(feature = "postcopy")]
+            pending_mem: None,
             worker_threads,
         })
     }
@@ -351,7 +357,13 @@ where
         &mut self,
         ctx: &[VhostUserMemoryRegion],
         files: Vec<File>,
-    ) -> VhostUserResult<()> {
+        postcopy_listening: Option<bool>,
+    ) -> VhostUserResult<Option<Vec<VhostUserMemoryRegionBase>>> {
+        #[cfg(not(feature = "postcopy"))]
+        if postcopy_listening.is_some() {
+            return Err(VhostUserError::InvalidOperation("postcopy not enabled"));
+        }
+
         // We need to create tuple of ranges from the list of VhostUserMemoryRegion
         // that we get from the caller.
         let mut regions = Vec::new();
@@ -365,18 +377,31 @@ where
             .ok_or(VhostUserError::ReqHandlerError(
                 io::ErrorKind::InvalidInput.into(),
             ))?;
-            mappings.push(AddrMapping {
+            let mapping = AddrMapping {
                 #[cfg(feature = "postcopy")]
                 local_addr: guest_region.as_ptr() as u64,
                 vmm_addr: region.user_addr,
                 size: region.memory_size,
                 gpa_base: region.guest_phys_addr,
-            });
+            };
+            #[cfg(feature = "postcopy")]
+            if postcopy_listening == Some(true) {
+                self.postcopy_register(&mapping)?;
+            }
+            mappings.push(mapping);
             regions.push(guest_region);
         }
 
         let mem = GuestMemoryMmap::from_regions(regions)
             .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?;
+
+        #[cfg(feature = "postcopy")]
+        if postcopy_listening == Some(true) {
+            let bases = mappings.iter().map(|mapping| mapping.local_addr).collect();
+            self.pending_mem = Some(mem);
+            self.mappings = mappings;
+            return Ok(Some(bases));
+        }
 
         // Updating the inner GuestMemory object here will cause all our vrings to
         // see the new one the next time they call to `atomic_mem.memory()`.
@@ -387,7 +412,7 @@ where
             .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?;
         self.mappings = mappings;
 
-        Ok(())
+        Ok(None)
     }
 
     fn set_vring_num(&mut self, index: u32, num: u32) -> VhostUserResult<()> {
@@ -774,6 +799,21 @@ where
     #[cfg(feature = "postcopy")]
     fn postcopy_end(&mut self) -> VhostUserResult<()> {
         self.uffd = None;
+        self.postcopy_ack_mem_regions()
+    }
+
+    #[cfg(feature = "postcopy")]
+    fn postcopy_ack_mem_regions(&mut self) -> VhostUserResult<()> {
+        let Some(mem) = self.pending_mem.take() else {
+            return Ok(());
+        };
+
+        self.atomic_mem.lock().unwrap().replace(mem);
+
+        self.backend
+            .update_memory(self.atomic_mem.clone())
+            .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?;
+
         Ok(())
     }
 
