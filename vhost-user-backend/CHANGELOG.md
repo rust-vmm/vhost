@@ -12,6 +12,8 @@
 - [[#381]](https://github.com/rust-vmm/vhost/pull/381) `SET_MEM_TABLE` or `ADD_MEM_REG` also register
   the memory regions with userfaultfd and return their bases when the postcopy feature is set, as
   specified by the spec.
+- [[#381]](https://github.com/rust-vmm/vhost/pull/381) `POSTCOPY_LISTEN` no longer registers any memory
+  region by itself.
 
 ## v0.23.0
 

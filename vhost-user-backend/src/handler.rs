@@ -799,10 +799,6 @@ where
             )));
         }
 
-        for mapping in self.mappings.iter() {
-            self.postcopy_register(mapping)?;
-        }
-
         Ok(())
     }
 
