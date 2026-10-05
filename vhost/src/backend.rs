@@ -63,6 +63,9 @@ impl VringConfigData {
     }
 }
 
+/// Address at which the backend mapped a memory region.
+pub type VhostUserMemoryRegionBase = u64;
+
 /// Memory region configuration data.
 #[derive(Default, Clone, Copy)]
 pub struct VhostUserMemoryRegionInfo {
