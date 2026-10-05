@@ -81,7 +81,12 @@ pub trait VhostUserBackendReqHandler {
     fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, File)>;
     fn set_inflight_fd(&self, inflight: &VhostUserInflight, file: File) -> Result<()>;
     fn get_max_mem_slots(&self) -> Result<u64>;
-    fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
+    fn add_mem_region(
+        &self,
+        region: &VhostUserSingleMemoryRegion,
+        fd: File,
+        postcopy_listening: Option<bool>,
+    ) -> Result<Option<VhostUserMemoryRegionBase>>;
     fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
     fn set_device_state_fd(
         &self,
@@ -152,7 +157,12 @@ pub trait VhostUserBackendReqHandlerMut {
     ) -> Result<(VhostUserInflight, File)>;
     fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, file: File) -> Result<()>;
     fn get_max_mem_slots(&mut self) -> Result<u64>;
-    fn add_mem_region(&mut self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
+    fn add_mem_region(
+        &mut self,
+        region: &VhostUserSingleMemoryRegion,
+        fd: File,
+        postcopy_listening: Option<bool>,
+    ) -> Result<Option<VhostUserMemoryRegionBase>>;
     fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
     fn set_device_state_fd(
         &mut self,
@@ -289,8 +299,15 @@ impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
         self.lock().unwrap().get_max_mem_slots()
     }
 
-    fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()> {
-        self.lock().unwrap().add_mem_region(region, fd)
+    fn add_mem_region(
+        &self,
+        region: &VhostUserSingleMemoryRegion,
+        fd: File,
+        postcopy_listening: Option<bool>,
+    ) -> Result<Option<VhostUserMemoryRegionBase>> {
+        self.lock()
+            .unwrap()
+            .add_mem_region(region, fd, postcopy_listening)
     }
 
     fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()> {
@@ -670,14 +687,51 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
             }
             Ok(FrontendReq::ADD_MEM_REG) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
+                #[cfg(feature = "postcopy")]
+                if self.postcopy_state == PostcopyState::Listen
+                    && size == mem::size_of::<VhostUserU64>()
+                {
+                    let msg = self.extract_request_body::<VhostUserU64>(&hdr, size, &buf)?;
+                    if msg.value != 0 {
+                        return Err(Error::FrontendInternalError);
+                    }
+                    return Ok(());
+                }
                 let mut files = files.ok_or(Error::InvalidParam)?;
                 if files.len() != 1 {
                     return Err(Error::InvalidParam);
                 }
                 let msg =
                     self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
-                let res = self.backend.add_mem_region(&msg, files.swap_remove(0));
-                self.send_ack_message(&hdr, res)?;
+                let res = self.backend.add_mem_region(
+                    &msg,
+                    files.swap_remove(0),
+                    #[cfg(feature = "postcopy")]
+                    Some(self.postcopy_state == PostcopyState::Listen),
+                    #[cfg(not(feature = "postcopy"))]
+                    None,
+                );
+                #[cfg(feature = "postcopy")]
+                if self.postcopy_state == PostcopyState::Listen {
+                    match res.and_then(|base| base.ok_or(Error::BackendInternalError)) {
+                        Ok(base) => {
+                            let reply = VhostUserSingleMemoryRegion::new(
+                                msg.guest_phys_addr,
+                                msg.memory_size,
+                                base,
+                                msg.mmap_offset,
+                                #[cfg(feature = "xen")]
+                                msg.xen_mmap_flags,
+                                #[cfg(feature = "xen")]
+                                msg.xen_mmap_data,
+                            );
+                            self.send_reply_message(&hdr, &reply)?;
+                        }
+                        Err(e) => self.send_ack_message(&hdr, Err(e))?,
+                    }
+                    return Ok(());
+                }
+                self.send_ack_message(&hdr, res.map(|_| ()))?;
             }
             Ok(FrontendReq::REM_MEM_REG) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
