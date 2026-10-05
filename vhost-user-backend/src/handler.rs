@@ -26,6 +26,7 @@ use vhost::vhost_user::GpuBackend;
 use vhost::vhost_user::{
     Backend, Error as VhostUserError, Result as VhostUserResult, VhostUserBackendReqHandlerMut,
 };
+use vhost::VhostUserMemoryRegionBase;
 
 use virtio_bindings::bindings::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use virtio_queue::{Error as VirtQueError, QueueT};
@@ -351,7 +352,13 @@ where
         &mut self,
         ctx: &[VhostUserMemoryRegion],
         files: Vec<File>,
-    ) -> VhostUserResult<()> {
+        postcopy_listening: Option<bool>,
+    ) -> VhostUserResult<Option<Vec<VhostUserMemoryRegionBase>>> {
+        #[cfg(not(feature = "postcopy"))]
+        if postcopy_listening.is_some() {
+            return Err(VhostUserError::InvalidOperation("postcopy not enabled"));
+        }
+
         // We need to create tuple of ranges from the list of VhostUserMemoryRegion
         // that we get from the caller.
         let mut regions = Vec::new();
@@ -365,13 +372,18 @@ where
             .ok_or(VhostUserError::ReqHandlerError(
                 io::ErrorKind::InvalidInput.into(),
             ))?;
-            mappings.push(AddrMapping {
+            let mapping = AddrMapping {
                 #[cfg(feature = "postcopy")]
                 local_addr: guest_region.as_ptr() as u64,
                 vmm_addr: region.user_addr,
                 size: region.memory_size,
                 gpa_base: region.guest_phys_addr,
-            });
+            };
+            #[cfg(feature = "postcopy")]
+            if postcopy_listening == Some(true) {
+                self.postcopy_register(&mapping)?;
+            }
+            mappings.push(mapping);
             regions.push(guest_region);
         }
 
@@ -387,7 +399,16 @@ where
             .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?;
         self.mappings = mappings;
 
-        Ok(())
+        match postcopy_listening {
+            #[cfg(feature = "postcopy")]
+            Some(true) => Ok(Some(
+                self.mappings
+                    .iter()
+                    .map(|mapping| mapping.local_addr)
+                    .collect(),
+            )),
+            _ => Ok(None),
+        }
     }
 
     fn set_vring_num(&mut self, index: u32, num: u32) -> VhostUserResult<()> {

@@ -5,6 +5,7 @@ use std::fs::File;
 
 use super::message::*;
 use super::*;
+use crate::backend::VhostUserMemoryRegionBase;
 
 pub const MAX_QUEUE_NUM: usize = 2;
 pub const MAX_VRING_NUM: usize = 256;
@@ -118,8 +119,16 @@ impl VhostUserBackendReqHandlerMut for DummyBackendReqHandler {
         Ok(())
     }
 
-    fn set_mem_table(&mut self, _ctx: &[VhostUserMemoryRegion], _files: Vec<File>) -> Result<()> {
-        Ok(())
+    fn set_mem_table(
+        &mut self,
+        _ctx: &[VhostUserMemoryRegion],
+        _files: Vec<File>,
+        postcopy_listening: Option<bool>,
+    ) -> Result<Option<Vec<VhostUserMemoryRegionBase>>> {
+        if postcopy_listening == Some(true) {
+            return Ok(Some(_ctx.iter().map(|region| region.user_addr).collect()));
+        }
+        Ok(None)
     }
 
     fn set_vring_num(&mut self, index: u32, num: u32) -> Result<()> {
@@ -360,6 +369,7 @@ impl VhostUserBackendReqHandlerMut for DummyBackendReqHandler {
     fn postcopy_end(&mut self) -> Result<()> {
         Ok(())
     }
+
     fn set_log_base(&mut self, _log: &VhostUserLog, _file: File) -> Result<()> {
         Ok(())
     }
