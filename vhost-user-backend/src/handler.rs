@@ -947,4 +947,61 @@ mod tests {
             "Backend SHOULD have been kicked after enabling"
         );
     }
+
+    // These tests need access to `/dev/userfaultfd`.
+    #[cfg(feature = "postcopy")]
+    mod postcopy {
+        use super::*;
+
+        fn memfd(size: u64) -> File {
+            let fd =
+                nix::sys::memfd::memfd_create("test", nix::sys::memfd::MFdFlags::empty()).unwrap();
+            let file = File::from(fd);
+            file.set_len(size).unwrap();
+            file
+        }
+
+        fn new_handler() -> VhostUserHandler<Arc<Mutex<MockVhostBackend>>> {
+            let mem = GuestMemoryAtomic::new(GuestMemoryMmap::<()>::new());
+            VhostUserHandler::new(Arc::new(Mutex::new(MockVhostBackend::new())), mem).unwrap()
+        }
+
+        // Returns the VmFlags of the mapping starting at `base`.
+        fn vm_flags(base: u64) -> Vec<String> {
+            let smaps = std::fs::read_to_string("/proc/self/smaps").unwrap();
+            let header = format!("{base:x}-");
+            // Each mapping's entry ends with its VmFlags.
+            smaps
+                .lines()
+                .skip_while(|line| !line.starts_with(&header))
+                .find_map(|line| line.strip_prefix("VmFlags:"))
+                .unwrap()
+                .split_whitespace()
+                .map(String::from)
+                .collect()
+        }
+
+        #[test]
+        fn test_regions_registered() {
+            let mut handler = new_handler();
+            handler.postcopy_advice().unwrap();
+            handler.postcopy_listen().unwrap();
+
+            let table = VhostUserMemoryRegion::new(0x100000, 0x10000, 0x7000_0000, 0);
+            let bases = handler
+                .set_mem_table(&[table], vec![memfd(0x10000)], Some(true))
+                .unwrap()
+                .unwrap();
+            let added = VhostUserSingleMemoryRegion::new(0x200000, 0x10000, 0x7100_0000, 0);
+            let added_base = handler
+                .add_mem_region(&added, memfd(0x10000), Some(true))
+                .unwrap()
+                .unwrap();
+
+            // Both mappings are registered for missing pages.
+            for base in [bases[0], added_base] {
+                assert!(vm_flags(base).iter().any(|flag| flag == "um"));
+            }
+        }
+    }
 }
