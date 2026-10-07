@@ -55,6 +55,25 @@ mod gpu_backend_req;
 pub mod gpu_message;
 pub use self::gpu_backend_req::GpuBackend;
 
+/// Enum representing the postcopy state. It is currently not possible to move
+/// back to Inactive from another state.
+#[cfg(all(feature = "vhost-user-backend", feature = "postcopy"))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum PostcopyState {
+    #[default]
+    Inactive,
+    /// Creates a userfaultfd and sends it back to the frontend.
+    /// Only valid after "Inactive"
+    Advise,
+    /// Memory regions received from now on are registered with UFFD and their
+    /// bases sent to the frontend
+    /// Only valid after "Advise"
+    Listen,
+    /// Unregister all memory regions with UFFD and close the fd.
+    /// Only valid after "Listen"
+    End,
+}
+
 /// Errors for vhost-user operations
 #[derive(Debug)]
 pub enum Error {
