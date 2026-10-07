@@ -5,6 +5,8 @@
 ### Added
 - [[#381]](https://github.com/rust-vmm/vhost/pull/381) Add a `postcopy-frontend` feature
 ### Changed
+- [[#381]](https://github.com/rust-vmm/vhost/pull/381) `BackendReqHandler` rejects `POSTCOPY_ADVISE`,
+  `POSTCOPY_LISTEN` and `POSTCOPY_END` requests received out of order.
 ### Deprecated
 ### Fixed
 - [[#378]](https://github.com/rust-vmm/vhost/pull/378) Allow `REM_MEM_REG` requests to carry a file

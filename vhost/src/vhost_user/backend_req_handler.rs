@@ -15,6 +15,8 @@ use super::backend_req::Backend;
 use super::connection::Endpoint;
 use super::gpu_backend_req::GpuBackend;
 use super::message::*;
+#[cfg(feature = "postcopy")]
+use super::PostcopyState;
 use super::{take_single_file, Error, Result};
 
 /// Services provided to the frontend by the backend with interior mutability.
@@ -338,6 +340,9 @@ pub struct BackendReqHandler<S: VhostUserBackendReqHandler> {
 
     // sending ack for messages without payload
     reply_ack_enabled: bool,
+    // postcopy state reached through the POSTCOPY_* requests
+    #[cfg(feature = "postcopy")]
+    postcopy_state: PostcopyState,
     // whether the endpoint has encountered any failure
     error: Option<i32>,
 }
@@ -355,6 +360,8 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
             acked_virtio_features: 0,
             acked_protocol_features: 0,
             reply_ack_enabled: false,
+            #[cfg(feature = "postcopy")]
+            postcopy_state: PostcopyState::Inactive,
             error: None,
         }
     }
@@ -700,9 +707,15 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
             #[cfg(feature = "postcopy")]
             Ok(FrontendReq::POSTCOPY_ADVISE) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
+                if self.postcopy_state != PostcopyState::Inactive {
+                    return Err(Error::InvalidOperation("postcopy already advised"));
+                }
 
                 let reply_hdr = self.new_reply_header::<VhostUserEmpty>(&hdr, 0)?;
                 let res = self.backend.postcopy_advice();
+                if res.is_ok() {
+                    self.postcopy_state = PostcopyState::Advise;
+                }
                 match res {
                     Ok(uffd_file) => self.main_sock.send_message(
                         &reply_hdr,
@@ -717,12 +730,22 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
             #[cfg(feature = "postcopy")]
             Ok(FrontendReq::POSTCOPY_LISTEN) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
+                if self.postcopy_state != PostcopyState::Advise {
+                    return Err(Error::InvalidOperation("postcopy not advised"));
+                }
                 let res = self.backend.postcopy_listen();
+                if res.is_ok() {
+                    self.postcopy_state = PostcopyState::Listen;
+                }
                 self.send_ack_message(&hdr, res)?;
             }
             #[cfg(feature = "postcopy")]
             Ok(FrontendReq::POSTCOPY_END) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
+                if self.postcopy_state != PostcopyState::Listen {
+                    return Err(Error::InvalidOperation("postcopy not listening"));
+                }
+                self.postcopy_state = PostcopyState::End;
                 let res = self.backend.postcopy_end();
                 self.send_ack_message(&hdr, res)?;
             }

@@ -55,6 +55,16 @@ mod gpu_backend_req;
 pub mod gpu_message;
 pub use self::gpu_backend_req::GpuBackend;
 
+#[cfg(all(feature = "vhost-user-backend", feature = "postcopy"))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum PostcopyState {
+    #[default]
+    Inactive,
+    Advise,
+    Listen,
+    End,
+}
+
 /// Errors for vhost-user operations
 #[derive(Debug)]
 pub enum Error {
