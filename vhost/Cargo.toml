@@ -50,4 +50,4 @@ skip_feature_sets = [
     ["postcopy", "postcopy-frontend"],
 ]
 
-denylist = ["test_utils"]
+denylist = ["test-utils"]
