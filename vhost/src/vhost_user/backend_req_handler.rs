@@ -15,7 +15,10 @@ use super::backend_req::Backend;
 use super::connection::Endpoint;
 use super::gpu_backend_req::GpuBackend;
 use super::message::*;
+#[cfg(feature = "postcopy")]
+use super::PostcopyState;
 use super::{take_single_file, Error, Result};
+use crate::backend::VhostUserMemoryRegionBase;
 
 /// Services provided to the frontend by the backend with interior mutability.
 ///
@@ -44,7 +47,12 @@ pub trait VhostUserBackendReqHandler {
     fn reset_device(&self) -> Result<()>;
     fn get_features(&self) -> Result<u64>;
     fn set_features(&self, features: u64) -> Result<()>;
-    fn set_mem_table(&self, ctx: &[VhostUserMemoryRegion], files: Vec<File>) -> Result<()>;
+    fn set_mem_table(
+        &self,
+        ctx: &[VhostUserMemoryRegion],
+        files: Vec<File>,
+        postcopy_listening: Option<bool>,
+    ) -> Result<Option<Vec<VhostUserMemoryRegionBase>>>;
     fn set_vring_num(&self, index: u32, num: u32) -> Result<()>;
     fn set_vring_addr(
         &self,
@@ -73,7 +81,12 @@ pub trait VhostUserBackendReqHandler {
     fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, File)>;
     fn set_inflight_fd(&self, inflight: &VhostUserInflight, file: File) -> Result<()>;
     fn get_max_mem_slots(&self) -> Result<u64>;
-    fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
+    fn add_mem_region(
+        &self,
+        region: &VhostUserSingleMemoryRegion,
+        fd: File,
+        postcopy_listening: Option<bool>,
+    ) -> Result<Option<VhostUserMemoryRegionBase>>;
     fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
     fn set_device_state_fd(
         &self,
@@ -102,7 +115,12 @@ pub trait VhostUserBackendReqHandlerMut {
     fn reset_device(&mut self) -> Result<()>;
     fn get_features(&mut self) -> Result<u64>;
     fn set_features(&mut self, features: u64) -> Result<()>;
-    fn set_mem_table(&mut self, ctx: &[VhostUserMemoryRegion], files: Vec<File>) -> Result<()>;
+    fn set_mem_table(
+        &mut self,
+        ctx: &[VhostUserMemoryRegion],
+        files: Vec<File>,
+        postcopy_listening: Option<bool>,
+    ) -> Result<Option<Vec<VhostUserMemoryRegionBase>>>;
     fn set_vring_num(&mut self, index: u32, num: u32) -> Result<()>;
     fn set_vring_addr(
         &mut self,
@@ -139,7 +157,12 @@ pub trait VhostUserBackendReqHandlerMut {
     ) -> Result<(VhostUserInflight, File)>;
     fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, file: File) -> Result<()>;
     fn get_max_mem_slots(&mut self) -> Result<u64>;
-    fn add_mem_region(&mut self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
+    fn add_mem_region(
+        &mut self,
+        region: &VhostUserSingleMemoryRegion,
+        fd: File,
+        postcopy_listening: Option<bool>,
+    ) -> Result<Option<VhostUserMemoryRegionBase>>;
     fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
     fn set_device_state_fd(
         &mut self,
@@ -179,8 +202,15 @@ impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
         self.lock().unwrap().set_features(features)
     }
 
-    fn set_mem_table(&self, ctx: &[VhostUserMemoryRegion], files: Vec<File>) -> Result<()> {
-        self.lock().unwrap().set_mem_table(ctx, files)
+    fn set_mem_table(
+        &self,
+        ctx: &[VhostUserMemoryRegion],
+        files: Vec<File>,
+        postcopy_listening: Option<bool>,
+    ) -> Result<Option<Vec<VhostUserMemoryRegionBase>>> {
+        self.lock()
+            .unwrap()
+            .set_mem_table(ctx, files, postcopy_listening)
     }
 
     fn set_vring_num(&self, index: u32, num: u32) -> Result<()> {
@@ -269,8 +299,15 @@ impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
         self.lock().unwrap().get_max_mem_slots()
     }
 
-    fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()> {
-        self.lock().unwrap().add_mem_region(region, fd)
+    fn add_mem_region(
+        &self,
+        region: &VhostUserSingleMemoryRegion,
+        fd: File,
+        postcopy_listening: Option<bool>,
+    ) -> Result<Option<VhostUserMemoryRegionBase>> {
+        self.lock()
+            .unwrap()
+            .add_mem_region(region, fd, postcopy_listening)
     }
 
     fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()> {
@@ -310,6 +347,7 @@ impl<T: VhostUserBackendReqHandlerMut> VhostUserBackendReqHandler for Mutex<T> {
     fn postcopy_end(&self) -> Result<()> {
         self.lock().unwrap().postcopy_end()
     }
+
     fn set_log_base(&self, log: &VhostUserLog, file: File) -> Result<()> {
         self.lock().unwrap().set_log_base(log, file)
     }
@@ -338,6 +376,9 @@ pub struct BackendReqHandler<S: VhostUserBackendReqHandler> {
 
     // sending ack for messages without payload
     reply_ack_enabled: bool,
+    // postcopy state reached through the POSTCOPY_* requests
+    #[cfg(feature = "postcopy")]
+    postcopy_state: PostcopyState,
     // whether the endpoint has encountered any failure
     error: Option<i32>,
 }
@@ -355,6 +396,8 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
             acked_virtio_features: 0,
             acked_protocol_features: 0,
             reply_ack_enabled: false,
+            #[cfg(feature = "postcopy")]
+            postcopy_state: PostcopyState::Inactive,
             error: None,
         }
     }
@@ -469,8 +512,22 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
                 self.send_ack_message(&hdr, res)?;
             }
             Ok(FrontendReq::SET_MEM_TABLE) => {
-                let res = self.set_mem_table(&hdr, size, &buf, files);
-                self.send_ack_message(&hdr, res)?;
+                #[cfg(feature = "postcopy")]
+                if self.postcopy_state == PostcopyState::Listen
+                    && size == mem::size_of::<VhostUserU64>()
+                {
+                    let msg = self.extract_request_body::<VhostUserU64>(&hdr, size, &buf)?;
+                    if msg.value != 0 {
+                        return Err(Error::FrontendInternalError);
+                    }
+                    return Ok(());
+                }
+                match self.set_mem_table(&hdr, size, &buf, files) {
+                    Ok(Some((body, payload))) => {
+                        self.send_reply_with_payload(&hdr, &body, &payload)?
+                    }
+                    res => self.send_ack_message(&hdr, res.map(|_| ()))?,
+                }
             }
             Ok(FrontendReq::SET_VRING_NUM) => {
                 let msg = self.extract_request_body::<VhostUserVringState>(&hdr, size, &buf)?;
@@ -630,14 +687,51 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
             }
             Ok(FrontendReq::ADD_MEM_REG) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
+                #[cfg(feature = "postcopy")]
+                if self.postcopy_state == PostcopyState::Listen
+                    && size == mem::size_of::<VhostUserU64>()
+                {
+                    let msg = self.extract_request_body::<VhostUserU64>(&hdr, size, &buf)?;
+                    if msg.value != 0 {
+                        return Err(Error::FrontendInternalError);
+                    }
+                    return Ok(());
+                }
                 let mut files = files.ok_or(Error::InvalidParam)?;
                 if files.len() != 1 {
                     return Err(Error::InvalidParam);
                 }
                 let msg =
                     self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
-                let res = self.backend.add_mem_region(&msg, files.swap_remove(0));
-                self.send_ack_message(&hdr, res)?;
+                let res = self.backend.add_mem_region(
+                    &msg,
+                    files.swap_remove(0),
+                    #[cfg(feature = "postcopy")]
+                    Some(self.postcopy_state == PostcopyState::Listen),
+                    #[cfg(not(feature = "postcopy"))]
+                    None,
+                );
+                #[cfg(feature = "postcopy")]
+                if self.postcopy_state == PostcopyState::Listen {
+                    match res.and_then(|base| base.ok_or(Error::BackendInternalError)) {
+                        Ok(base) => {
+                            let reply = VhostUserSingleMemoryRegion::new(
+                                msg.guest_phys_addr,
+                                msg.memory_size,
+                                base,
+                                msg.mmap_offset,
+                                #[cfg(feature = "xen")]
+                                msg.xen_mmap_flags,
+                                #[cfg(feature = "xen")]
+                                msg.xen_mmap_data,
+                            );
+                            self.send_reply_message(&hdr, &reply)?;
+                        }
+                        Err(e) => self.send_ack_message(&hdr, Err(e))?,
+                    }
+                    return Ok(());
+                }
+                self.send_ack_message(&hdr, res.map(|_| ()))?;
             }
             Ok(FrontendReq::REM_MEM_REG) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
@@ -700,9 +794,15 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
             #[cfg(feature = "postcopy")]
             Ok(FrontendReq::POSTCOPY_ADVISE) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
+                if self.postcopy_state != PostcopyState::Inactive {
+                    return Err(Error::InvalidOperation("postcopy already advised"));
+                }
 
                 let reply_hdr = self.new_reply_header::<VhostUserEmpty>(&hdr, 0)?;
                 let res = self.backend.postcopy_advice();
+                if res.is_ok() {
+                    self.postcopy_state = PostcopyState::Advise;
+                }
                 match res {
                     Ok(uffd_file) => self.main_sock.send_message(
                         &reply_hdr,
@@ -717,12 +817,22 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
             #[cfg(feature = "postcopy")]
             Ok(FrontendReq::POSTCOPY_LISTEN) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
+                if self.postcopy_state != PostcopyState::Advise {
+                    return Err(Error::InvalidOperation("postcopy not advised"));
+                }
                 let res = self.backend.postcopy_listen();
+                if res.is_ok() {
+                    self.postcopy_state = PostcopyState::Listen;
+                }
                 self.send_ack_message(&hdr, res)?;
             }
             #[cfg(feature = "postcopy")]
             Ok(FrontendReq::POSTCOPY_END) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::PAGEFAULT)?;
+                if self.postcopy_state != PostcopyState::Listen {
+                    return Err(Error::InvalidOperation("postcopy not listening"));
+                }
+                self.postcopy_state = PostcopyState::End;
                 let res = self.backend.postcopy_end();
                 self.send_ack_message(&hdr, res)?;
             }
@@ -751,7 +861,7 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
         size: usize,
         buf: &[u8],
         files: Option<Vec<File>>,
-    ) -> Result<()> {
+    ) -> Result<Option<(VhostUserMemory, Vec<u8>)>> {
         self.check_request_size(hdr, size, hdr.get_size() as usize)?;
 
         // check message size is consistent
@@ -791,7 +901,34 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
             }
         }
 
-        self.backend.set_mem_table(regions, files)
+        #[cfg(feature = "postcopy")]
+        if self.postcopy_state == PostcopyState::Listen {
+            let bases = self
+                .backend
+                .set_mem_table(regions, files, Some(true))?
+                .ok_or(Error::BackendInternalError)?;
+            if bases.len() != regions.len() {
+                return Err(Error::BackendInternalError);
+            }
+
+            let mut payload = Vec::with_capacity(mem::size_of_val(regions));
+            for (region, base) in regions.iter().zip(bases) {
+                let mut region = *region;
+                region.user_addr = base;
+                payload.extend_from_slice(region.as_slice());
+            }
+            return Ok(Some((VhostUserMemory::new(regions.len() as u32), payload)));
+        }
+
+        self.backend.set_mem_table(
+            regions,
+            files,
+            #[cfg(feature = "postcopy")]
+            Some(false),
+            #[cfg(not(feature = "postcopy"))]
+            None,
+        )?;
+        Ok(None)
     }
 
     fn get_config(&mut self, hdr: &VhostUserMsgHeader<FrontendReq>, buf: &[u8]) -> Result<()> {
