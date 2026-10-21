@@ -3,11 +3,19 @@
 ## [Unreleased]
 
 ### Added
+### Changed
+### Deprecated
+### Fixed
+
+## v0.18.0
+
+### Added
 - [[#381]](https://github.com/rust-vmm/vhost/pull/381) Add a `postcopy-frontend` feature
 - [[#381]](https://github.com/rust-vmm/vhost/pull/381) Add
   `VhostUserBackendReqHandler::postcopy_ack_mem_regions()` (and its
   `VhostUserBackendReqHandlerMut` counterpart).
 - [[#381]](https://github.com/rust-vmm/vhost/pull/381) Add `VhostUserFrontend::postcopy_ack_mem_regions()`.
+
 ### Changed
 - [[#381]](https://github.com/rust-vmm/vhost/pull/381) `VhostBackend::set_mem_table()` (and its
   `VhostBackendMut` counterpart) and `VhostUserFrontend::add_mem_region()` return the bases of the
@@ -18,8 +26,9 @@
   listening, and `None` otherwise.
 - [[#381]](https://github.com/rust-vmm/vhost/pull/381) `BackendReqHandler` rejects `POSTCOPY_ADVISE`,
   `POSTCOPY_LISTEN` and `POSTCOPY_END` requests received out of order.
-### Deprecated
+
 ### Fixed
+- [[#368]](https://github.com/rust-vmm/vhost/pull/368) Fix docs.rs builds.
 - [[#378]](https://github.com/rust-vmm/vhost/pull/378) Allow `REM_MEM_REG` requests to carry a file
   descriptor for spec compliance against older incorrect implementations.
 - [[#381]](https://github.com/rust-vmm/vhost/pull/381) Reply to `SET_MEM_TABLE` and `ADD_MEM_REG` with

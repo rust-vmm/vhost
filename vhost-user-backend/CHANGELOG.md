@@ -3,12 +3,23 @@
 ## [Unreleased]
 
 ### Added
+### Changed
+### Deprecated
+### Fixed
+
+## v0.24.0
+
+### Added
 - [[#374]](https://github.com/rust-vmm/vhost/pull/374) Call backend event handler on vring enabled
 - [[#377]](https://github.com/rust-vmm/vhost/pull/377) Add a `stop_vring()` hook for draining requests before `GET_VRING_BASE` returns.
 
 ### Changed
-### Deprecated
+- Updated vhost to 0.18.0
+
 ### Fixed
+- [[#368]](https://github.com/rust-vmm/vhost/pull/368) Fix docs.rs builds.
+- [[#379]](https://github.com/rust-vmm/vhost/pull/379) Avoid a deadlock between the backend and vring locks
+  when registering vring events.
 - [[#381]](https://github.com/rust-vmm/vhost/pull/381) `SET_MEM_TABLE` or `ADD_MEM_REG` also register
   the memory regions with userfaultfd and return their bases when the postcopy feature is set, as
   specified by the spec, and only publish them once the frontend acks the reply.
