@@ -742,6 +742,19 @@ impl<S: VhostUserBackendReqHandler> BackendReqHandler<S> {
                 }
                 self.send_ack_message(&hdr, res.map(|_| ()))?;
             }
+            // QEMU acks a batch with the code of its last message.
+            #[cfg(feature = "postcopy")]
+            Ok(FrontendReq::REM_MEM_REG)
+                if self.postcopy_state == PostcopyState::Listen
+                    && size == mem::size_of::<VhostUserU64>() =>
+            {
+                self.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
+                let msg = self.extract_request_body::<VhostUserU64>(&hdr, size, &buf)?;
+                if msg.value != 0 {
+                    return Err(Error::FrontendInternalError);
+                }
+                self.backend.postcopy_ack_mem_regions()?;
+            }
             Ok(FrontendReq::REM_MEM_REG) => {
                 self.check_proto_feature(VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS)?;
 
