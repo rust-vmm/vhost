@@ -727,6 +727,17 @@ where
     }
 
     fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> VhostUserResult<()> {
+        #[cfg(feature = "postcopy")]
+        if let Some(pending_mem) = &self.pending_mem {
+            let (mem, _) = pending_mem
+                .remove_region(GuestAddress(region.guest_phys_addr), region.memory_size)
+                .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?;
+            self.pending_mem = Some(mem);
+            self.mappings
+                .retain(|mapping| mapping.gpa_base != region.guest_phys_addr);
+            return Ok(());
+        }
+
         let (mem, _) = self
             .atomic_mem
             .memory()
