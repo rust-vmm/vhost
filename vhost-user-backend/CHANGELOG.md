@@ -6,6 +6,8 @@
 ### Changed
 ### Deprecated
 ### Fixed
+- [[#384]](https://github.com/rust-vmm/vhost/pull/384) Close the exit event consumer when the vring
+  epoll handler is dropped, instead of leaking its file descriptor.
 
 ## v0.24.0
 
