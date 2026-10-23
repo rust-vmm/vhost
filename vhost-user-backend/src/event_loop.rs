@@ -7,7 +7,6 @@ use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::io::{self, ErrorKind, Result};
 use std::marker::PhantomData;
-use std::os::fd::IntoRawFd;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::Mutex;
 
@@ -87,7 +86,8 @@ pub struct VringEpollHandler<T: VhostUserBackend> {
     num_backend_queues: usize,
     vrings: Vec<T::Vring>,
     thread_id: usize,
-    exit_event_fd: Option<EventNotifier>,
+    // Epoll borrows the consumer's descriptor; retain its owner until teardown.
+    exit_event_fd: Option<(EventConsumer, EventNotifier)>,
     vring_enabled_event_fd: (EventConsumer, EventNotifier),
     vrings_with_pending_events: Mutex<HashSet<u16>>,
     phantom: PhantomData<T::Bitmap>,
@@ -96,8 +96,8 @@ pub struct VringEpollHandler<T: VhostUserBackend> {
 impl<T: VhostUserBackend> VringEpollHandler<T> {
     /// Send `exit event` to break the event loop.
     pub fn send_exit_event(&self) {
-        if let Some(eventfd) = self.exit_event_fd.as_ref() {
-            let _ = eventfd.notify();
+        if let Some((_, notifier)) = self.exit_event_fd.as_ref() {
+            let _ = notifier.notify();
         }
     }
 }
@@ -121,11 +121,11 @@ where
             epoll
                 .ctl(
                     ControlOperation::Add,
-                    consumer.into_raw_fd(),
+                    consumer.as_raw_fd(),
                     EpollEvent::new(EventSet::IN, id as u64),
                 )
                 .map_err(VringEpollError::RegisterExitEvent)?;
-            Some(notifier)
+            Some((consumer, notifier))
         } else {
             None
         };
@@ -322,6 +322,34 @@ mod tests {
     use std::time::Duration;
     use vm_memory::{GuestAddress, GuestMemoryAtomic, GuestMemoryMmap};
     use vmm_sys_util::event::{new_event_consumer_and_notifier, EventFlag};
+
+    #[test]
+    fn test_exit_event_consumer_closed_on_drop() {
+        use std::io::Write;
+        use std::os::unix::io::{FromRawFd, IntoRawFd};
+
+        // Use a pipe as the exit consumer so its lifetime is observable:
+        // writing to a pipe whose read ends are all closed fails with EPIPE.
+        let (reader, mut probe) = std::io::pipe().unwrap();
+        // SAFETY: into_raw_fd() hands over ownership of a valid descriptor.
+        let consumer = unsafe { EventConsumer::from_raw_fd(reader.into_raw_fd()) };
+        let (_, notifier) = new_event_consumer_and_notifier(EventFlag::empty()).unwrap();
+
+        let mem = GuestMemoryAtomic::new(
+            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+        );
+        let vring = VringRwLock::new(mem, 0x1000).unwrap();
+        let mut backend = MockVhostBackend::new();
+        backend.set_exit_event(0, (consumer, notifier));
+        let handler =
+            VringEpollHandler::new(Arc::new(Mutex::new(backend)), vec![vring], 0).unwrap();
+
+        // The handler holds the last reference to the backend, so dropping it
+        // must close every read end of the pipe.
+        drop(handler);
+        let err = probe.write_all(&1u64.to_ne_bytes()).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+    }
 
     #[test]
     fn test_register_event_does_not_wait_for_backend() {
