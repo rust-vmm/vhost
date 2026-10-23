@@ -700,6 +700,14 @@ pub mod tests {
         pub fn stop_calls(&self) -> usize {
             self.stop_calls
         }
+
+        pub fn set_exit_event(
+            &mut self,
+            thread_index: usize,
+            event: (EventConsumer, EventNotifier),
+        ) {
+            self.exit_event_fds[thread_index] = event;
+        }
     }
 
     impl VhostUserBackendMut for MockVhostBackend {

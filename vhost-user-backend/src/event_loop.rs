@@ -324,6 +324,34 @@ mod tests {
     use vmm_sys_util::event::{new_event_consumer_and_notifier, EventFlag};
 
     #[test]
+    fn test_exit_event_consumer_closed_on_drop() {
+        use std::io::Write;
+        use std::os::unix::io::{FromRawFd, IntoRawFd};
+
+        // Use a pipe as the exit consumer so its lifetime is observable:
+        // writing to a pipe whose read ends are all closed fails with EPIPE.
+        let (reader, mut probe) = std::io::pipe().unwrap();
+        // SAFETY: into_raw_fd() hands over ownership of a valid descriptor.
+        let consumer = unsafe { EventConsumer::from_raw_fd(reader.into_raw_fd()) };
+        let (_, notifier) = new_event_consumer_and_notifier(EventFlag::empty()).unwrap();
+
+        let mem = GuestMemoryAtomic::new(
+            GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
+        );
+        let vring = VringRwLock::new(mem, 0x1000).unwrap();
+        let mut backend = MockVhostBackend::new();
+        backend.set_exit_event(0, (consumer, notifier));
+        let handler =
+            VringEpollHandler::new(Arc::new(Mutex::new(backend)), vec![vring], 0).unwrap();
+
+        // The handler holds the last reference to the backend, so dropping it
+        // must close every read end of the pipe.
+        drop(handler);
+        let err = probe.write_all(&1u64.to_ne_bytes()).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+    }
+
+    #[test]
     fn test_register_event_does_not_wait_for_backend() {
         let mem = GuestMemoryAtomic::new(
             GuestMemoryMmap::<()>::from_ranges(&[(GuestAddress(0x100000), 0x10000)]).unwrap(),
