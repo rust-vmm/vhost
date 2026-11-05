@@ -6,6 +6,7 @@
 ### Changed
 ### Deprecated
 ### Fixed
+- [[#386]](https://github.com/rust-vmm/vhost/pull/386) Fix file descriptor leak for backends with `exit_event()`.
 
 ## v0.24.0
 
