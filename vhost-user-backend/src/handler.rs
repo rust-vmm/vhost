@@ -15,7 +15,7 @@ use std::thread;
 
 use crate::bitmap::{BitmapReplace, MemRegionBitmap, MmapLogReg};
 #[cfg(feature = "postcopy")]
-use userfaultfd::{Uffd, UffdBuilder};
+use crate::userfaultfd::Uffd;
 use vhost::vhost_user::message::{
     VhostTransferStateDirection, VhostTransferStatePhase, VhostUserConfigFlags, VhostUserLog,
     VhostUserMemoryRegion, VhostUserProtocolFeatures, VhostUserShMemConfig, VhostUserSharedMsg,
@@ -223,13 +223,8 @@ impl<T: VhostUserBackend> VhostUserHandler<T> {
             );
         }
 
-        uffd.register(
-            mapping.local_addr as *mut libc::c_void,
-            mapping.size as usize,
-        )
-        .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?;
-
-        Ok(())
+        uffd.register(mapping.local_addr, mapping.size)
+            .map_err(VhostUserError::ReqHandlerError)
     }
 }
 
@@ -799,14 +794,7 @@ where
 
     #[cfg(feature = "postcopy")]
     fn postcopy_advice(&mut self) -> VhostUserResult<File> {
-        let mut uffd_builder = UffdBuilder::new();
-
-        let uffd = uffd_builder
-            .close_on_exec(true)
-            .non_blocking(true)
-            .user_mode_only(false)
-            .create()
-            .map_err(|e| VhostUserError::ReqHandlerError(io::Error::other(e)))?;
+        let uffd = Uffd::new().map_err(VhostUserError::ReqHandlerError)?;
 
         // We need to duplicate the uffd fd because we need both
         // to return File with fd and store fd inside uffd.

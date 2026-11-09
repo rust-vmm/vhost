@@ -4,6 +4,8 @@
 
 ### Added
 ### Changed
+- [[#387]](https://github.com/rust-vmm/vhost/pull/387) The `postcopy` feature no longer needs libclang to build.
+
 ### Deprecated
 ### Fixed
 - [[#384]](https://github.com/rust-vmm/vhost/pull/384) Close the exit event consumer when the vring
