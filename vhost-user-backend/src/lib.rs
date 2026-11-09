@@ -31,6 +31,9 @@ pub use self::event_loop::VringEpollHandler;
 mod handler;
 pub use self::handler::VhostUserHandlerError;
 
+#[cfg(feature = "postcopy")]
+mod userfaultfd;
+
 pub mod bitmap;
 use crate::bitmap::BitmapReplace;
 
