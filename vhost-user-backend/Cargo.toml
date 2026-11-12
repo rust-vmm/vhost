@@ -1,6 +1,6 @@
 [package]
 name = "vhost-user-backend"
-version = "0.24.0"
+version = "0.24.1"
 authors = ["The Cloud Hypervisor Authors"]
 keywords = ["vhost-user", "virtio"]
 description = "A framework to build vhost-user backend service daemon"
@@ -19,7 +19,7 @@ postcopy = ["vhost/postcopy"]
 [dependencies]
 libc = "0.2.173"
 log = "0.4.17"
-vhost = { path = "../vhost", version = "0.18.0", features = ["vhost-user-backend"] }
+vhost = { path = "../vhost", version = "0.18.1", features = ["vhost-user-backend"] }
 virtio-bindings = { workspace = true }
 virtio-queue = { workspace = true }
 vm-memory = { workspace = true, features = ["backend-mmap", "backend-atomic", "backend-bitmap"] }
@@ -28,7 +28,7 @@ vmm-sys-util = { workspace = true }
 [dev-dependencies]
 nix = { version = "0.31", features = ["fs"] }
 uuid = { version = "1.8.0", features=["v4"] }
-vhost = { path = "../vhost", version = "0.18.0", features = ["test-utils", "vhost-user-frontend", "vhost-user-backend"] }
+vhost = { path = "../vhost", version = "0.18.1", features = ["test-utils", "vhost-user-frontend", "vhost-user-backend"] }
 vm-memory = { workspace = true, features = ["backend-mmap", "backend-atomic"] }
 tempfile = "3.2.0"
 

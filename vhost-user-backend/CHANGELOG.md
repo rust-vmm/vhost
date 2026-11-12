@@ -4,9 +4,15 @@
 
 ### Added
 ### Changed
+### Deprecated
+### Fixed
+
+## v0.24.1
+
+### Changed
+- Updated vhost to 0.18.1
 - [[#387]](https://github.com/rust-vmm/vhost/pull/387) The `postcopy` feature no longer needs libclang to build.
 
-### Deprecated
 ### Fixed
 - [[#384]](https://github.com/rust-vmm/vhost/pull/384) Close the exit event consumer when the vring
   epoll handler is dropped, instead of leaking its file descriptor.
