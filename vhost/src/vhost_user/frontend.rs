@@ -62,6 +62,9 @@ pub trait VhostUserFrontend: VhostBackend {
     /// Setup backend communication channel.
     fn set_backend_request_fd(&mut self, fd: &dyn AsRawFd) -> Result<()>;
 
+    /// Setup GPU protocol socket.
+    fn set_gpu_socket(&mut self, fd: &dyn AsRawFd) -> Result<()>;
+
     /// Retrieve a given dma-buf fd from a given backend
     fn get_shared_object(&mut self, uuid: &VhostUserSharedMsg) -> Result<File>;
 
@@ -561,6 +564,13 @@ impl VhostUserFrontend for Frontend {
         node.check_proto_feature(VhostUserProtocolFeatures::BACKEND_REQ)?;
         let fds = [fd.as_raw_fd()];
         let hdr = node.send_request_header(FrontendReq::SET_BACKEND_REQ_FD, Some(&fds))?;
+        node.wait_for_ack(&hdr).map_err(|e| e.into())
+    }
+
+    fn set_gpu_socket(&mut self, fd: &dyn AsRawFd) -> Result<()> {
+        let mut node = self.node();
+        let fds = [fd.as_raw_fd()];
+        let hdr = node.send_request_header(FrontendReq::GPU_SET_SOCKET, Some(&fds))?;
         node.wait_for_ack(&hdr).map_err(|e| e.into())
     }
 
@@ -1592,5 +1602,23 @@ mod tests {
             .recv_timeout(std::time::Duration::from_secs(5))
             .expect("set_log_base blocked on a reply sent in two parts");
         assert!(res, "a reply body sent in two parts is read whole");
+    }
+
+    #[test]
+    fn test_set_gpu_socket() {
+        let (mut frontend, mut peer) = create_pair2();
+
+        std::thread::spawn(move || {
+            let (recv_hdr, rfds) = peer.recv_header().unwrap();
+            assert_eq!(recv_hdr.get_code().unwrap(), FrontendReq::GPU_SET_SOCKET);
+            assert!(rfds.is_some());
+            assert_eq!(rfds.unwrap().len(), 1);
+
+            let reply_hdr = VhostUserMsgHeader::new(FrontendReq::GPU_SET_SOCKET, 0x4, 0);
+            peer.send_header(&reply_hdr, None).unwrap();
+        });
+
+        let (fd1, _fd2) = UnixStream::pair().unwrap();
+        assert!(frontend.set_gpu_socket(&fd1).is_ok());
     }
 }
