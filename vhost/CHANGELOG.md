@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- [[#369]](https://github.com/rust-vmm/vhost/pull/369) Add `GpuFrontend` API and `VhostUserFrontend::set_gpu_socket()` for frontend-side GPU socket communication.
+
 ### Changed
 ### Deprecated
 ### Fixed
